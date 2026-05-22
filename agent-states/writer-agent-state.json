@@ -1,0 +1,54 @@
+{
+  "agent_name": "writer-agent",
+  "agent_role": "结构化报告撰写 Agent",
+  "version": "1.0",
+  "last_updated": "2026-05-22T00:00:00Z",
+  "status": "idle",
+  "current_task": null,
+  "completed_tasks": [],
+  "writing_tasks": {
+    "executive_summary": {
+      "status": "⏸ awaiting_analysis",
+      "completed_competitors": []
+    },
+    "detailed_comparison": {
+      "status": "⏸ awaiting_analysis",
+      "completed_competitors": []
+    },
+    "pricing_breakdown": {
+      "status": "⏸ awaiting_analysis",
+      "completed_competitors": []
+    },
+    "swot_report": {
+      "status": "⏸ awaiting_analysis",
+      "completed_competitors": []
+    },
+    "positioning_map": {
+      "status": "⏸ awaiting_analysis",
+      "completed_competitors": []
+    }
+  },
+  "output_formats": {
+    "markdown": {
+      "enabled": true,
+      "schema_version": "1.0"
+    },
+    "json": {
+      "enabled": true,
+      "schema_version": "1.0"
+    },
+    "html": {
+      "enabled": false,
+      "schema_version": null
+    }
+  },
+  "recent_activities": [
+    {
+      "timestamp": "2026-05-22T00:00:00Z",
+      "event": "Agent initialized",
+      "details": "Ready to generate reports from analyzed data"
+    }
+  ],
+  "errors": [],
+  "next_action": "Await analysis results from analyzer-agent"
+}

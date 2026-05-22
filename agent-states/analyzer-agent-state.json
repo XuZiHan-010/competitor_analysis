@@ -1,0 +1,56 @@
+{
+  "agent_name": "analyzer-agent",
+  "agent_role": "结构化分析 Agent",
+  "version": "1.0",
+  "last_updated": "2026-05-22T00:00:00Z",
+  "status": "idle",
+  "current_task": null,
+  "completed_tasks": [],
+  "active_competitors": [],
+  "pending_competitors": [],
+  "analysis_tasks": {
+    "feature_comparison": {
+      "status": "⏸ awaiting_data",
+      "completed_competitors": [],
+      "in_progress": []
+    },
+    "pricing_analysis": {
+      "status": "⏸ awaiting_data",
+      "completed_competitors": [],
+      "in_progress": []
+    },
+    "user_segment_analysis": {
+      "status": "⏸ awaiting_data",
+      "completed_competitors": [],
+      "in_progress": []
+    },
+    "swot_analysis": {
+      "status": "⏸ awaiting_data",
+      "completed_competitors": [],
+      "in_progress": []
+    }
+  },
+  "comparison_matrix": {
+    "status": "⏳ schema_design_phase",
+    "dimensions": [
+      "core_features",
+      "pricing_model",
+      "target_users",
+      "integration_capabilities"
+    ]
+  },
+  "quality_checks": {
+    "data_completeness": "awaiting_data",
+    "consistency_validation": "awaiting_data",
+    "source_attribution": "awaiting_data"
+  },
+  "recent_activities": [
+    {
+      "timestamp": "2026-05-22T00:00:00Z",
+      "event": "Agent initialized",
+      "details": "Ready to analyze collected data"
+    }
+  ],
+  "errors": [],
+  "next_action": "Await data from collector-agent"
+}

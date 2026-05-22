@@ -1,0 +1,66 @@
+{
+  "agent_name": "collector-agent",
+  "agent_role": "信息采集 Agent",
+  "version": "1.0",
+  "last_updated": "2026-05-22T00:00:00Z",
+  "status": "idle",
+  "current_task": null,
+  "completed_tasks": [],
+  "active_competitors": [],
+  "pending_competitors": [],
+  "data_sources": {
+    "web": {
+      "enabled": true,
+      "method": "web scraping",
+      "compliance": "robots.txt checked"
+    },
+    "api": {
+      "enabled": false,
+      "method": null
+    },
+    "survey": {
+      "enabled": false,
+      "method": null
+    }
+  },
+  "extraction_schema": {
+    "features": {
+      "status": "⏳ designing",
+      "fields": [
+        "feature_name",
+        "category",
+        "description",
+        "availability",
+        "pricing_tier"
+      ]
+    },
+    "pricing": {
+      "status": "⏳ designing",
+      "fields": [
+        "tier_name",
+        "price",
+        "currency",
+        "billing_cycle",
+        "features_included"
+      ]
+    },
+    "user_profiles": {
+      "status": "⏳ designing",
+      "fields": [
+        "segment",
+        "use_case",
+        "pain_point",
+        "adoption_barrier"
+      ]
+    }
+  },
+  "recent_activities": [
+    {
+      "timestamp": "2026-05-22T00:00:00Z",
+      "event": "Agent initialized",
+      "details": "Ready to accept competitors for data collection"
+    }
+  ],
+  "errors": [],
+  "next_action": "Await competitor list from coordinator"
+}

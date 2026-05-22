@@ -43,6 +43,16 @@
 
 ## 二、文档索引（与 CLAUDE.md 等价）
 
+### ⭐ 长期记忆与状态管理（重要）
+
+这是 Anthropic 《Effective harnesses for long-running agents》推荐的架构：**Agent 的状态不放在上下文窗口里，而是外化到文件系统**。
+
+| 文档/文件 | 说明 |
+|---|---|
+| [claude-progress.txt](claude-progress.txt) | 系统全局进度日志 —— 记录各竞品的分析进度、里程碑、反馈闭环 |
+| [agent-states/](agent-states/) | 各 Agent 的实时状态目录（JSON 格式）—— 下一轮启动时从这里恢复 |
+| [docs/agent-states-guide.md](docs/agent-states-guide.md) | Agent 状态文件使用指南 —— 如何更新、交接、追踪反馈闭环 |
+
 ### 任何工作前必读
 
 | 文档 | 说明 |
@@ -58,9 +68,19 @@
 | 选型 / 加依赖 / 部署相关 | [docs/tech-stack.md](docs/tech-stack.md) |
 | 写 Agent / 修改 DAG / 触碰 Schema | [docs/constraints.md](docs/constraints.md) + PRD §6, §7 |
 | 写 Python / TypeScript 代码 | [docs/code-style.md](docs/code-style.md) |
-| 提交代码 / 创建 PR | [docs/git-conventions.md](docs/git-conventions.md) |
+| **提交代码 / 创建 PR / 管理分支** | **[docs/git-workflow.md](docs/git-workflow.md)** —— Conventional Commits 规范、分支策略、工作流程 |
+| 维护系统进度 / 更新 Agent 状态 | [claude-progress.txt](claude-progress.txt) + [docs/agent-states-guide.md](docs/agent-states-guide.md) |
 | 写测试 | [docs/testing.md](docs/testing.md) |
 | 准备访谈 / 找演示案例 | [docs/collaboration-hankel.md](docs/collaboration-hankel.md) |
+
+### 已创建的状态管理与工作流文档
+
+| 文档 | 用途 | 创建时间 |
+|---|---|---|
+| `claude-progress.txt` | 系统全局进度日志 | ✅ 2026-05-22 |
+| `agent-states/` | Agent 实时状态存储（JSON） | ✅ 2026-05-22 |
+| `docs/agent-states-guide.md` | 状态文件使用指南与最佳实践 | ✅ 2026-05-22 |
+| `docs/git-workflow.md` | Git 提交规范、分支策略、工作流程 | ✅ 2026-05-22 |
 
 ### 待创建（开发过程中填充）
 
@@ -87,7 +107,13 @@
 与其改错代码再回滚，不如先与项目负责人对齐。AskUserQuestion / 评论 / Issue 都行。
 
 ### 4. 小步提交
-单次改动控制在 1 个 feature 内。Commit message 遵循 [docs/git-conventions.md](docs/git-conventions.md)。
+单次改动控制在 1 个 feature 内。Commit message 遵循 [docs/git-workflow.md](docs/git-workflow.md)（Conventional Commits 规范）。
+
+### 4.5 维护 Agent 状态与系统进度
+- 每完成一个任务，立刻更新对应 Agent 的状态文件（`agent-states/*.json`）
+- 每周或每个重要里程碑，同步更新 `claude-progress.txt`
+- 这些是 Agent 系统的"长期记忆"，确保系统中断后能快速恢复
+- 详见 [docs/agent-states-guide.md](docs/agent-states-guide.md)
 
 ### 5. 改动 = 同步更新文档
 - 改了架构 → 更新 `docs/architecture.md`
@@ -103,4 +129,4 @@
 
 ---
 
-**最后更新：2026-05-22**
+**最后更新：2026-05-22** | **新增长期记忆系统、Agent 状态管理、Git 工作流规范**
