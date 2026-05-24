@@ -15,10 +15,13 @@
 **/*token*
 **/*.key
 **/*.pem
+# 白名单：design-tokens.md 是 CSS design tokens 文档，被 **/*token* 误伤
+!**/design-tokens.md
 
 # Node modules
 node_modules/
-package-lock.json
+# package-lock.json 必须入库 —— 单人 3 周比赛，部署到 Railway / 评委 clone 后
+# `npm install` 必须装到一致版本；lock 几 MB 对 git 不算负担
 yarn.lock
 
 # IDE
