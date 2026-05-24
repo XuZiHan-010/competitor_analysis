@@ -1,8 +1,8 @@
 # AGENTS.md
 
 > **本文件是所有 AI 编程 Agent 的统一入口**（Codex / Claude Code / Cursor / Aider / TRAE 等通用）。
-> [CLAUDE.md](CLAUDE.md) 只是一个 1 行指针，指向本文件，避免内容漂移。
-> 内容分三部分：① 安全红线（必须遵守），② 目录索引（按需读取），③ 工作规范（高阶原则）。
+> [CLAUDE.md](CLAUDE.md) 只是 `@AGENTS.md` 的指针，避免内容漂移。
+> 内容分五部分：① 安全红线、② 项目快速入门、③ 文档索引、④ 比赛 10% 评分承诺、⑤ 工作规范。
 
 ---
 
@@ -41,23 +41,41 @@
 
 ---
 
-## 二、文档索引（与 CLAUDE.md 等价）
+## 二、项目快速入门
 
-### ⭐ 长期记忆与状态管理（重要）
+### Monorepo 布局
 
-这是 Anthropic 《Effective harnesses for long-running agents》推荐的架构：**Agent 的状态不放在上下文窗口里，而是外化到文件系统**。
+```
+competitor_analysis/
+├── apps/
+│   ├── web/        Next.js 16 + React 19 + Tailwind v4 + shadcn/ui（前端，已脚手架）
+│   └── api/        FastAPI + LangGraph + Pydantic（后端，Week 0.5 待落地）
+├── docs/           项目文档（PRD / 架构 / Schema / 部署等）
+├── plans/          AI Agent plan 文件（gitignored）
+├── agent-states/   被构建系统的运行时状态（应用层，非 Claude 记忆）
+└── claude-progress.txt  项目开发进度日志
+```
 
-| 文档/文件 | 说明 |
+### 常用命令（前端 [apps/web/](apps/web/)，npm）
+
+| 操作 | 命令 |
 |---|---|
-| [claude-progress.txt](claude-progress.txt) | 系统全局进度日志 —— 记录各竞品的分析进度、里程碑、反馈闭环 |
-| [agent-states/](agent-states/) | 各 Agent 的实时状态目录（JSON 格式）—— 下一轮启动时从这里恢复 |
-| [docs/agent-states-guide.md](docs/agent-states-guide.md) | Agent 状态文件使用指南 —— 如何更新、交接、追踪反馈闭环 |
+| 装依赖 | `npm install` |
+| 起 dev server | `npm run dev` |
+| 生产构建 | `npm run build` |
+| Lint | `npm run lint` |
+
+> 后端 [apps/api/](apps/api/) 待 Week 0.5 脚手架落地后补 `uvicorn`、`pytest`、`ruff`、`mypy` 命令。届时同步更新本节。
+
+---
+
+## 三、文档索引
 
 ### 任何工作前必读
 
 | 文档 | 说明 |
 |---|---|
-| [docs/PRD.md](docs/PRD.md) | 完整产品需求文档（v1.0）—— 唯一事实源 |
+| [docs/PRD.md](docs/PRD.md) | 完整产品需求文档 —— 唯一事实源 |
 | [ai竞品分析要求.txt](ai竞品分析要求.txt) | 比赛官方课题与评分标准 |
 | [docs/security.md](docs/security.md) | 安全规则全文（红线之外的细则） |
 
@@ -66,67 +84,49 @@
 | 你在做什么 | 读哪个文档 |
 |---|---|
 | 选型 / 加依赖 / 部署相关 | [docs/tech-stack.md](docs/tech-stack.md) |
-| 写 Agent / 修改 DAG / 触碰 Schema | [docs/constraints.md](docs/constraints.md) + PRD §6, §7 |
-| 写 Python / TypeScript 代码 | [docs/code-style.md](docs/code-style.md) |
-| **提交代码 / 创建 PR / 管理分支** | **[docs/git-workflow.md](docs/git-workflow.md)** —— Conventional Commits 规范、分支策略、工作流程 |
-| 维护系统进度 / 更新 Agent 状态 | [claude-progress.txt](claude-progress.txt) + [docs/agent-states-guide.md](docs/agent-states-guide.md) |
+| 写 Agent / 修改 DAG / 触碰 Schema | [docs/constraints.md](docs/constraints.md) + PRD §六, §七 |
+| **写 Python / TypeScript 代码（每次）** | **[docs/code-style.md](docs/code-style.md)** — 拿满代码风格分必读 |
+| 提交代码 / 创建 PR / 管理分支 | [docs/git-workflow.md](docs/git-workflow.md) — Conventional Commits |
 | 写测试 | [docs/testing.md](docs/testing.md) |
 | 准备访谈 / 找演示案例 | [docs/collaboration-hankel.md](docs/collaboration-hankel.md) |
 
-### 已创建的状态管理与工作流文档
+### 项目内部状态文件（**不是 Claude Code 的工作记忆**）
 
-| 文档 | 用途 | 创建时间 |
-|---|---|---|
-| `claude-progress.txt` | 系统全局进度日志 | ✅ 2026-05-22 |
-| `agent-states/` | Agent 实时状态存储（JSON） | ✅ 2026-05-22 |
-| `docs/agent-states-guide.md` | 状态文件使用指南与最佳实践 | ✅ 2026-05-22 |
-| `docs/git-workflow.md` | Git 提交规范、分支策略、工作流程 | ✅ 2026-05-22 |
+> ⚠️ 以下文件是「被构建的多 Agent 竞品分析系统」的**应用层运行时状态**，**不是 Claude Code 这个 harness 的记忆系统**。
+> Claude Code 默认不需要主动读写它们，除非在调试本系统的 LangGraph workflow 本身。
 
-### 待创建（开发过程中填充）
-
-| 文档 | 何时创建 |
+| 文件 | 说明 |
 |---|---|
-| `docs/architecture.md` | Week 0.5 脚手架搭完后 |
-| `docs/agent-protocol.md` | Week 1 第一个 Agent 落地后 |
-| `docs/schemas.md` | Week 0.5 Pydantic 落地后 |
-| `docs/deployment.md` | Week 2 首次部署 Railway 后 |
-
-> **新增 / 重命名 docs/ 下任何文档时，必须同步更新本索引和 [CLAUDE.md](CLAUDE.md)。**
+| [claude-progress.txt](claude-progress.txt) | 项目开发进度日志（人工 / 里程碑更新） |
+| [agent-states/](agent-states/) | Collector / Analyst / Writer / QA 4 个业务 Agent 的运行时状态（JSON） |
+| [docs/agent-states-guide.md](docs/agent-states-guide.md) | 上述状态文件的 schema 与维护指南 |
 
 ---
 
-## 三、工作规范（高阶原则）
+## 四、比赛 10% 评分承诺：代码质量与文档（目标拿满）
 
-### 1. PRD 是唯一事实源
-任何具体决策（功能、Schema、优先级、技术选型）以 [docs/PRD.md](docs/PRD.md) 为准，不要凭对话上下文猜需求。
+[ai竞品分析要求.txt](ai竞品分析要求.txt) 评分卡 "代码质量与文档" 4 个子项，本项目对应规则：
 
-### 2. 按需读取，不要预加载
-本索引设计为 **just-in-time retrieval**：开始任务前先从 §二 表格找到相关文档，**只读** 你这次任务需要的那几个。不要一次性读完所有 docs。
+| 评分子项 | 对应规则 / 文档 | 触发时机 / 验收 |
+|---|---|---|
+| **① 代码风格、模块化、注释、可读性** | [docs/code-style.md](docs/code-style.md) | 提交前必须：前端 `npm run lint` 0 error；后端 `ruff check` + `mypy` 全通过。**注释默认不写**，只写"为什么"非显然时（隐藏约束 / 性能权衡 / 外部 bug 绕过）。模块化按 PRD §十五 路径约定 |
+| **② 项目文档齐全（README / 架构图 / Agent 协议 / 部署说明）** | `README.md`（项目根 ⚠️ **待写**）+ PRD §五（架构）+ PRD §六（Agent 协议）+ `docs/deployment.md`（Week 2 部署后写） | 每个 P0 模块上线同步更新对应文档；改架构 → 更 PRD §五；改 Agent → 更 PRD §六 |
+| **③ Git 提交规范、分支管理清晰** | [docs/git-workflow.md](docs/git-workflow.md) — Conventional Commits | 每条 commit message 符合 `<type>: <subject>` 规范（`feat:` / `fix:` / `docs:` …）；不直接 push main，过 PR；分支名 `feature/<topic>` |
+| **④ AI 编程工具使用痕迹清晰** | 每条 AI 协作的 commit 末尾必须带 `Co-Authored-By: <Tool> <noreply@…>` 标注；PR 描述写明 AI 辅助的具体环节 | 答辩前用 `git log --grep="Co-Authored-By"` 一键导出所有 AI 协作记录作为佐证 |
 
-### 3. 遇到歧义就停下来
-与其改错代码再回滚，不如先与项目负责人对齐。AskUserQuestion / 评论 / Issue 都行。
-
-### 4. 小步提交
-单次改动控制在 1 个 feature 内。Commit message 遵循 [docs/git-workflow.md](docs/git-workflow.md)（Conventional Commits 规范）。
-
-### 4.5 维护 Agent 状态与系统进度
-- 每完成一个任务，立刻更新对应 Agent 的状态文件（`agent-states/*.json`）
-- 每周或每个重要里程碑，同步更新 `claude-progress.txt`
-- 这些是 Agent 系统的"长期记忆"，确保系统中断后能快速恢复
-- 详见 [docs/agent-states-guide.md](docs/agent-states-guide.md)
-
-### 5. 改动 = 同步更新文档
-- 改了架构 → 更新 `docs/architecture.md`
-- 改了 Schema → 更新 `docs/schemas.md` 和 PRD §7
-- 改了 Agent 协议 → 更新 `docs/agent-protocol.md` 和 PRD §6
-- 新增了重要文档 → 更新本文件 §二 索引表
-
-### 6. plan 文件放在 [plans/](plans/)
-见 §一 红线 2 与 [plans/README.md](plans/README.md)。
-
-### 7. 安全红线
-见 §一。**包含 env 的文件、API key、密钥连接字符串：绝对不可入库、不可外泄。**
+**最容易丢分的两个点**（自我盯紧）：
+- ② **项目根 `README.md` 还没写** —— 答辩前必须有，建议 Week 0.5 脚手架完就写第一版（项目简介 + 快速启动 + 链到 PRD / 架构图）
+- ④ 忘记加 `Co-Authored-By` —— 建议配 git commit template 或 pre-commit hook 强制
 
 ---
 
-**最后更新：2026-05-22** | **新增长期记忆系统、Agent 状态管理、Git 工作流规范**
+## 五、工作规范（高阶原则）
+
+1. **PRD 是唯一事实源**：任何具体决策（功能 / Schema / 优先级 / 技术选型）以 [docs/PRD.md](docs/PRD.md) 为准，不要凭对话上下文猜需求
+2. **按需读取**：开始任务前从 §三 表格找到相关文档，**只读这次任务需要的那几个**，不要预加载全部
+3. **遇到歧义就停下来**：与其改错代码再回滚，不如先和项目负责人对齐——AskUserQuestion / 评论 / Issue 都行
+4. **小步提交**：单次改动控制在 1 个 feature 内，commit message 遵循 [docs/git-workflow.md](docs/git-workflow.md)
+5. **维护项目状态**：完成一个 Agent 任务 → 更新对应 `agent-states/*.json`；重要里程碑 → 同步 `claude-progress.txt`。详见 [docs/agent-states-guide.md](docs/agent-states-guide.md)
+6. **改动 = 同步更新文档**：架构改了 → 更 PRD §五；Schema 改了 → 更 PRD §七；Agent 协议改了 → 更 PRD §六；新增 `docs/` 文档 → 更新本文件 §三 索引
+7. **前端设计 / 重构必走 skill**：任何前端组件、页面、UI 设计或重构任务（在 [apps/web/](apps/web/) 下），**开工前必须先调用** `frontend-design` 和 `web-design-guidelines` 两个 skill——前者生成有设计感的代码、避免 generic AI 风格，后者按 Vercel Web Interface Guidelines 做 a11y / 可用性 / typography 合规审查。两者按需挑选，不要跳过
+8. **提 PR 前必须本地跑通 lint**：`git push` 发起 GitHub PR 前，本地必须跑 `npm run lint`（前端）/ `ruff check` + `mypy`（后端）**0 error 才能 push**。让 CI 失败的 PR 浪费 review 时间，也丢比赛 ③ 子项的 Git 规范分
