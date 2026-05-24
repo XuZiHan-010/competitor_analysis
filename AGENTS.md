@@ -65,7 +65,9 @@ competitor_analysis/
 | 生产构建 | `npm run build` |
 | Lint | `npm run lint` |
 
-> 后端 [apps/api/](apps/api/) 待 Week 0.5 脚手架落地后补 `uvicorn`、`pytest`、`ruff`、`mypy` 命令。届时同步更新本节。
+> 后端 [apps/api/](apps/api/) 待 Week 0.5 脚手架落地后补 `uvicorn`、`pytest`、`ruff`、`mypy` 命令。届时同步更新本节，**并在 `apps/api/` 下建一份 `CLAUDE.md`**（参考已有的 [apps/web/CLAUDE.md](apps/web/CLAUDE.md)），把测试 / lint 命令写死在子目录，避免改后端一个文件却跑整个项目的测试套件浪费 context。
+>
+> **每个 app 的详细命令与约束**：见对应子目录的 CLAUDE.md（如 [apps/web/CLAUDE.md](apps/web/CLAUDE.md)）——本表只给入门概览。
 
 ---
 
