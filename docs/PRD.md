@@ -1,9 +1,13 @@
 # PRD: AI 驱动的竞品分析 Agent 协作系统
 
 > **文档性质**: 产品需求文档（PRD），交付给开发 Agent 拆任务用
-> **版本**: v1.0
-> **日期**: 2026-05-21
+> **版本**: v1.2
+> **日期**: 2026-05-24
 > **作者**: PM (Claude) + 项目负责人
+>
+> **v1.1 修订说明**（2026-05-23）：基于汉高战略部实习生反馈与比赛评分卡复核，引入**对话式立项 + 双层 Schema** 架构。固定 Schema（功能树/定价/画像/SWOT）保留为"核心层"满足比赛"严格符合预定义 Schema"评分项；新增"扩展层"由 AI 与用户协商动态生成，解决"维度因行业而异、无法预先穷尽"的真实痛点。详见本次修订设计草案 [plans/2026-05-23-dynamic-outline-scoping-design.md](../plans/2026-05-23-dynamic-outline-scoping-design.md)。影响章节：§四 / §六 / §七 / §九 / §十三 / §十四。
+>
+> **v1.2 修订说明**（2026-05-24）：显式声明 MVP 不做的事（避免开发 Agent over-engineering），并补一节"未来生产化路径"作为答辩材料。**不改动任何业务逻辑、Agent 设计或 Schema**，仅新增 §十一-bis Non-Goals、§十一-ter 未来生产化路径，§十二 风险表追加一行演示日并发兜底。详见 [plans/2026-05-24-prd-non-goals-and-future-scale.md](../plans/2026-05-24-prd-non-goals-and-future-scale.md)。
 
 ---
 
@@ -75,28 +79,41 @@
 ```
 [1] 用户登录（邮箱验证码 OAuth）
     ↓
-[2] 新建分析任务：
-    选项 A：输入目标产品名 + 手动输入竞品列表
-    选项 B：输入目标产品名 + 赛道描述 → 系统推荐竞品 → 用户勾选确认
-    选项 C：仅输入赛道关键词 → 系统全自动发现竞品
-    （MVP 默认 A+B，C 作为 P2 探索）
+[2] 新建分析任务（任务创建页 /tasks/new）：
+    主输入框：自然语言描述需求
+      例：「分析 SK-II / 资生堂 / 雅诗兰黛，重点看会员体系与 KOL」
+    可选 chip：手动追加竞品名（若 NL 中已含，AI 会自动提取并展示去重）
+    点击「生成大纲」→
     ↓
-[3] 选择/确认分析维度（基于默认 Schema 可勾选启用项）
+[3] 对话式立项（scoping 页 /tasks/new/scoping）：
+    AI 一次响应同时返回：
+      (a) 初步大纲（核心 4 章 🔒 + N 项扩展章节 ✏️，每章带「意图描述」）
+      (b) 1-3 个补充澄清问题（可跳过）
+      (c) 从 NL 中识别到的竞品列表（用户可增删）
+    用户编辑：
+      - 核心章节（🔒 功能树 / 定价模型 / 用户画像 / SWOT）可改名 / 改意图 / 调顺序，不可删
+      - 扩展章节（✏️ 任务相关维度）可改名 / 改意图 / 调顺序 / 删除 / 自定义新增
+      - 「重新生成大纲」按钮 = 带当前编辑过的章节 + 澄清回答回到 AI 再生成
+    用户点「确认 → 开始分析」时，大纲 freeze 成 TaskScopeContract（见 §七 7.0）
     ↓
-[4] 启动 Agent 协作：
+[4] 启动 Agent 协作（任务运行页 /tasks/{id}）：
     实时显示 DAG 进度（哪个 Agent 在跑、跑到哪一步、Trace 可点开）
     采集 Agent → 分析 Agent → 撰写 Agent → 质检 Agent
                                               ↓
                             （质检不通过，打回上游 Agent 重做）
+    各 Agent 都按 TaskScopeContract 中的维度做事
     ↓
-[5] 报告产出：
+[5] 报告产出（/reports/{id}）：
     网页交互式（默认）+ 可导出 PDF / PPTX
+    报告章节顺序、标题、字段范围完全按 TaskScopeContract 渲染
     ↓
 [6] 用户介入修正（P1）：
     在网页报告中手动编辑 Schema 字段 → 触发局部重跑
     ↓
 [7] 报告归档到"我的报告"
 ```
+
+> **v1.0 → v1.1 关键变化**：原 [2] 步的 A/B/C 三选项入口被合并为"NL 输入 + 可选 chip"的单一入口；原 [3] 步"维度勾选"被完全替换为"对话式立项"。背景见 §一 v1.1 修订说明与 [plans/2026-05-23-dynamic-outline-scoping-design.md](../plans/2026-05-23-dynamic-outline-scoping-design.md)。
 
 ### 用户旅程关键体验点
 
@@ -163,14 +180,17 @@
 - `app_review_fetch(app_name)` — 应用商店评论（可选）
 - `generate_survey(competitor)` — LLM 生成模拟问卷调研方案 + 模拟数据
 
-**输入 Schema**:
+**输入 Schema**（v1.1 修订）:
 ```json
 {
-  "target_product": "string",
-  "competitors": ["string"],
-  "dimensions_required": ["features", "pricing", "user_persona", "reviews"]
+  "scope_contract": "TaskScopeContract"  // 完整传入，Collector 自己从中派生 dimensions_required
 }
 ```
+
+**v1.1 行为变化**：
+- 不再接收硬编码的 `dimensions_required: ["features", "pricing", ...]`
+- 从 `scope_contract.dimensions` 派生采集计划：核心层维度 → 跑预设搜索模板；扩展层维度 → 用 `dimension.intent` 做 query 改写（例："重点看会员体系" → 搜索 `<竞品名> 会员体系 黑卡` `<竞品名> 折扣节奏`）
+- 输出 `RawCollectionResult` 中的 sources 增加 `dimension_id` tag，便于 Analyst 路由
 
 **输出 Schema** (`RawCollectionResult`):
 ```json
@@ -194,36 +214,70 @@
 
 **职责**: 把原始数据结构化为竞品知识 Schema
 
-**核心动作**:
-1. 从 `RawCollectionResult` 抽取功能列表 → 构建功能树
-2. 抽取定价信息 → 构建定价模型
-3. 从评论/产品描述抽取用户画像
-4. 生成单竞品 SWOT
-5. 多竞品交叉对比 → 功能对比矩阵
+**v1.1 核心动作（按维度路由）**:
 
-**输出 Schema** (`StructuredCompetitorProfile`，详见第七节)
+对 `scope_contract.dimensions` 中每个 `enabled=True` 的维度：
+
+- **核心层（`layer="core"`）** → 走对应的固定 Schema 抽取器：
+  1. `core.feature_tree` → 抽取功能列表 → 构建 FeatureTree
+  2. `core.pricing_model` → 抽取定价信息 → 构建 PricingModel
+  3. `core.user_persona` → 从评论/介绍抽取用户画像 → 构建 UserPersona
+  4. `core.swot` → 综合上述三项 + 评论摘要 → 生成 SWOT
+- **扩展层（`layer="extension"`）** → 走通用抽取器：
+  - 输入：`(dimension.intent, raw_sources_for_this_dimension)`
+  - 输出：`ExtensionFinding`（见 §七 7.7），强制带 `source_ids`
+  - prompt 中显式注入 `dimension.intent` 作为指向性约束
+
+完成所有维度抽取后，做**多竞品交叉对比** → CrossCompetitorAnalysis（功能矩阵默认只对核心层，扩展层有则附加）
+
+**输出 Schema**:
+- `StructuredCompetitorProfile`（核心层产物，详见 §七 7.4）
+- `list[ExtensionFinding]`（扩展层产物，详见 §七 7.7）
+- `CrossCompetitorAnalysis`（多竞品对比，详见 §七 7.5）
 
 ### Agent 3: 撰写 Agent (`WriterAgent`)
 
-**职责**: 把结构化 Profile 写成给人看的报告
+**职责**: 把结构化 Profile + 扩展产物写成给人看的报告
+
+**v1.1 渲染规则**：
+- 章节顺序、章节标题完全按 `scope_contract.dimensions[].order` 与 `.title` 渲染（**不再硬编码** "5 大板块"）
+- 核心章节（`layer="core"`）用对应 Schema 的**固定模板**渲染：
+  - feature_tree → 功能矩阵表格
+  - pricing_model → 定价对比表 + 文字解读
+  - user_persona → 画像卡片
+  - swot → SWOT 2×2 网格
+  - 保证评委打开任何一份报告都能看到这四种一致的视觉单元
+- 扩展章节（`layer="extension"`）用 `ExtensionFinding` 的自由结构渲染：
+  - `summary` 必出（段落形式）
+  - `bullets` 有则渲染列表
+  - `table_data` 有则渲染表格
 
 **输出**:
 - 网页结构（JSON，前端渲染用）
 - Markdown 全文（用于 PDF/PPTX 导出）
 - 每段文字带 `source_ids` 引用，前端渲染时变成可点击的溯源链接
 
-**关键约束**: 不允许产生不带引用的结论（强制引用机制，抑制幻觉）
+**关键约束**: 不允许产生不带引用的结论（强制引用机制，抑制幻觉），核心层和扩展层一视同仁
 
 ### Agent 4: 质检 Agent (`QAAgent`)
 
 **职责**: 触发反馈闭环
 
-**检查清单**:
-1. **Schema 完整性**: 所有必填字段是否填了
-2. **引用强制**: 每条结论是否有 `source_ids`
-3. **事实校验**: 抽样取结论 vs 原始数据，用 LLM 判断是否一致
-4. **数据新鲜度**: 信源时间是否 > 2 年前
-5. **覆盖度**: 信源数量是否 ≥ 阈值（如每个竞品 ≥5 个独立信源）
+**v1.1 检查清单（分层判断）**:
+
+| 检查项 | 核心层（`layer="core"`） | 扩展层（`layer="extension"`） |
+|---|---|---|
+| Schema 完整性 | 必填字段缺失 → **blocker** | 字段稀疏（无 bullets/table_data）→ warning |
+| 引用强制 | `source_ids` 缺失 → **blocker** | `source_ids` 缺失 → **blocker**（扩展层也强制溯源） |
+| 事实校验 | 抽样 LLM 校验，矛盾 → blocker | 抽样 LLM 校验，矛盾 → warning |
+| 数据新鲜度 | 信源 > 2 年 → warning | 信源 > 2 年 → warning |
+| 覆盖度 | 每个竞品 ≥ 5 独立信源 → 否则 blocker | 每个维度 ≥ 1 信源 → 否则 warning |
+
+**反馈闭环逻辑**：
+- **blocker** → 打回 Collector 重抓（最多 3 次），3 次仍失败则字段标"未确认"
+- **warning** → 不阻塞流程，在最终报告中标"未充分确认"提示
+
+这套分层保证了 §十三 35% 评分项里"严格符合预定义 Schema、字段完整"对**核心层**始终成立；扩展层走"尽力服务"，缺失也不影响演示主流程。
 
 **输出**:
 ```json
@@ -251,8 +305,10 @@
 class WorkflowState(BaseModel):
     task_id: str
     user_input: TaskInput
-    raw_collections: dict[str, RawCollectionResult]      # competitor → result
-    structured_profiles: dict[str, StructuredCompetitorProfile]
+    scope_contract: TaskScopeContract                     # v1.1 新增，对话式立项产物
+    raw_collections: dict[str, RawCollectionResult]       # competitor → result
+    structured_profiles: dict[str, StructuredCompetitorProfile]  # 核心层产物
+    extension_findings: list[ExtensionFinding]            # v1.1 新增，扩展层产物
     cross_analysis: CrossCompetitorAnalysis | None
     draft_report: ReportDraft | None
     qa_result: QAResult | None
@@ -260,13 +316,52 @@ class WorkflowState(BaseModel):
     trace_log: list[TraceEntry]                           # 完整决策日志
 ```
 
+`scope_contract` 在进入 DAG 时已 `frozen`，下游所有 Agent **只读**；保证一次任务的"维度规格"不可在跑批中途漂移。
+
 **禁止**：Agent 之间用自然语言对话传消息。所有交互必须通过 State 字段（满足评分项"结构化消息传递 / function calling"）。
 
 ---
 
 ## 七、竞品知识 Schema 设计
 
-### 7.1 功能树 (`FeatureTree`)
+> **v1.1 架构**：Schema 分**两层**——
+> - **核心层（固定）**：7.1 FeatureTree / 7.2 PricingModel / 7.3 UserPersona / 7.4 SWOT。**所有任务都必须产出**，是比赛"严格符合预定义 Schema"评分项的承诺对象。
+> - **扩展层（动态）**：7.7 ExtensionFinding。由对话式立项阶段 AI 与用户协商生成（见 §四 [3] 与 7.0 TaskScopeContract），**每个任务的扩展维度不一样**，是"按场景定制"的承诺对象。
+>
+> QA Agent 对两层做差异化校验：核心层缺失字段 = blocker（硬打回 Collector）；扩展层缺失 = warning（标记"未确认"，不阻塞）。详见 §六 QA Agent 与 §十三 验收标准。
+
+### 7.0 任务范围契约 (`TaskScopeContract`)
+
+**v1.1 新增**。对话式立项阶段的最终产出，是 §四 [3] 到 [4] 的交接物，也是后续 4 个 Agent 的"任务规格书"——所有 Agent 决定"做什么 / 抽什么 / 写什么 / 校验什么"都从这里读。
+
+```python
+class DimensionSpec(BaseModel):
+    id: str                          # "core.feature_tree" / "ext.channel_structure" / "ext.<slug>"
+    layer: Literal["core", "extension"]
+    title: str                       # 用户可改的章节标题：「会员体系与折扣节奏」
+    intent: str                      # 用户可改的"意图描述"，喂给 Analyst prompt 做指向性约束
+    schema_ref: str | None           # 核心层指向固定 Schema（"FeatureTree" / "PricingModel" 等）；扩展层为 None
+    enabled: bool                    # 用户勾选开关（核心层强制 True，UI 上 checkbox 置灰）
+    locked: bool                     # 核心层为 True，UI 上禁用删除按钮
+    order: int                       # 章节顺序（用户可拖拽调整，核心和扩展可混排）
+
+class TaskScopeContract(BaseModel):
+    task_id: str
+    target_product: str | None       # 可选——用户描述的"我家产品"
+    competitors: list[str]           # 用户确认的竞品名（NL 提取 + chip 合并去重）
+    user_brief: str                  # 用户最初的 NL 描述（原文留存，供回溯）
+    clarifications: list[dict]       # AI 提的澄清问题 + 用户答案（可为空，用户可全部跳过）
+    dimensions: list[DimensionSpec]  # 大纲：核心 4 项 + N 项扩展，按 order 排好
+    frozen_at: datetime              # 用户点「确认 → 开始分析」的时刻
+```
+
+**不变式**：
+- `dimensions` 中 `layer="core"` 的条目**恰好 4 项**，对应 7.1-7.4
+- 核心 4 项的 `enabled=True`、`locked=True`、`schema_ref` 不可为 None
+- `frozen` 之后此对象**只读**，进入 LangGraph State 后任何 Agent 不可修改
+- 用户点「重新生成大纲」会产生一个**新的**草案对象，旧草案被替换（v1 不做版本回滚，见 §十一 P1）
+
+### 7.1 功能树 (`FeatureTree`)（核心层）
 
 ```json
 {
@@ -288,7 +383,7 @@ class WorkflowState(BaseModel):
 }
 ```
 
-### 7.2 定价模型 (`PricingModel`)
+### 7.2 定价模型 (`PricingModel`)（核心层）
 
 ```json
 {
@@ -309,7 +404,7 @@ class WorkflowState(BaseModel):
 }
 ```
 
-### 7.3 用户画像 (`UserPersona`)
+### 7.3 用户画像 (`UserPersona`)（核心层）
 
 ```json
 {
@@ -327,7 +422,7 @@ class WorkflowState(BaseModel):
 }
 ```
 
-### 7.4 完整竞品档案 (`StructuredCompetitorProfile`)
+### 7.4 完整竞品档案 (`StructuredCompetitorProfile`)（核心层聚合）
 
 ```json
 {
@@ -387,6 +482,29 @@ class WorkflowState(BaseModel):
 
 所有报告字段中的 `source_ids: ["src_001", ...]` 都指向 `SourceCitation`，前端渲染时变成可点击图标。
 
+### 7.7 扩展维度产出 (`ExtensionFinding`)（扩展层）
+
+**v1.1 新增**。承接对话式立项阶段动态生成的扩展维度。每个扩展维度 × 每个竞品产出一条 `ExtensionFinding`。
+
+```python
+class ExtensionFinding(BaseModel):
+    dimension_id: str                # 对应 TaskScopeContract.dimensions[].id，必为 "ext.*"
+    competitor_id: str
+    summary: str                     # 1-2 段自然语言总结
+    bullets: list[str] | None        # 可选要点列表（结构化呈现给报告）
+    table_data: list[dict] | None    # 可选结构化对比数据（如价格区间表）
+    source_ids: list[str]            # 强制引用：至少 1 条，与 7.6 SourceCitation 关联
+```
+
+**强制约束**：
+- `source_ids` **不可为空**——比赛 35% 评分项明文要求"每条结论可定位到原始数据源"，扩展层与核心层享受同等溯源待遇
+- `summary` 不可为空，是 Writer Agent 渲染章节的最低产物
+- `bullets` / `table_data` 由 Analyst Agent 按维度 `intent` 自决定要不要填，QA 不强制
+
+**与核心层的差别**（决定 QA 行为）：
+- 核心层 Schema 字段缺失 → QA 标 blocker → 打回 Collector 重抓（触发反馈闭环）
+- 扩展层 `ExtensionFinding` 缺失或字段稀疏 → QA 标 warning → 报告里那一节标"未充分确认" → 不阻塞流程
+
 ---
 
 ## 八、API 划分
@@ -420,26 +538,70 @@ class WorkflowState(BaseModel):
 
 ## 九、前端线框图（文字描述）
 
-### 页面 1: 任务创建页 `/tasks/new`
+### 页面 1a: 任务创建页 `/tasks/new`（v1.1）
 ```
-┌─────────────────────────────────────────┐
-│ [Logo] AI 竞品分析                  [我] │
-├─────────────────────────────────────────┤
-│  ① 你的产品                             │
-│  [输入框: 产品名称]                      │
-│  [输入框: 产品简介 / 赛道关键词]         │
-│                                         │
-│  ② 竞品（选一种方式）                   │
-│  ( ) 我自己输入: [+ 添加竞品]           │
-│  (•) 让 AI 推荐: [推荐按钮] → 弹候选    │
-│                                         │
-│  ③ 分析维度（默认全选）                 │
-│  [✓] 功能树  [✓] 定价  [✓] 用户画像     │
-│  [✓] SWOT    [✓] 评论摘要               │
-│                                         │
-│            [ 开始分析 ]                 │
-└─────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│ [Logo] AI 竞品分析                                 [我] │
+├─────────────────────────────────────────────────────────┤
+│ 创建分析任务                                            │
+│                                                         │
+│ 说说你的分析需求 *                                       │
+│ ┌─────────────────────────────────────────────────────┐ │
+│ │ 例：帮我对比 SK-II / 资生堂 / 雅诗兰黛 三个高端    │ │
+│ │ 护肤品牌在中国电商会员体系和 KOL 策略上的差异     │ │
+│ └─────────────────────────────────────────────────────┘ │
+│                                                         │
+│ 竞品名称（可选——不填会从上面 NL 自动提取）              │
+│ [+ 输入名称后按 Enter]                                  │
+│                                                         │
+│                         [生成大纲 →]                    │
+└─────────────────────────────────────────────────────────┘
 ```
+
+### 页面 1b: 对话式立项 / scoping 页 `/tasks/new/scoping`（v1.1 新增）
+```
+┌─────────────────────────────────────────────────────────┐
+│ 识别到的竞品：[SK-II ×] [资生堂 ×] [雅诗兰黛 ×] [+]    │
+│                                                         │
+│ 本次分析维度（拖动调整顺序）                             │
+│                                                         │
+│  ☑ 🔒 功能树                                  ⇅       │
+│     "对比三家核心产品线与功能矩阵"  [✎]                  │
+│                                                         │
+│  ☑ 🔒 定价模型                                ⇅       │
+│     "重点看会员体系与折扣节奏"  [✎]                      │
+│                                                         │
+│  ☑ 🔒 用户画像                                ⇅       │
+│     "..."  [✎]                                          │
+│                                                         │
+│  ☑ 🔒 SWOT                                    ⇅       │
+│                                                         │
+│  ☑ ✏️ 会员体系与折扣节奏                       ⇅  [×] │
+│     "电商旗舰店黑卡 / 积分 / 大促节奏"  [✎]              │
+│                                                         │
+│  ☑ ✏️ KOL 与代言矩阵                           ⇅  [×] │
+│     "代言人 + 头部主播合作"  [✎]                         │
+│                                                         │
+│  ☐ ✏️ 历史价格变化                             ⇅  [×] │
+│     "近 1 年价格趋势 + 大促涨跌"  [✎]                    │
+│                                                         │
+│  [ + 增加自定义维度 ]                                   │
+│                                                         │
+│ ─────────────────────────────────────────────           │
+│ 为了更准，AI 想确认（可跳过）：                          │
+│   ▢ 报告主要给谁看？  ( ) PM ( ) 高管 ( ) 客户          │
+│   ▢ 需要历史变化对比吗？  ( ) 是 ( ) 否                  │
+│                                                         │
+│             [重新生成大纲]   [确认 → 开始分析]          │
+└─────────────────────────────────────────────────────────┘
+```
+
+**交互细节**：
+- 🔒 标记 = 核心层（`layer="core"`），删除按钮置灰；[✎] 改名和意图始终开启
+- ✏️ 标记 = 扩展层（`layer="extension"`），所有按钮可用
+- 拖动手柄 ⇅ 调整 `dimensions[].order`，核心和扩展可混排
+- 「重新生成大纲」= 带当前编辑过的章节 + 澄清回答回到 AI 再生成一版（不是完全推倒）
+- 「确认 → 开始分析」时把当前状态 freeze 成 TaskScopeContract（见 §七 7.0），后续不可改
 
 ### 页面 2: 任务进行中 `/tasks/{id}`（实时 DAG）
 ```
@@ -619,6 +781,85 @@ manual_corrections (
 
 ---
 
+## 十一-bis、Non-Goals（v1.2 新增，本次比赛 MVP 显式不做的事）
+
+> 把"不做的事"写死比把"要做的事"写全更重要——避免开发 Agent 在 3 周窗口里
+> 自己脑补加企业级特性，挤压 Agent 核心功能的时间。
+
+### 账号与权限层面
+- ❌ OAuth 第三方登录（GitHub / Google / 微信）—— 邮箱验证码够评委用
+- ❌ 密码登录 / 找回密码 / 邮箱变更等账号管理流程
+- ❌ 团队空间 / 多租户 / 组织架构
+- ❌ RBAC / 字段级权限 / 报告分享链接的权限分级
+
+### 并发与扩展性层面
+- ❌ 水平扩容 / 多实例部署 / 负载均衡
+- ❌ Web 层限流（rate limiting middleware）/ WAF
+- ❌ Redis 分布式锁 / 分布式事务
+- ❌ SLO / SLA 定义与监控告警体系
+- ❌ 真实用户并发压测（演示日靠 Railway 临时升档 + 预置账号兜底，见 §十二 风险表 v1.2 补充）
+
+### 数据与合规层面（MVP 外）
+- ❌ GDPR / 数据出域审计 / 数据脱敏管线
+- ❌ 内部数据上传（如 §十四 G 提到的"上传公司销售数据"）—— 留给 P2
+- ❌ 国内合规 LLM 替换（演示用 OpenAI；生产环境另说，见 §十一-ter）
+
+### 仍然要做的（提醒）
+- ✅ **单任务内多 Agent 并行**（LangGraph `Send` API 做 fan-out，4 个竞品的采集并行而非串行）
+  —— 这不是"高并发"，是单任务内的并行度优化，**直接影响演示节奏**
+- ✅ **演示日运维预案**：Railway 临时升档 + 预置 3 个评委账号 + `/reports/demo` 不登录可看的样例报告
+
+---
+
+## 十一-ter、未来生产化路径（v1.2 新增，答辩用 / 路演用）
+
+> 本节不是 MVP 要做的事，是回答"这个 Agent 系统能不能从演示走到真实生产"。
+> 答辩被问到"商业化路径 / 扩展性"时可直接引用本节。
+
+### 第一阶段：从演示到内测（约 +2-4 周工程量）
+触发条件：找到 1-2 个真实付费意向的客户（如汉高战略部内部使用）。
+
+| 模块 | 升级动作 | 工程量 |
+|---|---|---|
+| 账号 | 邮箱验证码 → OAuth（GitHub/Google）+ 简单团队空间 | ~1 周 |
+| 部署 | Railway Hobby → Railway Pro / 自建 VPS（2 vCPU + 4G） | ~2 天 |
+| 数据库 | Neon Free 3GB → Neon Pro（无容量焦虑）+ pgvector 索引调优 | ~2 天 |
+| 限流 | 加 FastAPI middleware 做按用户的 RPS 限流 + LLM token 配额 | ~3 天 |
+| 监控 | Sentry 错误监控 + 简易 Grafana（Agent 延迟 / 成功率 / 成本） | ~3 天 |
+
+### 第二阶段：从内测到生产（约 +1-2 月工程量）
+触发条件：DAU 上百，单日任务量 ≥ 500。
+
+| 瓶颈 | 解法 | 备注 |
+|---|---|---|
+| **LLM API 速率** | 多 key 池 + 智能路由（GPT-4o → GPT-4.1-mini fallback） | 这是真正的瓶颈，不是 web 层 |
+| **采集 API 速率** | Tavily 免费 → 付费；Playwright 抓取走代理池 | 合规边界在这一步显化 |
+| **任务队列** | Upstash Redis → 自建 Redis Cluster / 用 Celery + Redis Broker | 当前 LangGraph checkpointer 已支持 |
+| **多实例** | FastAPI 单实例 → K8s/Fly.io 多实例 + sticky session（SSE 长连接） | SSE 是最麻烦的，要么换 WebSocket 要么粘性 |
+| **数据库** | Neon → 自建 PG / 云厂商托管 + 主从读写分离 | 主要瓶颈在 pgvector 相似度检索 |
+| **合规** | OpenAI → 国内合规 LLM（智谱 / 阿里通义）双供应商 | 客户在国内必走 |
+
+### 第三阶段：真正的 SaaS 化（远期，不在 12 个月规划内）
+- 多租户隔离（数据库 schema-per-tenant 或 row-level security）
+- 按用量计费 / 订阅计费集成（Stripe / 国内支付）
+- 报告分享链接的权限分级 / 水印 / 过期机制
+- 自动竞品发现（§十一 P2 提到的）作为差异化卖点
+
+### 设计上为未来留的钩子（**这一段是答辩重点**）
+当前 MVP 在以下几处已经"为未来做了准备"，体现架构前瞻性：
+
+1. **Pydantic State + LangGraph checkpointer** —— 任意时刻可序列化中断/恢复，
+   未来切到分布式队列只是换 backend，业务逻辑不动
+2. **pgvector 已接入** —— 未来做"历史报告语义检索复用"只是上层 query 改造
+3. **TaskScopeContract（v1.1 新增）** —— Agent 的"做什么"与"怎么做"已解耦，
+   未来加新行业模板不用改 Agent 代码
+4. **所有 Agent 间通信走 Pydantic State，无自然语言对话** —— 未来替换 LLM 供应商
+   （OpenAI → 智谱）只需改 prompt 模板，State Schema 不动
+5. **Schema 双层架构（核心层固定 + 扩展层动态）** —— 未来 SaaS 化按行业卖
+   "扩展模板包"有现成的扩展点
+
+---
+
 ## 十二、3 周迭代计划
 
 ### Week 0.5 (0.5 周): 架构落地与脚手架
@@ -663,6 +904,7 @@ manual_corrections (
 | PPTX 生成质量不达预期 | 汇报体验差 | 提前 1 周做 PPTX POC，确认排版可行 |
 | LangGraph 学习曲线 | 进度延迟 | Week 0.5 集中跑通官方示例 + checkpointer |
 | 3 周时间紧 | 功能砍不动 | P0 锁死，P1 按时间允许加，P2 不做 |
+| 演示日多评委同时点 | 单实例 FastAPI 卡 SSE 长连接 | 临时把 Railway 从 Hobby 升到 Pro（workers 调到 8-16）+ 预置 3 个评委账号 + `/reports/demo` 不登录直接看的样例报告（v1.2 补充，对应 §十一-bis 演示日运维预案）|
 
 ---
 
@@ -673,22 +915,28 @@ manual_corrections (
 - ✅ LangGraph DAG 可在前端可视化，所有节点状态可追溯
 - ✅ Agent 间通过 Pydantic State 通信（无自然语言对话）
 - ✅ 反馈闭环现场可触发：构造缺失数据 → QA 打回 → 重跑后字段完整
-- ✅ 100% 输出符合 Schema，字段完整率 ≥95%
-- ✅ 每条结论可一键溯源到原始 URL+片段
+- ✅ **核心层 Schema** 100% 输出符合（功能树/定价/画像/SWOT），字段完整率 ≥95%
+- ✅ **扩展层** 按 TaskScopeContract 协商生成，每条结论同样强制带 `source_ids`
+- ✅ 每条结论（核心层 + 扩展层）可一键溯源到原始 URL+片段
+
+> **v1.1 评分项备 answer**：评委可能问"扩展层是不是绕过了'预定义 Schema'要求"——回答：核心层 4 套 Schema 就是预定义对象，QA 对核心层缺失字段硬打回（演示时可触发）；扩展层是评分卡 25% 项里明文提到的"动态 Schema 演化"加分项的具体实现，与"严格符合预定义 Schema"不冲突。
 
 ### 技术深度与工程完整度 (25%)
-- ✅ 端到端可访问：登录 → 创建 → 跑 → 看报告 → 导出，全链路无中断
+- ✅ 端到端可访问：登录 → 创建 → **对话式立项** → 跑 → 看报告 → 导出，全链路无中断
 - ✅ 每个 Agent 的 Prompt / 输入 / 输出 / Token / 延迟 在 Trace 页可查
 - ✅ 幻觉抑制策略明确：强制引用 + QA 事实校验 + 多源交叉
 - ✅ 异常处理：网络失败重试、API 限流降级、节点失败标记并继续
+- ✅ **动态 Schema 演化**已落地（v1.1 主张，非仅口头）：TaskScopeContract + 双层 Schema，可演示同一套代码跑日化 / SaaS / 工业品三类截然不同的报告
+- ✅ **自适应任务拆分**已落地：Collector 按 `dimension.intent` 做 query 改写，Analyst 按 `layer` 走差异化抽取器
 - ✅ 前瞻性：pgvector 已接入，为 P1 的语义检索复用铺路
 
 ### 业务价值与产品体验 (20%)
-- ✅ 5-10 分钟出报告 vs 人工 1-2 天（演示时计时对比）
+- ✅ 5-10 分钟出报告 vs 人工 1-2 天（演示时计时对比）—— 注意：对话式立项阶段计入"分析时间"还是分开报告？演讲时建议分开，因为这是用户感知的"主动配置"时间，不算等待
 - ✅ 自动覆盖 ≥5 信息源（数量统计在报告底部展示）
-- ✅ Schema 可配置（演示换行业不用改代码）
-- ✅ 关键指标：完整率、信源数、QA 通过率 在报告页可见
+- ✅ **Schema 按场景动态生成**（演示换行业不用改代码，演示同时跑日化 + SaaS 对比说明性最强）
+- ✅ 关键指标：完整率（核心层）、信源数、QA 通过率 在报告页可见
 - ✅ 交互流畅：溯源、导出、回放主路径 ≤3 次点击
+- ✅ **入口体验贴合真实工作流**（v1.1 价值主张）：用户用自然语言描述需求，AI 协商出本次任务的维度大纲，对比"勾选预设维度"的填表式入口，更接近"和分析师同事讨论"的真实交互
 
 ### 代码质量与文档 (10%)
 - ✅ Monorepo 结构清晰，TS/Python 各自 lint+test
@@ -717,14 +965,17 @@ manual_corrections (
 - [ ] 一次分析通常对比多少个竞品？（2-3 个还是 5-10 个）
 - [ ] 这份分析最终交付给谁？（直属上级 / 跨部门 / 管理层）
 
-**B. 字段与维度**（验证我们的 Schema 设计，必问）
-- [ ] 把我们的功能树 / 定价 / 用户画像 / SWOT 四类 Schema 给他看，问：
-  - 哪几项是必须的？
-  - 缺了哪些日化/消费品行业特有的维度？（如**渠道结构**、**SKU 矩阵**、**促销策略**、**线下铺货**、**KOL/代言**、**市场份额**、**新品上市节奏**）
-  - 哪些字段他实际用不上？
-- [ ] 用户画像的颗粒度——他需要的是"中产白领"这种标签，还是"30-40岁、一二线城市、有娃家庭"这种结构化描述？
-- [ ] **"绝对不可遗漏"清单**：如果某一份报告中下列字段缺一项，他会直接判定报告"不可用"？请他从我们的 Schema 中圈出 3-5 个"必须填、宁可空着写'未确认'也不能没有"的字段。
-  > 这直接决定 QA Agent 的"必填字段"清单——这些字段缺失会触发硬性打回，重跑 3 次仍失败才允许标"未确认"。
+**B. 字段与维度**（v1.1 修订：双层 Schema 验证）
+- [ ] **核心层确认**：把我们的核心 4 类 Schema（功能树 / 定价 / 用户画像 / SWOT）给他看，问：
+  - 这 4 项作为"所有任务都必出"的默认维度合不合理？
+  - 在他工作流中，会不会出现"连功能树都不需要、SWOT 不重要"的任务？（如果有，说明核心层选 4 个选错了，要调整）
+  - 用户画像的颗粒度——他需要的是"中产白领"这种标签，还是"30-40岁、一二线城市、有娃家庭"这种结构化描述？
+- [ ] **扩展层 brainstorm 验证**（v1.1 新增）：演示对话式立项页面 / 拿截图给他看——
+  - 让他用 NL 描述一个真实任务，看 AI 生成的扩展维度大纲，他会增删什么？
+  - 收集 5-10 份真实任务的大纲，看哪些扩展维度**高频出现**（如日化场景的"渠道结构 / KOL / 促销节奏 / 线下铺货"）—— 这些可以作为"AI 默认推荐"的二级模板，下次同类任务自动出
+  - 哪些维度他认为"AI 想都想不到、必须我自己加"？这些是产品边界
+- [ ] **核心层「必填字段」清单**：从 §七 7.1-7.4 的每个 Schema 中圈出 3-5 个"必须填、宁可空着写'未确认'也不能没有"的字段。
+  > 这直接决定 QA Agent 对**核心层**的"必填字段"清单（blocker 触发条件）。**扩展层不走必填判断**，缺失只标 warning。
 
 **C. 信息源**（决定采集 Agent 的真实价值，必问）
 - [ ] 他平时从哪些渠道获取竞品情报？（电商平台评论 / 行业报告 / 公司官网 / 经销商 / 内部数据）

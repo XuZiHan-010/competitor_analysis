@@ -7,6 +7,12 @@
 # Plans and internal documentation
 /plans/
 
+# Claude Code local state
+.claude/
+
+# Temporary app scaffolding (before ready for commit)
+/apps/
+
 # API keys and secrets
 **/api_key*
 **/*secret*
