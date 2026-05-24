@@ -10,8 +10,9 @@
 # Claude Code local state
 .claude/
 
-# Temporary app scaffolding (before ready for commit)
-/apps/
+# Note: apps/ subdirs (apps/web/, apps/api/) have their own .gitignore that
+# handles node_modules/build artifacts. The /apps/ blanket-ignore that was
+# here earlier was a mistake — it hid all real frontend code.
 
 # API keys and secrets
 **/api_key*
