@@ -1,18 +1,13 @@
-# Environment variables
+# Environment variables — broadened to cover .env.development / .env.production
+# (单文件根 .gitignore 唯一事实源；apps/ 子目录不再各自 .gitignore)
 .env
-.env.local
-.env.*.local
-.env.production.local
+.env*
 
 # Plans and internal documentation
 /plans/
 
 # Claude Code local state
 .claude/
-
-# Note: apps/ subdirs (apps/web/, apps/api/) have their own .gitignore that
-# handles node_modules/build artifacts. The /apps/ blanket-ignore that was
-# here earlier was a mistake — it hid all real frontend code.
 
 # API keys and secrets
 **/api_key*
@@ -42,6 +37,12 @@ dist/
 build/
 .next/
 out/
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+
+# Test coverage
+coverage/
 
 # Dependencies
 node_modules/
