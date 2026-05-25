@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Fraunces } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { TopNav } from "@/components/layout/top-nav";
@@ -29,16 +29,16 @@ export const metadata: Metadata = {
   title: "Strata — 竞品分析情报系统",
   description:
     "多 Agent 协作的结构化竞品分析平台。从需求描述到可溯源报告，全自动产出。",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "oklch(0.975 0.008 85)" },
     { media: "(prefers-color-scheme: dark)", color: "oklch(0.16 0.012 245)" },
   ],
-};
-
-export const viewport = {
-  width: "device-width",
-  initialScale: 1,
-  maximumScale: 1,
 };
 
 export default function RootLayout({
