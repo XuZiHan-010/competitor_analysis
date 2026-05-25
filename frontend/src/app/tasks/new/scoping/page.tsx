@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowRight, Loader2, RefreshCcw, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Loader2, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { PageContainer } from "@/components/layout/page-container";
 import { useScopingStore } from "@/stores/scoping-store";
-import { jitteredThinking, simulateAIThinking } from "@/lib/mocks/delay";
+import { simulateAIThinking } from "@/lib/mocks/delay";
 import {
   buildSkincareMockContract,
   extractCompetitorsFromBrief,
@@ -15,6 +15,7 @@ import {
 import { CompetitorChips } from "@/components/scoping/competitor-chips";
 import { DimensionList } from "@/components/scoping/dimension-list";
 import { AddDimensionDialog } from "@/components/scoping/add-dimension-dialog";
+import { ReguideInput } from "@/components/scoping/reguide-input";
 import { cn } from "@/lib/utils";
 
 export default function ScopingPage() {
@@ -54,27 +55,6 @@ export default function ScopingPage() {
     setDraftContract,
     setIsGenerating,
   ]);
-
-  async function handleRegenerate() {
-    setIsGenerating(true);
-    await jitteredThinking(1800, 500);
-    if (!draftContract) {
-      setIsGenerating(false);
-      return;
-    }
-    // For the demo, "regenerate" just rebuilds from current brief +
-    // current competitors. In Stage 3 this would call the real API
-    // with the current edits as steering context.
-    const fresh = buildSkincareMockContract(
-      draftContract.user_brief,
-      draftContract.competitors,
-    );
-    setDraftContract(fresh);
-    setIsGenerating(false);
-    toast.success("已重新生成大纲", {
-      description: "基于当前需求与编辑过的章节",
-    });
-  }
 
   async function handleConfirm() {
     if (!draftContract) return;
@@ -116,35 +96,8 @@ export default function ScopingPage() {
         </span>
       </div>
 
-      {/* Display heading */}
-      <header className="mb-10 animate-[slide-up_0.6s_cubic-bezier(0.16,1,0.3,1)_0.05s_both]">
-        <h1
-          className="text-[1.5rem] leading-[1.1] sm:text-[clamp(2rem,4vw,3rem)] sm:leading-[1.05] tracking-tight text-foreground mb-4"
-          style={{
-            fontVariationSettings: '"opsz" 144, "SOFT" 0',
-            fontWeight: 400,
-          }}
-        >
-          确定{" "}
-          <em
-            className="not-italic text-primary"
-            style={{ fontVariationSettings: '"opsz" 144, "SOFT" 100' }}
-          >
-            分析维度
-          </em>
-        </h1>
-        <p className="text-base text-muted-foreground leading-relaxed max-w-[48ch]">
-          AI 已根据需求拟了一份大纲：
-          <span className="tabular font-medium text-foreground mx-1">
-            4&nbsp;项核心
-          </span>
-          维度（不可删除）加
-          <span className="tabular font-medium text-foreground mx-1">
-            {Math.max(0, totalCount - 4)}&nbsp;项扩展
-          </span>
-          维度。你可以编辑标题、改意图、增删扩展项、调整顺序。
-        </p>
-      </header>
+      {/* sr-only h1 for screen reader semantics */}
+      <h1 className="sr-only">确定分析维度</h1>
 
       {/* Loading state */}
       {isGenerating && !draftContract && (
@@ -166,8 +119,19 @@ export default function ScopingPage() {
 
       {draftContract && (
         <>
-          {/* Subjects band */}
-          <section className="mb-10 animate-[slide-up_0.5s_cubic-bezier(0.16,1,0.3,1)_0.1s_both]">
+          {/* Intro paragraph + Subjects band */}
+          <section className="mb-10 animate-[slide-up_0.5s_cubic-bezier(0.16,1,0.3,1)_0.05s_both]">
+            <p className="text-base text-muted-foreground leading-relaxed max-w-[52ch] mb-6">
+              AI 已根据需求拟了一份大纲：
+              <span className="tabular font-medium text-foreground mx-1">
+                4&nbsp;项核心
+              </span>
+              维度（不可删除）加
+              <span className="tabular font-medium text-foreground mx-1">
+                {Math.max(0, totalCount - 4)}&nbsp;项扩展
+              </span>
+              维度。你可以编辑标题、改意图、增删扩展项、调整顺序。
+            </p>
             <CompetitorChips />
           </section>
 
@@ -207,6 +171,8 @@ export default function ScopingPage() {
             <div className="mt-3">
               <AddDimensionDialog />
             </div>
+
+            <ReguideInput />
           </section>
         </>
       )}
@@ -220,41 +186,26 @@ export default function ScopingPage() {
             "supports-[backdrop-filter]:bg-background/85",
           )}
         >
-          <div className="mx-auto max-w-[720px] px-4 py-3 sm:px-8 sm:py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <p className="text-xs text-muted-foreground hidden sm:block">
-              确认后大纲冻结，启动&nbsp;4&nbsp;Agent 协作
-            </p>
-            <div className="flex items-center gap-3 sm:ml-auto">
-              <Button
-                variant="ghost"
-                onClick={handleRegenerate}
-                disabled={isGenerating}
-                className="flex-1 sm:flex-none text-muted-foreground hover:text-foreground"
-              >
-                <RefreshCcw className={cn("h-4 w-4", isGenerating && "animate-spin")} />
-                <span className="hidden xs:inline sm:inline">重新生成大纲</span>
-                <span className="sm:hidden">重新生成</span>
-              </Button>
-              <Button
-                onClick={handleConfirm}
-                disabled={isGenerating || confirming || enabledCount === 0}
-                size="lg"
-                className={cn(
-                  "flex-1 sm:flex-none group h-11 px-6 font-medium",
-                  "bg-primary text-primary-foreground hover:bg-primary/90",
-                  "shadow-[0_4px_14px_-4px_oklch(0.38_0.065_220_/_0.4)]",
-                )}
-              >
-                {confirming ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <>
-                    确认 · 开始分析
-                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-                  </>
-                )}
-              </Button>
-            </div>
+          <div className="mx-auto max-w-[720px] px-4 py-3 sm:px-8 sm:py-4 flex justify-end">
+            <Button
+              onClick={handleConfirm}
+              disabled={isGenerating || confirming || enabledCount === 0}
+              size="lg"
+              className={cn(
+                "group h-11 w-full sm:w-auto px-6 font-medium",
+                "bg-primary text-primary-foreground hover:bg-primary/90",
+                "shadow-[0_4px_14px_-4px_oklch(0.38_0.065_220_/_0.4)]",
+              )}
+            >
+              {confirming ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <>
+                  确认 · 开始分析
+                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                </>
+              )}
+            </Button>
           </div>
         </div>
       )}
