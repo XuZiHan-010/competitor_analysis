@@ -1,0 +1,396 @@
+{
+  "_origin": "scaffold",
+  "task_id": "demo_henkel_skincare_2026",
+  "title": "高端护肤品牌中国电商竞品分析",
+  "subtitle": "SK-II · 资生堂 · 雅诗兰黛 · 25-35 岁城市女性",
+  "generated_at": "2026-05-25T09:43:05.000Z",
+  "competitors": ["SK-II", "资生堂", "雅诗兰黛"],
+
+  "feature_tree": {
+    "intro": "三家品牌均以「明星单品 + 抗老护肤」为核心定位，SK-II 聚焦发酵成分主导的肌底护理，资生堂强调免疫力修护并叠加日系科技背书，雅诗兰黛则以 DNA 修护与色彩科技形成「护肤 + 彩妆」双线优势。",
+    "rows": [
+      {
+        "feature": "明星精华",
+        "description": "品牌核心王牌精华产品",
+        "cells": [
+          { "competitor": "SK-II", "status": "supported", "note": "PITERA 神仙水 230ml" },
+          { "competitor": "资生堂", "status": "supported", "note": "红妍肌活精华露 50ml" },
+          { "competitor": "雅诗兰黛", "status": "supported", "note": "小棕瓶特润精华 50ml" }
+        ],
+        "source_ids": ["src_001", "src_003", "src_005"]
+      },
+      {
+        "feature": "抗老面霜",
+        "description": "中高价位抗老面霜矩阵",
+        "cells": [
+          { "competitor": "SK-II", "status": "supported", "note": "大红瓶面霜 50g" },
+          { "competitor": "资生堂", "status": "supported", "note": "盼丽风姿系列" },
+          { "competitor": "雅诗兰黛", "status": "supported", "note": "白金面霜 / 立体塑颜系列" }
+        ],
+        "source_ids": ["src_001", "src_003", "src_005"]
+      },
+      {
+        "feature": "眼部护理",
+        "description": "明星眼霜产品矩阵",
+        "cells": [
+          { "competitor": "SK-II", "status": "supported", "note": "大眼眼霜 15g" },
+          { "competitor": "资生堂", "status": "supported", "note": "盼丽风姿眼霜" },
+          { "competitor": "雅诗兰黛", "status": "supported", "note": "白金眼霜 / 小棕瓶眼部精华" }
+        ],
+        "source_ids": ["src_001", "src_003", "src_005"]
+      },
+      {
+        "feature": "高倍防晒",
+        "description": "SPF50+ 高倍数防晒",
+        "cells": [
+          { "competitor": "SK-II", "status": "partial", "note": "仅基础 SPF30" },
+          { "competitor": "资生堂", "status": "supported", "note": "新艳阳夏蓝胖子 SPF50+" },
+          { "competitor": "雅诗兰黛", "status": "partial", "note": "仅美白底霜防晒" }
+        ],
+        "source_ids": ["src_003", "src_001", "src_005"]
+      },
+      {
+        "feature": "彩妆联动",
+        "description": "护肤 + 彩妆品牌矩阵",
+        "cells": [
+          { "competitor": "SK-II", "status": "unsupported", "note": "仅护肤定位" },
+          { "competitor": "资生堂", "status": "partial", "note": "时光琉璃彩妆，独立线" },
+          { "competitor": "雅诗兰黛", "status": "supported", "note": "粉气垫 / DW 粉底等完整彩妆线" }
+        ],
+        "source_ids": ["src_001", "src_003", "src_005"]
+      },
+      {
+        "feature": "套盒赠品",
+        "description": "节日限定礼盒与赠品组合",
+        "cells": [
+          { "competitor": "SK-II", "status": "supported", "note": "限量瓶身 + 中样套装" },
+          { "competitor": "资生堂", "status": "supported", "note": "买正装赠 30ml 中样" },
+          { "competitor": "雅诗兰黛", "status": "supported", "note": "节日限定礼盒 + 限定彩妆" }
+        ],
+        "source_ids": ["src_002", "src_004", "src_006"]
+      },
+      {
+        "feature": "肌肤诊断工具",
+        "description": "在线 / 线下肌肤测试服务",
+        "cells": [
+          { "competitor": "SK-II", "status": "supported", "note": "Magic Ring 魔镜诊断" },
+          { "competitor": "资生堂", "status": "supported", "note": "线下专柜肌肤密度检测" },
+          { "competitor": "雅诗兰黛", "status": "partial", "note": "小程序 AI 测肤" }
+        ],
+        "source_ids": ["src_001", "src_003", "src_005"]
+      }
+    ]
+  },
+
+  "pricing": {
+    "intro": "三家品牌正装精华区间集中在 ¥900-2100，会员折扣力度差异显著。SK-II 黑卡 88 折常态化，雅诗兰黛通过 ELC 多层级解锁更深折扣，资生堂依赖积分 + 中样组合而非直接折扣。",
+    "tiers": [
+      {
+        "competitor": "SK-II",
+        "tier": "神仙水 230ml 正装",
+        "price": "¥1,990",
+        "highlights": ["黑卡 8.8 折后 ¥1,749", "双 11 折后 ¥1,549", "套装含中样 75ml"],
+        "source_ids": ["src_002"]
+      },
+      {
+        "competitor": "SK-II",
+        "tier": "大红瓶面霜 50g",
+        "price": "¥1,690",
+        "highlights": ["黑卡享生日双倍积分", "无超大份装"],
+        "source_ids": ["src_002"]
+      },
+      {
+        "competitor": "SK-II",
+        "tier": "六件套大礼盒",
+        "price": "¥3,890",
+        "highlights": ["年度仅 2 次", "含限定瓶身"],
+        "source_ids": ["src_002"]
+      },
+      {
+        "competitor": "资生堂",
+        "tier": "红腰子精华 50ml",
+        "price": "¥1,080",
+        "highlights": ["大促价 ¥920", "积分 1:1 兑赠品"],
+        "source_ids": ["src_004"]
+      },
+      {
+        "competitor": "资生堂",
+        "tier": "盼丽风姿面霜 50g",
+        "price": "¥1,350",
+        "highlights": ["VIP 享 92 折", "节日加赠中样 15ml × 2"],
+        "source_ids": ["src_004"]
+      },
+      {
+        "competitor": "资生堂",
+        "tier": "蓝胖子防晒 60ml",
+        "price": "¥460",
+        "highlights": ["双 11 第二件半价", "薄荷瓶限量"],
+        "source_ids": ["src_004"]
+      },
+      {
+        "competitor": "雅诗兰黛",
+        "tier": "小棕瓶 7 代精华 50ml",
+        "price": "¥1,180",
+        "highlights": ["铂钻享 85 折 ¥1,003", "金钻享 90 折"],
+        "source_ids": ["src_006"]
+      },
+      {
+        "competitor": "雅诗兰黛",
+        "tier": "白金面霜 50ml",
+        "price": "¥2,800",
+        "highlights": ["铂钻级生日双倍积分", "套装含眼霜"],
+        "source_ids": ["src_006"]
+      },
+      {
+        "competitor": "雅诗兰黛",
+        "tier": "节日限定礼盒",
+        "price": "¥2,360",
+        "highlights": ["年度 4 次", "含限定彩妆联动"],
+        "source_ids": ["src_006"]
+      }
+    ]
+  },
+
+  "user_personas": {
+    "intro": "三家品牌的核心用户都集中在 25-35 岁城市女性，但需求侧重和触发场景不同：SK-II 用户更看重「肌底改善 + 高端身份感」；资生堂用户偏向「日常初老 + 性价比平衡」；雅诗兰黛用户最看重「修护 + 全场景护理」。",
+    "personas": [
+      {
+        "competitor": "SK-II",
+        "label": "都市精致白领（28-35 岁）",
+        "size": "majority",
+        "needs": ["改善熬夜肌肤暗沉", "高端身份感与社交资本", "明星单品长期忠诚"],
+        "pain_points": ["客单价偏高", "缺乏防晒矩阵", "中样赠品周期长"],
+        "evidence": "「黑卡续费三年了，神仙水基本是常备」 — 小红书 28 岁用户评论",
+        "source_ids": ["src_007", "src_010"]
+      },
+      {
+        "competitor": "资生堂",
+        "label": "新中产职场女性（26-32 岁）",
+        "size": "majority",
+        "needs": ["对抗初老与日间紫外线伤害", "日系科技背书带来的安心感", "中样 + 套装组合的性价比"],
+        "pain_points": ["缺乏单一明星单品声量", "VIP 折扣力度弱于雅诗兰黛"],
+        "evidence": "「相比 SK-II，资生堂红腰子更适合早 C 晚 A 后用来打底」 — 小红书 30 岁用户测评",
+        "source_ids": ["src_008"]
+      },
+      {
+        "competitor": "雅诗兰黛",
+        "label": "敏感肌护理优先用户（25-34 岁）",
+        "size": "significant",
+        "needs": ["修复屏障 + 抗老兼顾", "彩妆与护肤一体场景", "ELC 多级会员的专属感"],
+        "pain_points": ["核心产品迭代快带来选择焦虑", "高倍防晒矩阵欠缺"],
+        "evidence": "「小棕瓶秋冬连用半年，敏感肌爆痘明显减少」 — 小红书 27 岁用户长测",
+        "source_ids": ["src_009", "src_011"]
+      }
+    ]
+  },
+
+  "swot": {
+    "intro": "SWOT 综合反映三家品牌在「核心心智 + 渠道 + 价格 + 产品宽度」四个维度上的差异化处境。",
+    "blocks": [
+      {
+        "competitor": "SK-II",
+        "strengths": [
+          { "text": "PITERA 发酵成分形成强心智壁垒", "source_ids": ["src_001"] },
+          { "text": "黑卡用户客单价是非会员 2.3 倍", "source_ids": ["src_010"] }
+        ],
+        "weaknesses": [
+          { "text": "产品宽度窄 · 防晒 / 彩妆缺位", "source_ids": ["src_001"] },
+          { "text": "套装赠品频次偏低", "source_ids": ["src_002"] }
+        ],
+        "opportunities": [
+          { "text": "向轻熟龄拓展副线（如 SK-II Skin Power）", "source_ids": ["src_010"] }
+        ],
+        "threats": [
+          { "text": "国货高端线（毛戈平 / 林清轩）渗透 25-30 岁段", "source_ids": ["src_012"] }
+        ]
+      },
+      {
+        "competitor": "资生堂",
+        "strengths": [
+          { "text": "日系科技 + 健康成分的差异化叙事", "source_ids": ["src_003"] },
+          { "text": "防晒矩阵完整 · 蓝胖子全年长尾", "source_ids": ["src_003"] }
+        ],
+        "weaknesses": [
+          { "text": "无单一爆品级 SKU 占领心智", "source_ids": ["src_008"] },
+          { "text": "VIP 折扣力度偏弱", "source_ids": ["src_004"] }
+        ],
+        "opportunities": [
+          { "text": "借势日系成分趋势扩大科普类 KOL 投放", "source_ids": ["src_012"] }
+        ],
+        "threats": [
+          { "text": "日系品牌整体在华舆情波动风险", "source_ids": ["src_008"] }
+        ]
+      },
+      {
+        "competitor": "雅诗兰黛",
+        "strengths": [
+          { "text": "护肤 + 彩妆双线协同 · 客户生命周期长", "source_ids": ["src_005"] },
+          { "text": "ELC 多级会员复购周期缩短至 92 天", "source_ids": ["src_011"] }
+        ],
+        "weaknesses": [
+          { "text": "产品迭代过快导致选择疲劳", "source_ids": ["src_009"] }
+        ],
+        "opportunities": [
+          { "text": "通过免税 + 海淘渠道触达跨境用户", "source_ids": ["src_013"] }
+        ],
+        "threats": [
+          { "text": "美系品牌整体增速放缓", "source_ids": ["src_011"] }
+        ]
+      }
+    ]
+  },
+
+  "extensions": [
+    {
+      "dimension_id": "ext.membership_program",
+      "title": "会员体系与折扣节奏",
+      "intent": "电商旗舰店黑卡 / 积分体系 / 双 11 与 618 大促力度对比",
+      "summary": "SK-II 通过黑卡常态 88 折 + 客单价分层维持高用户粘性；雅诗兰黛 ELC 通过粉钻 / 金钻 / 铂钻三级体系深耕分层折扣；资生堂选择以中样 + 积分代替折扣，因此感知差异最显著。",
+      "bullets": [
+        {
+          "competitor": "SK-II",
+          "points": [
+            "黑卡 8.8 折常态化 · 用户复购率 64%",
+            "双 11 折后约 78 折 · 含限定瓶身"
+          ],
+          "source_ids": ["src_002", "src_010"]
+        },
+        {
+          "competitor": "资生堂",
+          "points": [
+            "积分 1:1 兑换中样 · 节日额外加赠",
+            "大促集中在 618 与双 11 · 平时折扣弱"
+          ],
+          "source_ids": ["src_004"]
+        },
+        {
+          "competitor": "雅诗兰黛",
+          "points": [
+            "ELC 粉钻 / 金钻 / 铂钻三级 · 铂钻享生日双倍积分",
+            "线上线下复购周期 92 天 · 远低于行业平均"
+          ],
+          "source_ids": ["src_006", "src_011"]
+        }
+      ]
+    },
+    {
+      "dimension_id": "ext.kol_matrix",
+      "title": "KOL 与代言矩阵",
+      "intent": "品牌代言、头部主播合作、内容投放渠道与典型 case",
+      "summary": "SK-II 集中在头部明星 + 美妆头部主播，强调「光晕效应」；雅诗兰黛覆盖明星 + 中腰部美容博主，长尾覆盖更广；资生堂主要依赖日系科普类博主，更注重信任叙事。",
+      "bullets": [
+        {
+          "competitor": "SK-II",
+          "points": [
+            "代言：汤唯 · 倪妮 · 易烊千玺",
+            "头部主播：李佳琦双 11 直播专场"
+          ],
+          "source_ids": ["src_014", "src_012"]
+        },
+        {
+          "competitor": "资生堂",
+          "points": [
+            "日系科普类 KOL 投放 · 关注成分与机理",
+            "线下专柜配合明星出席"
+          ],
+          "source_ids": ["src_012"]
+        },
+        {
+          "competitor": "雅诗兰黛",
+          "points": [
+            "明星 + 中腰部博主多层组合",
+            "节日礼盒联动彩妆 KOL · 触达更广"
+          ],
+          "source_ids": ["src_012"]
+        }
+      ]
+    },
+    {
+      "dimension_id": "ext.channel_distribution",
+      "title": "渠道与铺货",
+      "intent": "线下专柜密度、电商旗舰店运营、免税与海淘渠道占比",
+      "summary": "SK-II 渠道最依赖电商（58%），其线下专柜聚焦一线城市核心商场；资生堂电商占比最低（41%）但线下专柜下沉更广；雅诗兰黛电商 + 免税合计达 49%，跨境拉新效应明显。",
+      "bullets": [
+        {
+          "competitor": "SK-II",
+          "points": [
+            "电商占比 58% · 一线城市专柜密度高",
+            "免税渠道占比约 12%"
+          ],
+          "source_ids": ["src_013"]
+        },
+        {
+          "competitor": "资生堂",
+          "points": [
+            "电商占比 41% · 二三线城市专柜较多",
+            "屈臣氏 / 丝芙兰渠道协同"
+          ],
+          "source_ids": ["src_013"]
+        },
+        {
+          "competitor": "雅诗兰黛",
+          "points": [
+            "电商占比 49% · 免税额外贡献 18%",
+            "Mall 内体验柜与 ELC 会员打通"
+          ],
+          "source_ids": ["src_011", "src_013"]
+        }
+      ]
+    }
+  ],
+
+  "cross_analysis": {
+    "feature_matrix": [
+      {
+        "feature": "PITERA / 红妍 / DNA 三大核心成分",
+        "description": "品牌核心成分叙事差异",
+        "cells": [
+          { "competitor": "SK-II", "status": "supported", "note": "PITERA" },
+          { "competitor": "资生堂", "status": "supported", "note": "红妍因子" },
+          { "competitor": "雅诗兰黛", "status": "supported", "note": "DNA 修护" }
+        ],
+        "source_ids": ["src_001", "src_003", "src_005"]
+      },
+      {
+        "feature": "彩妆联动能力",
+        "description": "护肤 → 彩妆心智外延",
+        "cells": [
+          { "competitor": "SK-II", "status": "unsupported", "note": "无" },
+          { "competitor": "资生堂", "status": "partial", "note": "时光琉璃" },
+          { "competitor": "雅诗兰黛", "status": "supported", "note": "DW + 倾慕等" }
+        ],
+        "source_ids": ["src_001", "src_003", "src_005"]
+      },
+      {
+        "feature": "会员体系层级深度",
+        "description": "层级数量与权益差异",
+        "cells": [
+          { "competitor": "SK-II", "status": "partial", "note": "单层黑卡" },
+          { "competitor": "资生堂", "status": "partial", "note": "积分制" },
+          { "competitor": "雅诗兰黛", "status": "supported", "note": "三级" }
+        ],
+        "source_ids": ["src_002", "src_004", "src_006"]
+      },
+      {
+        "feature": "高倍防晒矩阵",
+        "description": "SPF50+ 产品在售情况",
+        "cells": [
+          { "competitor": "SK-II", "status": "partial", "note": "仅 SPF30" },
+          { "competitor": "资生堂", "status": "supported", "note": "蓝胖子 SPF50+" },
+          { "competitor": "雅诗兰黛", "status": "partial", "note": "美白底霜含 SPF" }
+        ],
+        "source_ids": ["src_001", "src_003", "src_005"]
+      }
+    ],
+    "positioning_map": {
+      "x_axis": "价格带（低 → 高）",
+      "y_axis": "产品宽度（窄 → 宽）",
+      "competitors": [
+        { "id": "skii",      "x": 88, "y": 40, "label": "SK-II" },
+        { "id": "shiseido",  "x": 62, "y": 70, "label": "资生堂" },
+        { "id": "estee",     "x": 78, "y": 88, "label": "雅诗兰黛" }
+      ]
+    },
+    "differentiation_summary": "SK-II 高价 + 窄宽度的「单点击穿」策略，靠核心成分维系高客单价；资生堂中价 + 中宽度的「均衡覆盖」靠科技叙事和防晒拉动场景；雅诗兰黛高价 + 宽宽度的「全场景护肤 + 彩妆」靠层级会员锁定生命周期。"
+  }
+}

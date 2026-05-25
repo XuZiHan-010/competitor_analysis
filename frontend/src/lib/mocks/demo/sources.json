@@ -1,0 +1,128 @@
+[
+  {
+    "id": "src_001",
+    "type": "url",
+    "url": "https://www.sk-ii.com.cn/",
+    "title": "SK-II 中国官方网站",
+    "snippet": "PITERA 神仙水：经典明星单品，强调改善肌肤五大维度。",
+    "agent": "CollectorAgent",
+    "fetched_at": "2026-05-25T09:42:24.000Z"
+  },
+  {
+    "id": "src_002",
+    "type": "url",
+    "url": "https://skii.tmall.com/",
+    "title": "SK-II 天猫官方旗舰店",
+    "snippet": "黑卡会员 8.8 折，神仙水 230ml 价格 ¥1,990，双 11 折后 ¥1,549。",
+    "agent": "CollectorAgent",
+    "fetched_at": "2026-05-25T09:42:25.000Z"
+  },
+  {
+    "id": "src_003",
+    "type": "url",
+    "url": "https://www.shiseido.com.cn/sc/sc/",
+    "title": "资生堂中国官网",
+    "snippet": "红妍肌活精华露 50ml，强调免疫力修护，定位高端抗老。",
+    "agent": "CollectorAgent",
+    "fetched_at": "2026-05-25T09:42:26.000Z"
+  },
+  {
+    "id": "src_004",
+    "type": "url",
+    "url": "https://shiseido.tmall.com/",
+    "title": "资生堂天猫官方旗舰店",
+    "snippet": "VIP 会员积分 1:1 兑换专属赠品，红腰子精华 50ml 大促价 ¥920。",
+    "agent": "CollectorAgent",
+    "fetched_at": "2026-05-25T09:42:27.000Z"
+  },
+  {
+    "id": "src_005",
+    "type": "url",
+    "url": "https://www.esteelauder.com.cn/",
+    "title": "雅诗兰黛中国官网",
+    "snippet": "小棕瓶 7 代特润精华，DNA 夜间修护科技，是品牌核心王牌产品。",
+    "agent": "CollectorAgent",
+    "fetched_at": "2026-05-25T09:42:28.000Z"
+  },
+  {
+    "id": "src_006",
+    "type": "url",
+    "url": "https://esteelauder.tmall.com/",
+    "title": "雅诗兰黛天猫官方旗舰店",
+    "snippet": "ELC 会员体系含粉钻 / 金钻 / 铂钻三级，铂钻享生日双倍积分。",
+    "agent": "CollectorAgent",
+    "fetched_at": "2026-05-25T09:42:29.000Z"
+  },
+  {
+    "id": "src_007",
+    "type": "url",
+    "url": "https://www.xiaohongshu.com/explore/skii-review-25-35",
+    "title": "小红书 SK-II 神仙水真实测评（25-35 岁用户）",
+    "snippet": "高频提到「熬夜后泛红明显改善」，但价格门槛是核心痛点。",
+    "agent": "CollectorAgent",
+    "fetched_at": "2026-05-25T09:42:31.000Z"
+  },
+  {
+    "id": "src_008",
+    "type": "url",
+    "url": "https://www.xiaohongshu.com/explore/shiseido-vinoperfect-review",
+    "title": "小红书 资生堂红腰子使用心得",
+    "snippet": "评论侧重熬夜暗沉、初老紧致，年龄段以 28-34 岁为主。",
+    "agent": "CollectorAgent",
+    "fetched_at": "2026-05-25T09:42:32.000Z"
+  },
+  {
+    "id": "src_009",
+    "type": "url",
+    "url": "https://www.xiaohongshu.com/explore/estee-lauder-anr-routine",
+    "title": "小红书 雅诗兰黛小棕瓶夜间护理流程",
+    "snippet": "评论主聚焦在「修复屏障」与「适合敏感肌」，强调长期使用见效。",
+    "agent": "CollectorAgent",
+    "fetched_at": "2026-05-25T09:42:33.000Z"
+  },
+  {
+    "id": "src_010",
+    "type": "url",
+    "url": "https://www.36kr.com/p/skii-china-membership-strategy",
+    "title": "36 氪 - SK-II 中国黑卡会员策略深度分析",
+    "snippet": "黑卡用户客单价是非会员 2.3 倍，年复购率 64%。",
+    "agent": "CollectorAgent",
+    "fetched_at": "2026-05-25T09:42:36.000Z"
+  },
+  {
+    "id": "src_011",
+    "type": "url",
+    "url": "https://www.linkflow.com/blog/estee-lauder-omnichannel-china",
+    "title": "雅诗兰黛中国全渠道 CRM 案例",
+    "snippet": "线上 + 线下打通的 ELC 会员，复购周期缩短至 92 天。",
+    "agent": "CollectorAgent",
+    "fetched_at": "2026-05-25T09:42:37.000Z"
+  },
+  {
+    "id": "src_012",
+    "type": "url",
+    "url": "https://www.taoshudata.com/report/luxury-skincare-kol-2025",
+    "title": "淘数 - 2025 高端护肤 KOL 投放盘点",
+    "snippet": "SK-II 倾向头部明星 + 美妆头部主播；雅诗兰黛覆盖明星 + 中腰部美容博主；资生堂依赖日系科普类博主。",
+    "agent": "CollectorAgent",
+    "fetched_at": "2026-05-25T09:42:39.000Z"
+  },
+  {
+    "id": "src_013",
+    "type": "url",
+    "url": "https://www.iresearch.com.cn/Detail/report?id=4567&isfree=0",
+    "title": "艾瑞咨询 - 中国高端护肤渠道结构 2025",
+    "snippet": "SK-II 电商占比 58%；资生堂 41%；雅诗兰黛 49%（含免税）。",
+    "agent": "CollectorAgent",
+    "fetched_at": "2026-05-25T09:42:42.000Z"
+  },
+  {
+    "id": "src_014",
+    "type": "url",
+    "url": "https://weibo.com/topic/skii-mainland-celebrity",
+    "title": "微博 SK-II 代言话题盘点",
+    "snippet": "近三年代言人含汤唯、倪妮、易烊千玺，话题热度峰值 11 月。",
+    "agent": "CollectorAgent",
+    "fetched_at": "2026-05-25T09:42:44.000Z"
+  }
+]

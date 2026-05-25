@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, PlayCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -35,7 +35,14 @@ export default function NewTaskPage() {
 
   function handleSubmit() {
     if (!canSubmit) return;
-    router.push(isDirect ? "/tasks/demo" : "/tasks/new/scoping");
+    // Direct-mode currently has no real route; route both branches to the
+    // scoping flow until the DAG run page lands. The demo path is reachable
+    // via the secondary CTA below.
+    router.push(isDirect ? "/demo/scoping" : "/tasks/new/scoping");
+  }
+
+  function handleViewDemo() {
+    router.push("/demo/scoping");
   }
 
   return (
@@ -117,6 +124,37 @@ export default function NewTaskPage() {
             : lang === "zh" ? "生成大纲" : "Generate Outline"}
           <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
         </Button>
+      </div>
+
+      {/* Secondary CTA — curated demo path for judges / first-time visitors */}
+      <div
+        className={cn(
+          "mt-10 pt-6 border-t border-border/60",
+          "flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-3",
+          "animate-[slide-up_0.6s_cubic-bezier(0.16,1,0.3,1)_0.5s_both]",
+        )}
+      >
+        <p
+          className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground"
+          style={{ fontFamily: "var(--font-mono)" }}
+        >
+          {lang === "zh" ? "首次访问 · 评委演示" : "First visit · Demo"}
+        </p>
+        <button
+          type="button"
+          onClick={handleViewDemo}
+          className={cn(
+            "group inline-flex items-center gap-2 text-sm",
+            "text-foreground/85 hover:text-foreground",
+            "underline decoration-border underline-offset-[6px]",
+            "hover:decoration-[var(--color-accent-warm)] transition-colors",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm",
+          )}
+        >
+          <PlayCircle className="h-4 w-4 text-[var(--color-accent-warm)]" />
+          {lang === "zh" ? "30 秒看完整演示" : "Watch 30s demo"}
+          <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+        </button>
       </div>
     </PageContainer>
   );
