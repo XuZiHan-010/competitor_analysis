@@ -196,9 +196,13 @@
 具体工作：
 1. 解析用户 NL，识别意图（`list` / `intent` / `mixed`）
 2. 提取并推荐竞品，保证最终列表有 3-5 个候选
-3. 生成大纲：核心 4 章（固定）+ N 项扩展章（按 NL 焦点定制）
+3. 生成大纲：核心 4 章（固定）+ AI 建议扩展章 ≤ 4 项（按 NL 焦点定制）
 4. 生成 1-3 个澄清问题
 5. 接收用户编辑反馈（编辑过的章节 / 增删的竞品 / 澄清回答），迭代再生成
+
+**扩展维度数量约束**（写进 prompt + 后端 freeze 时校验）：
+- ScopingAgent 单次最多建议 **4 个**扩展维度（`source="ai_suggested"`），避免任务范围发散、控制延迟与成本
+- 用户在大纲页 [✎] 手动添加的扩展维度（`source="user_added"`）**不受此上限**——把"可控规模"和"用户自由度"分离
 
 **与 DAG 内 4 Agent 的关键差别**：
 
@@ -245,6 +249,7 @@ class ScopingDraft(BaseModel):
 **对下游的承诺**：
 - `competitors` 长度 ∈ [3, 5]——少于 3 时 ScopingAgent 必须用 AI 推荐补齐
 - `dimensions` 中 `layer="core"` 的恰好 4 项（功能树 / 定价 / 画像 / SWOT），不可缺失，可改名
+- `dimensions` 中 `source="ai_suggested"` 的条目 ≤ 4——`source="user_added"` 不计入此上限
 - 输出**幂等**——同样的输入两次调用应给出**结构相同**（顺序可不同）的草案，方便用户多次「重新生成」时不大幅震荡
 
 ### Agent 5.1: 采集 Agent (`CollectorAgent`)
@@ -415,6 +420,7 @@ class WorkflowState(BaseModel):
 class DimensionSpec(BaseModel):
     id: str                          # "core.feature_tree" / "ext.channel_structure" / "ext.<slug>"
     layer: Literal["core", "extension"]
+    source: Literal["system", "ai_suggested", "user_added"]  # v1.5: 区分来源，决定上限规则
     title: str                       # 用户可改的章节标题：「会员体系与折扣节奏」
     intent: str                      # 用户可改的"意图描述"，喂给 Analyst prompt 做指向性约束
     schema_ref: str | None           # 核心层指向固定 Schema（"FeatureTree" / "PricingModel" 等）；扩展层为 None
@@ -434,7 +440,9 @@ class TaskScopeContract(BaseModel):
 
 **不变式**：
 - `dimensions` 中 `layer="core"` 的条目**恰好 4 项**，对应 7.1-7.4
-- 核心 4 项的 `enabled=True`、`locked=True`、`schema_ref` 不可为 None
+- 核心 4 项的 `enabled=True`、`locked=True`、`schema_ref` 不可为 None、`source="system"`
+- `dimensions` 中 `source="ai_suggested"` 的条目数 **≤ 4**（ScopingAgent 建议上限；`source="user_added"` 不受此约束）
+- `source` 字段不变式：`layer="core"` ↔ `source="system"`；`layer="extension"` 时 `source ∈ {"ai_suggested", "user_added"}`
 - `frozen` 之后此对象**只读**，进入 LangGraph State 后任何 Agent 不可修改
 - 用户点「重新生成大纲」会产生一个**新的**草案对象，旧草案被替换（v1 不做版本回滚，见 §十一 P1）
 
@@ -678,10 +686,11 @@ class ExtensionFinding(BaseModel):
 ```
 
 **交互细节**：
-- 🔒 标记 = 核心层（`layer="core"`），删除按钮置灰；[✎] 改名和意图始终开启
+- 🔒 标记 = 核心层（`layer="core"`、`source="system"`），删除按钮置灰；[✎] 改名和意图始终开启
 - ✏️ 标记 = 扩展层（`layer="extension"`），所有按钮可用
+- 扩展维度区顶部显示「**AI 建议 (n/4)**」计数器（按 `source="ai_suggested"` 实时统计）；到 4 时「重新生成大纲」按钮 tooltip 提示已达 AI 建议上限，但用户仍可通过下方「+ 自定义维度」无限手加（`source="user_added"`，不计入 n/4）
 - 拖动手柄 ⇅ 调整 `dimensions[].order`，核心和扩展可混排
-- 「重新生成大纲」= 带当前编辑过的章节 + 澄清回答回到 AI 再生成一版（不是完全推倒）
+- 「重新生成大纲」= 带当前编辑过的章节 + 澄清回答回到 AI 再生成一版（不是完全推倒）。AI 输出最多 4 个 `ai_suggested`，已有 `user_added` 条目保留
 - 「确认 → 开始分析」时把当前状态 freeze 成 TaskScopeContract（见 §七 7.0），后续不可改
 
 ### 页面 2: 任务进行中 `/tasks/{id}`（实时 DAG）
@@ -1076,6 +1085,8 @@ demo 路径走独立 route 前缀 `/demo/*`，**绝对不复用** `/tasks/new` /
 - ✅ 每条结论（核心层 + 扩展层）可一键溯源到原始 URL+片段
 
 > **v1.1 评分项备 answer**：评委可能问"扩展层是不是绕过了'预定义 Schema'要求"——回答：核心层 4 套 Schema 就是预定义对象，QA 对核心层缺失字段硬打回（演示时可触发）；扩展层是评分卡 25% 项里明文提到的"动态 Schema 演化"加分项的具体实现，与"严格符合预定义 Schema"不冲突。
+>
+> **v1.5 追问备 answer**：若评委进一步问"扩展层会不会被 AI 无限发散、失去 Schema 严肃性"——回答：扩展层有**双层数量约束**——ScopingAgent 单次最多建议 **4 个**（`source="ai_suggested"`，写进 TaskScopeContract 不变式 + prompt 双重保险），保证 AI 自主性可控；用户手动添加的扩展维度（`source="user_added"`）不设上限，把"模型保守 + 人类自由"显式分离，正是 35% 评分卡里"Agent 间通信协议清晰"和 20% "人工介入修正易用直观"两项的具体落地。
 
 ### 技术深度与工程完整度 (25%)
 - ✅ 端到端可访问：登录 → 创建 → **对话式立项** → 跑 → 看报告 → 导出，全链路无中断
