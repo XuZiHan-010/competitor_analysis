@@ -15,6 +15,7 @@ export function buildCoreDimensions(): DimensionSpec[] {
     {
       id: CORE_DIMENSION_IDS.FEATURE_TREE,
       layer: "core",
+      source: "system",
       title: "功能树",
       intent: "对比各竞品的核心产品线、功能矩阵与差异化能力",
       schema_ref: "FeatureTree",
@@ -25,6 +26,7 @@ export function buildCoreDimensions(): DimensionSpec[] {
     {
       id: CORE_DIMENSION_IDS.PRICING_MODEL,
       layer: "core",
+      source: "system",
       title: "定价模型",
       intent: "梳理各 SKU 价格区间、套装策略、会员折扣与大促节奏",
       schema_ref: "PricingModel",
@@ -35,6 +37,7 @@ export function buildCoreDimensions(): DimensionSpec[] {
     {
       id: CORE_DIMENSION_IDS.USER_PERSONA,
       layer: "core",
+      source: "system",
       title: "用户画像",
       intent: "从电商评论与官方文案中归纳目标用户群与典型痛点",
       schema_ref: "UserPersona",
@@ -45,6 +48,7 @@ export function buildCoreDimensions(): DimensionSpec[] {
     {
       id: CORE_DIMENSION_IDS.SWOT,
       layer: "core",
+      source: "system",
       title: "SWOT",
       intent: "结合上述维度产出每家竞品的优劣势、机会与威胁分析",
       schema_ref: "SWOT",
@@ -64,6 +68,7 @@ export function buildSkincareExtensions(): DimensionSpec[] {
     {
       id: "ext.membership_promo",
       layer: "extension",
+      source: "ai_suggested",
       title: "会员体系与折扣节奏",
       intent: "电商旗舰店黑卡 / 积分 / 双11 与 618 大促力度对比",
       schema_ref: null,
@@ -74,6 +79,7 @@ export function buildSkincareExtensions(): DimensionSpec[] {
     {
       id: "ext.kol_endorsement",
       layer: "extension",
+      source: "ai_suggested",
       title: "KOL 与代言矩阵",
       intent: "品牌代言人、头部主播合作、内容投放渠道与频次",
       schema_ref: null,
@@ -84,6 +90,7 @@ export function buildSkincareExtensions(): DimensionSpec[] {
     {
       id: "ext.channel_distribution",
       layer: "extension",
+      source: "ai_suggested",
       title: "渠道与铺货",
       intent: "线下专柜密度、电商旗舰店运营、免税与海淘渠道占比",
       schema_ref: null,

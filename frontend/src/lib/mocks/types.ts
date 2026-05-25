@@ -7,11 +7,19 @@
  */
 
 export type DimensionLayer = "core" | "extension";
+export type DimensionSource = "system" | "ai_suggested" | "user_added";
 
 export interface DimensionSpec {
   /** Stable id. core layer uses "core.<schema>", extension uses "ext.<slug>" */
   id: string;
   layer: DimensionLayer;
+  /**
+   * Provenance — see PRD §七 7.0 invariants.
+   * - "system": locked core dimensions
+   * - "ai_suggested": ScopingAgent proposed (≤4 per task)
+   * - "user_added": user manually added on the outline page (no cap)
+   */
+  source: DimensionSource;
   /** User-editable section title rendered in the report TOC */
   title: string;
   /** User-editable one-line description that steers Analyst prompts */
