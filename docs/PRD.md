@@ -1,13 +1,17 @@
 # PRD: AI 驱动的竞品分析 Agent 协作系统
 
 > **文档性质**: 产品需求文档（PRD），交付给开发 Agent 拆任务用
-> **版本**: v1.2
-> **日期**: 2026-05-24
+> **版本**: v1.4
+> **日期**: 2026-05-25
 > **作者**: PM (Claude) + 项目负责人
 >
 > **v1.1 修订说明**（2026-05-23）：基于汉高战略部实习生反馈与比赛评分卡复核，引入**对话式立项 + 双层 Schema** 架构。固定 Schema（功能树/定价/画像/SWOT）保留为"核心层"满足比赛"严格符合预定义 Schema"评分项；新增"扩展层"由 AI 与用户协商动态生成，解决"维度因行业而异、无法预先穷尽"的真实痛点。详见本次修订设计草案 [plans/2026-05-23-dynamic-outline-scoping-design.md](../plans/2026-05-23-dynamic-outline-scoping-design.md)。影响章节：§四 / §六 / §七 / §九 / §十三 / §十四。
 >
 > **v1.2 修订说明**（2026-05-24）：显式声明 MVP 不做的事（避免开发 Agent over-engineering），并补一节"未来生产化路径"作为答辩材料。**不改动任何业务逻辑、Agent 设计或 Schema**，仅新增 §十一-bis Non-Goals、§十一-ter 未来生产化路径，§十二 风险表追加一行演示日并发兜底。详见 [plans/2026-05-24-prd-non-goals-and-future-scale.md](../plans/2026-05-24-prd-non-goals-and-future-scale.md)。
+>
+> **v1.3 修订说明**（2026-05-25）：新增 §十一-quater **演示模式（Demo Mode）**——纯前端静态回放路径，与真实 LangGraph 流程并存。同时把 §十一-bis 那行 `/reports/demo` 占位升级为完整规格。目的：演示日 API/网络抽风时仍可完整走完产品流程，并降低评委试用的 token 成本。**不改动任何 Agent 设计 / Schema / DAG 逻辑**，仅新增前端预录路径与对应 fixture。同步在 §九 前端线框图标注 demo 入口按钮。
+>
+> **v1.4 修订说明**（2026-05-25）：新增 **ScopingAgent**（第 5 个 Agent，DAG 外的对话式立项主语）填补 v1.1 留下的"TaskScopeContract 无人生成"漏洞。统一 NL 入口支持**三种意图模式**（A 列表式 / B 意图式 / C 混合式），混合模式 P0；§八 API 8.5 改名为 Scoping，原 `/api/competitors/suggest` 合并进 `/api/scoping/draft`；§七 7.0 TaskScopeContract 加 `intent_mode` 与 `scoping_rationale`，`competitors` 升级为 `list[CompetitorCandidate]` 保留 source 信息；§十 DB schema 加 `scoping_drafts` 表保留对话历史。详见 [plans/2026-05-25-prd-v1.4-scoping-agent-and-modes.md](../plans/2026-05-25-prd-v1.4-scoping-agent-and-modes.md)。影响章节：§四 / §六 / §七 / §八 / §九 / §十 / §十一 / §十一-quater / §十三。
 
 ---
 
@@ -80,20 +84,29 @@
 [1] 用户登录（邮箱验证码 OAuth）
     ↓
 [2] 新建分析任务（任务创建页 /tasks/new）：
-    主输入框：自然语言描述需求
-      例：「分析 SK-II / 资生堂 / 雅诗兰黛，重点看会员体系与 KOL」
-    可选 chip：手动追加竞品名（若 NL 中已含，AI 会自动提取并展示去重）
-    点击「生成大纲」→
+    单一 NL 输入框，自然语言描述需求。ScopingAgent 自动识别 3 种意图：
+      A. 列表式：「对比 SK-II / 资生堂 / 雅诗兰黛，重点看会员体系」
+                 → AI 提取 + 推荐 2-3 个同价位竞品 + 生成大纲
+      B. 意图式：「分析中国高端护肤品牌在 KOL 营销和会员体系的差异」
+                 → AI 推荐 3-5 个竞品 + 把研究意图拆解成大纲
+      C. 混合式：「我知道 SK-II 和雅诗兰黛，还有谁也在这个价位？」
+                 → AI 提取已知 + 补全到 3-5 个 + 大纲
+    可选 chip 区：手动追加已知竞品名，提前喂给 ScopingAgent
+    点击「生成大纲」→ 调 ScopingAgent
     ↓
 [3] 对话式立项（scoping 页 /tasks/new/scoping）：
-    AI 一次响应同时返回：
-      (a) 初步大纲（核心 4 章 🔒 + N 项扩展章节 ✏️，每章带「意图描述」）
-      (b) 1-3 个补充澄清问题（可跳过）
-      (c) 从 NL 中识别到的竞品列表（用户可增删）
+    ScopingAgent（见 §六 5.0）一次响应同时返回：
+      (a) 竞品列表 = NL 提取 ∪ 手动 chip ∪ AI 推荐，最终保证 3-5 个
+          每个竞品带 source 标签（user_chip / nl_extracted / ai_recommended）
+          AI 推荐的 chip 带「✨ 推荐理由」hover tooltip，用户可踢掉
+      (b) 初步大纲（核心 4 章 🔒 + N 项扩展章节 ✏️，每章带「意图描述」）
+      (c) 1-3 个补充澄清问题（可跳过）
+      (d) intent_mode 标签 + rationale 摘要（顶部折叠面板，默认收起）
     用户编辑：
+      - 竞品 chip：可增删（包括踢掉 AI 推荐的），可点「让 AI 再推荐几个」补
       - 核心章节（🔒 功能树 / 定价模型 / 用户画像 / SWOT）可改名 / 改意图 / 调顺序，不可删
       - 扩展章节（✏️ 任务相关维度）可改名 / 改意图 / 调顺序 / 删除 / 自定义新增
-      - 「重新生成大纲」按钮 = 带当前编辑过的章节 + 澄清回答回到 AI 再生成
+      - 「重新生成大纲」按钮 = 带当前编辑过的章节 + 竞品 + 澄清回答回到 ScopingAgent 再生成
     用户点「确认 → 开始分析」时，大纲 freeze 成 TaskScopeContract（见 §七 7.0）
     ↓
 [4] 启动 Agent 协作（任务运行页 /tasks/{id}）：
@@ -114,6 +127,8 @@
 ```
 
 > **v1.0 → v1.1 关键变化**：原 [2] 步的 A/B/C 三选项入口被合并为"NL 输入 + 可选 chip"的单一入口；原 [3] 步"维度勾选"被完全替换为"对话式立项"。背景见 §一 v1.1 修订说明与 [plans/2026-05-23-dynamic-outline-scoping-design.md](../plans/2026-05-23-dynamic-outline-scoping-design.md)。
+>
+> **v1.3 → v1.4 关键变化**：[2] [3] 步骤的"AI"明确为 **ScopingAgent**（§六 5.0 新增）；统一 NL 入口支持 3 种意图模式（列表 / 意图 / 混合），ScopingAgent 自动判别；竞品列表升级为 `list[CompetitorCandidate]` 保留 source 信息，AI 推荐项在 UI 视觉区分；scoping 页加「让 AI 再推荐几个」按钮。背景见 §一 v1.4 修订说明与 [plans/2026-05-25-prd-v1.4-scoping-agent-and-modes.md](../plans/2026-05-25-prd-v1.4-scoping-agent-and-modes.md)。
 
 ### 用户旅程关键体验点
 
@@ -170,7 +185,69 @@
 
 ## 六、多 Agent 设计（核心）
 
-### Agent 1: 采集 Agent (`CollectorAgent`)
+> **v1.4 架构**：系统总共 5 个 Agent，分两层——
+> - **ScopingAgent**（5.0）：在主 DAG 启动**之前**跑，对话式立项的主语，同步 LLM 调用
+> - **DAG 内 4 Agent**（5.1-5.4，原 1-4）：Collector / Analyst / Writer / QA，通过 LangGraph 编排，State 驱动 + 反馈闭环
+
+### Agent 5.0: 立项 Agent (`ScopingAgent`)（v1.4 新增）
+
+**职责**：对话式立项阶段的主语。负责把用户 NL 转成一份可执行的 TaskScopeContract 草案。
+
+具体工作：
+1. 解析用户 NL，识别意图（`list` / `intent` / `mixed`）
+2. 提取并推荐竞品，保证最终列表有 3-5 个候选
+3. 生成大纲：核心 4 章（固定）+ N 项扩展章（按 NL 焦点定制）
+4. 生成 1-3 个澄清问题
+5. 接收用户编辑反馈（编辑过的章节 / 增删的竞品 / 澄清回答），迭代再生成
+
+**与 DAG 内 4 Agent 的关键差别**：
+
+| 维度 | ScopingAgent | DAG 4 Agent |
+|---|---|---|
+| 调用位置 | 主 DAG **之前**（用户在 scoping 页面时） | 主 DAG **之内**（用户点「确认 → 开始分析」之后） |
+| 调用形态 | 同步 LLM call，前端等 1-3s | 异步 LangGraph 编排，SSE 推送进度 |
+| 反馈闭环 | 无 QA 闭环，用户本人即 reviewer，编辑即修正 | QA Agent 自动检查 + 打回重做（最多 3 次） |
+| 输出 | `ScopingDraft` → 用户 freeze 后 → `TaskScopeContract` | `WorkflowState` 各 Agent 产物 |
+| 是否进 trace_log | 进 `scoping_drafts` 表（独立） | 进 `agent_traces` 表 |
+
+**意图识别规则**（LLM prompt 里写死）：
+
+| 意图 | 触发条件 | ScopingAgent 行为重点 |
+|---|---|---|
+| `list` | NL 主要由 2+ 个具体竞品名构成 | 提取所有提到的竞品，推荐 2-3 个**同价位 / 同目标人群**的额外候选；大纲基于"对比"目的生成 |
+| `intent` | NL 描述研究问题但未提具体竞品（或只提 1 个） | **AI 推荐 3-5 个竞品**，附 reason（同价位 / 同渠道 / 同目标人群）；大纲对研究问题做精细拆解 |
+| `mixed` | NL 有 1-2 个竞品名 + 显式的"还有谁"诉求 | 提取已知竞品 + 补全到 3-5 个 AI 推荐 + 标准大纲 |
+
+**输入 Schema** (`ScopingRequest`):
+```python
+class ScopingRequest(BaseModel):
+    user_brief: str                                       # NL 全文
+    known_competitors: list[str] = []                     # 用户手动 chip
+    previous_draft: ScopingDraft | None = None            # 「重新生成大纲」时回带
+    clarification_answers: dict[str, str] = {}            # 上一轮澄清问题的答复
+```
+
+**输出 Schema** (`ScopingDraft`):
+```python
+class CompetitorCandidate(BaseModel):
+    name: str
+    source: Literal["user_chip", "nl_extracted", "ai_recommended"]
+    reason: str | None    # AI 推荐时填理由：同价位 / 同目标人群 / 同渠道 / 同品类领头
+
+class ScopingDraft(BaseModel):
+    intent_mode: Literal["list", "intent", "mixed"]
+    competitors: list[CompetitorCandidate]                # 保证 3-5 个
+    dimensions: list[DimensionSpec]                       # 核心 4 + N 扩展
+    clarifying_questions: list[ClarifyingQuestion]
+    rationale: str                                        # AI 拆解依据，留 trace + 可选展示
+```
+
+**对下游的承诺**：
+- `competitors` 长度 ∈ [3, 5]——少于 3 时 ScopingAgent 必须用 AI 推荐补齐
+- `dimensions` 中 `layer="core"` 的恰好 4 项（功能树 / 定价 / 画像 / SWOT），不可缺失，可改名
+- 输出**幂等**——同样的输入两次调用应给出**结构相同**（顺序可不同）的草案，方便用户多次「重新生成」时不大幅震荡
+
+### Agent 5.1: 采集 Agent (`CollectorAgent`)
 
 **职责**: 把"产品/竞品名"变成结构化原始数据
 
@@ -210,7 +287,7 @@
 }
 ```
 
-### Agent 2: 分析 Agent (`AnalystAgent`)
+### Agent 5.2: 分析 Agent (`AnalystAgent`)
 
 **职责**: 把原始数据结构化为竞品知识 Schema
 
@@ -235,7 +312,7 @@
 - `list[ExtensionFinding]`（扩展层产物，详见 §七 7.7）
 - `CrossCompetitorAnalysis`（多竞品对比，详见 §七 7.5）
 
-### Agent 3: 撰写 Agent (`WriterAgent`)
+### Agent 5.3: 撰写 Agent (`WriterAgent`)
 
 **职责**: 把结构化 Profile + 扩展产物写成给人看的报告
 
@@ -259,7 +336,7 @@
 
 **关键约束**: 不允许产生不带引用的结论（强制引用机制，抑制幻觉），核心层和扩展层一视同仁
 
-### Agent 4: 质检 Agent (`QAAgent`)
+### Agent 5.4: 质检 Agent (`QAAgent`)
 
 **职责**: 触发反馈闭环
 
@@ -538,12 +615,15 @@ class ExtensionFinding(BaseModel):
 
 ## 九、前端线框图（文字描述）
 
-### 页面 1a: 任务创建页 `/tasks/new`（v1.1）
+### 页面 1a: 任务创建页 `/tasks/new`（v1.3）
 ```
 ┌─────────────────────────────────────────────────────────┐
 │ [Logo] AI 竞品分析                                 [我] │
 ├─────────────────────────────────────────────────────────┤
 │ 创建分析任务                                            │
+│                                                         │
+│ [⚡ 30 秒看完整演示]    [🚀 创建我自己的任务（默认）]    │
+│  ↑ 跳 /demo/scoping     ↓ 走下方真实流程                │
 │                                                         │
 │ 说说你的分析需求 *                                       │
 │ ┌─────────────────────────────────────────────────────┐ │
@@ -557,6 +637,7 @@ class ExtensionFinding(BaseModel):
 │                         [生成大纲 →]                    │
 └─────────────────────────────────────────────────────────┘
 ```
+> 演示模式入口位于页面顶部，与真实任务入口视觉对等。详见 §十一-quater。
 
 ### 页面 1b: 对话式立项 / scoping 页 `/tasks/new/scoping`（v1.1 新增）
 ```
@@ -807,7 +888,7 @@ manual_corrections (
 ### 仍然要做的（提醒）
 - ✅ **单任务内多 Agent 并行**（LangGraph `Send` API 做 fan-out，4 个竞品的采集并行而非串行）
   —— 这不是"高并发"，是单任务内的并行度优化，**直接影响演示节奏**
-- ✅ **演示日运维预案**：Railway 临时升档 + 预置 3 个评委账号 + `/reports/demo` 不登录可看的样例报告
+- ✅ **演示日运维预案**：Railway 临时升档 + 预置 3 个评委账号 + 完整的**演示模式（Demo Mode）静态回放路径**（详见 §十一-quater）
 
 ---
 
@@ -857,6 +938,81 @@ manual_corrections (
    （OpenAI → 智谱）只需改 prompt 模板，State Schema 不动
 5. **Schema 双层架构（核心层固定 + 扩展层动态）** —— 未来 SaaS 化按行业卖
    "扩展模板包"有现成的扩展点
+
+---
+
+## 十一-quater、演示模式 / Demo Mode（v1.3 新增）
+
+> **目的**：演示日 OpenAI / Tavily / Neon / Railway 任一抽风时，评委仍能完整体验产品全流程；同时降低评委试用的 token 成本（每次点击 = 0 美元）。
+>
+> **设计原则**：**纯前端静态回放，零后端调用**。与真实 LangGraph 流程并存、互不干扰。
+
+### 11Q.1 入口
+
+`/tasks/new` 顶部并排两个按钮，文案与视觉一视同仁、不刻意藏 demo：
+
+- **「⚡ 30 秒看完整演示」** → 进入 demo 路径（本节定义）
+- **「🚀 创建我自己的任务」** → 走 §四 主流程
+
+> **不藏 demo 的理由**：评委要看的就是"端到端产品体验"，demo 路径**就是**最完整的端到端，不是降级版。
+
+### 11Q.2 路由与体验脚本
+
+demo 路径走独立 route 前缀 `/demo/*`，**绝对不复用** `/tasks/new` / `/tasks/{id}` / `/reports/{id}` 的真实 route——避免 fixture 数据污染真实任务。
+
+```
+[点击「30 秒看完整演示」]
+  ↓
+/demo/scoping              （预填 NL + 竞品 chip + 大纲，1.5s 自动「确认 → 开始分析」）
+  ↓
+/demo/run                  （伪 DAG 动画 — 预录的 trace 一条条按时间戳回放，
+                            ~20-30s 走完 4 个 Agent，每节点完成有视觉反馈）
+  ↓
+/demo/report               （预先生成好的真报告 — 核心 4 章 + 2-3 个扩展章
+                            溯源面板 / PDF 导出 / PPTX 导出 / 字段展开 全功能可用）
+```
+
+每个 demo 页面**右上角固定一个"演示样例"水印徽标**，hover 显示 tooltip：「本路径为预录回放，用于网络/API 异常时的兜底体验。点这里走真实任务」→ 跳 `/tasks/new`。
+
+### 11Q.3 数据形态
+
+所有 fixture 落在前端 `src/lib/mocks/demo/`：
+
+| 文件 | 内容 |
+|---|---|
+| `scope.json` | 完整 `TaskScopeContract`（含 user_brief / clarifications / dimensions / competitors） |
+| `trace.json` | DAG 回放脚本：`[{ts_offset_ms, agent, event, payload}, ...]`，~30 条 |
+| `report.json` | 完整报告渲染数据（核心 4 章 + 2-3 扩展章 + sources + cross_analysis） |
+| `sources.json` | `SourceCitation` 列表，每条都有真 URL（指向公开网页），溯源点击能真正打开 |
+
+**演示案例选择**：建议用**汉高场景的 3 个真实日化竞品**（SK-II / 资生堂 / 雅诗兰黛）的「会员体系与 KOL 策略」分析——
+- 评委 / 老师容易共鸣
+- 跟 §十四 访谈场景对齐，体现"贴合真实业务"
+- 报告内容由项目组**预先用真实 LangGraph 跑过一次**再截图固化（不是手写编造）
+
+### 11Q.4 验收
+
+- ✅ 完全离线可演示（拔网线 → 浏览器开 demo → 全流程跑完）
+- ✅ 三个 demo 页面之间的跳转 ≤ 总时长 30s
+- ✅ 报告页所有交互（溯源 / 展开 / 导出）真实可用，不是图片
+- ✅ 水印明确标注，**绝不**伪装成真实任务
+- ✅ 不污染真实任务路由的代码与数据
+
+### 11Q.5 工程量估算
+
+约 **2-3 个工作日**（前端独立完成，与后端开发并行）：
+- 1 天：3 个 demo 页面 + 水印 + 路由
+- 1 天：fixture 数据生成（先手写一版，后端跑通后用真数据替换）
+- 0.5-1 天：联调 + 视觉打磨
+
+### 11Q.6 与评分项的映射
+
+| 评分项 | demo 模式如何加分 |
+|---|---|
+| 业务价值 20% | "30 秒看完整产品"对评委的第一印象远超"等 5 分钟看真实跑" |
+| 多 Agent 协作 35% | demo 报告就是真实跑的产物截图，溯源与 Schema 完整性照样能展示 |
+| 答辩材料 10% | 演讲稿可以"先放 demo 跑完，再现场跑一遍真实"——双保险 |
+| 技术深度 25% | demo 不会"加分"，但能确保前面三项不会**因为现场翻车而丢分** |
 
 ---
 
