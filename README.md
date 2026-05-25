@@ -86,6 +86,7 @@ competitor_analysis/
 | [docs/PRD.md](docs/PRD.md) | 完整产品需求文档（v1.4） |
 | [docs/tech-stack.md](docs/tech-stack.md) | 技术选型与依赖说明 |
 | [docs/git-workflow.md](docs/git-workflow.md) | 分支管理与提交规范 |
+| [docs/ai-collaboration.md](docs/ai-collaboration.md) | AI 深度协作分工与证据链说明 |
 | [claude-progress.txt](claude-progress.txt) | 开发进度日志 |
 
 ---

@@ -90,6 +90,7 @@ competitor_analysis/
 | 提交代码 / 创建 PR / 管理分支 | [docs/git-workflow.md](docs/git-workflow.md) — Conventional Commits |
 | 写测试 | [docs/testing.md](docs/testing.md) |
 | 准备访谈 / 找演示案例 | [docs/collaboration-hankel.md](docs/collaboration-hankel.md) |
+| 准备答辩 / 整理 AI 协作证据 | [docs/ai-collaboration.md](docs/ai-collaboration.md) |
 
 ### 项目内部状态文件（**不是 Claude Code 的工作记忆**）
 
