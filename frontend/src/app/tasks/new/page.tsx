@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Plus, X } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,39 +12,30 @@ import { useLangStore } from "@/stores/lang-store";
 import { cn } from "@/lib/utils";
 
 const EN_PLACEHOLDER =
-  "e.g. Compare SK-II, Shiseido, and Estée Lauder on membership programs and KOL strategy in Chinese e-commerce, focusing on urban female consumers aged 25-35.";
+  "e.g. Compare SK-II, Shiseido, and Estée Lauder on membership programs and KOL strategy in Chinese e-commerce…";
+
+// Keywords that signal "skip planning, generate directly"
+const DIRECT_ZH = ["直接生成", "直接开始", "直接做", "直接分析", "不要计划", "不要大纲", "不用问", "别问我", "跳过"];
+const DIRECT_EN = ["directly", "skip", "no plan", "no outline", "just do it", "don't ask", "generate now", "without plan"];
+
+function classifyIntent(brief: string): "direct" | "plan" {
+  const lower = brief.toLowerCase();
+  if (DIRECT_ZH.some((kw) => brief.includes(kw))) return "direct";
+  if (DIRECT_EN.some((kw) => lower.includes(kw))) return "direct";
+  return "plan";
+}
 
 export default function NewTaskPage() {
   const router = useRouter();
   const { lang } = useLangStore();
-  const {
-    userBrief,
-    manualCompetitors,
-    setUserBrief,
-    addManualCompetitor,
-    removeManualCompetitor,
-  } = useScopingStore();
-
-  const [chipDraft, setChipDraft] = useState("");
+  const { userBrief, setUserBrief } = useScopingStore();
 
   const canSubmit = userBrief.trim().length > 0;
-
-  function handleChipKey(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter" || e.key === ",") {
-      e.preventDefault();
-      const name = chipDraft.trim();
-      if (name) {
-        addManualCompetitor(name);
-        setChipDraft("");
-      }
-    } else if (e.key === "Backspace" && !chipDraft && manualCompetitors.length) {
-      removeManualCompetitor(manualCompetitors[manualCompetitors.length - 1]);
-    }
-  }
+  const isDirect = canSubmit && classifyIntent(userBrief) === "direct";
 
   function handleSubmit() {
     if (!canSubmit) return;
-    router.push("/tasks/new/scoping");
+    router.push(isDirect ? "/tasks/demo" : "/tasks/new/scoping");
   }
 
   return (
@@ -62,7 +52,7 @@ export default function NewTaskPage() {
       </h1>
 
       {/* The NL brief */}
-      <div className="space-y-3 mb-10 animate-[slide-up_0.6s_cubic-bezier(0.16,1,0.3,1)_0.25s_both]">
+      <div className="space-y-3 mb-14 animate-[slide-up_0.6s_cubic-bezier(0.16,1,0.3,1)_0.25s_both]">
         <div className="flex items-baseline justify-between">
           <Label
             htmlFor="brief"
@@ -92,95 +82,22 @@ export default function NewTaskPage() {
         />
       </div>
 
-      {/* Optional competitor chips */}
-      <div className="space-y-3 mb-12 animate-[slide-up_0.6s_cubic-bezier(0.16,1,0.3,1)_0.35s_both]">
-        <div className="flex items-baseline justify-between">
-          <Label
-            htmlFor="competitors"
-            className="text-sm font-medium uppercase tracking-wider text-foreground"
-          >
-            {lang === "zh" ? "竞品名称" : "Competitors"}{" "}
-            <span className="ml-2 text-xs normal-case tracking-normal text-muted-foreground font-normal">
-              {lang === "zh"
-                ? "可选 · 不填会从上方需求自动提取"
-                : "Optional · Auto-extracted from your request above"}
-            </span>
-          </Label>
-          {manualCompetitors.length > 0 && (
-            <span className="tabular text-xs text-muted-foreground">
-              {manualCompetitors.length}&nbsp;{lang === "zh" ? "项" : "items"}
-            </span>
-          )}
-        </div>
-
-        <div
-          className={cn(
-            "flex flex-wrap items-center gap-2 px-3 py-2.5",
-            "bg-card border border-border/70 rounded-md",
-            "shadow-[0_1px_0_0_oklch(0.88_0.012_75_/_0.6)]",
-            "focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/20",
-            "transition-shadow",
-          )}
-        >
-          {manualCompetitors.map((name) => (
-            <span
-              key={name}
-              className={cn(
-                "group inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1",
-                "bg-secondary text-secondary-foreground text-sm rounded",
-                "border border-border/60",
-                "animate-[fade-in_0.2s_ease-out]",
-              )}
-            >
-              <span>{name}</span>
-              <button
-                type="button"
-                onClick={() => removeManualCompetitor(name)}
-                className="rounded-sm p-0.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                aria-label={`移除 ${name}`}
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </span>
-          ))}
-          <input
-            id="competitors"
-            name="competitors"
-            type="text"
-            value={chipDraft}
-            onChange={(e) => setChipDraft(e.target.value)}
-            onKeyDown={handleChipKey}
-            placeholder={
-              manualCompetitors.length === 0
-                ? lang === "zh"
-                  ? "输入名称后按 Enter 添加…"
-                  : "Type a name and press Enter to add..."
-                : ""
-            }
-            autoComplete="off"
-            autoCorrect="off"
-            spellCheck={false}
-            aria-label="添加竞品名称"
-            className="flex-1 min-w-[140px] bg-transparent outline-none text-sm placeholder:text-muted-foreground/60"
-          />
-        </div>
-
-        {chipDraft && (
-          <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-            <Plus className="h-3 w-3" />
-            {lang === "zh" ? `按 Enter 添加「${chipDraft}」` : `Press Enter to add "${chipDraft}"`}
-          </p>
-        )}
-      </div>
-
       <div className="rule-fade mb-8" />
 
       {/* Submit */}
-      <div className="flex flex-col-reverse gap-4 sm:flex-row sm:items-center sm:justify-between animate-[slide-up_0.6s_cubic-bezier(0.16,1,0.3,1)_0.45s_both]">
-        <p className="text-xs text-muted-foreground sm:max-w-[28ch]">
-          {lang === "zh"
-            ? "下一步：AI 会基于需求生成大纲并提出补充问题，你可以编辑后再开始分析。"
-            : "Next: AI will generate an outline and ask clarifying questions. You can edit before starting."}
+      <div className="flex flex-col-reverse gap-4 sm:flex-row sm:items-center sm:justify-between animate-[slide-up_0.6s_cubic-bezier(0.16,1,0.3,1)_0.35s_both]">
+        <p className="text-xs text-muted-foreground sm:max-w-[34ch]">
+          {!canSubmit
+            ? lang === "zh"
+              ? "描述需求，AI 会自动判断是否先给大纲让你确认。"
+              : "Describe your need. AI decides whether to confirm a plan first."
+            : isDirect
+              ? lang === "zh"
+                ? "已识别「直接生成」模式，将跳过大纲确认步骤。"
+                : "Direct mode detected — skipping outline confirmation."
+              : lang === "zh"
+                ? "AI 会先给一份大纲，确认后再开始分析。"
+                : "AI will show a draft outline for your approval first."}
         </p>
 
         <Button
@@ -195,7 +112,9 @@ export default function NewTaskPage() {
             !canSubmit && "shadow-none",
           )}
         >
-          {lang === "zh" ? "生成大纲" : "Generate Outline"}
+          {isDirect
+            ? lang === "zh" ? "直接分析" : "Analyze Now"
+            : lang === "zh" ? "生成大纲" : "Generate Outline"}
           <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
         </Button>
       </div>
