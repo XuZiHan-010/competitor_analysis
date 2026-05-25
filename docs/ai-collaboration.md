@@ -7,10 +7,6 @@
 
 ## 一、协作目标
 
-本项目将 AI 编程工具视为分工明确的协作成员，而不是单次问答或代码补全工具。
-
-我们希望评委能够看到三件事：
-
 1. 不同 AI 工具有明确职责边界
 2. AI 参与贯穿架构、实现、评审三个阶段
 3. 协作过程在文档、提交记录、PR 和 review 中都有痕迹
@@ -26,9 +22,7 @@
 | **Claude Code Opus 4.7** | 架构设计、PRD 演进、Agent 协议、系统拆解 | `docs/PRD.md`、架构章节、任务拆解草案 |
 | **Claude Sonnet 4.6** | 前端页面开发、交互设计、组件细化、UI 重构 | `frontend/` 下页面与组件、交互优化提交 |
 | **Codex** | 后端开发、FastAPI API、LangGraph DAG、Pydantic Schema、联调 | `backend/`、接口契约、状态流实现 |
-| **TRAE** | 代码 review、风险检查、边界问题修复、小范围修改 | review 反馈、修复 commit、质量改进记录 |
-
-> 人类开发者负责需求判断、优先级选择、最终提交与合并决策。AI 工具参与设计与实现，但不替代最终工程责任。
+| **TRAE** | 前端开发后审查、后端开发后审查、代码 review、风险检查、边界问题修复、小范围修改 | review 反馈、修复 commit、质量改进记录 |
 
 ---
 
@@ -41,9 +35,7 @@
 - **架构阶段**：Claude Code Opus 4.7 负责把需求沉淀为 PRD、Agent 边界、Schema 设计和系统流程
 - **前端阶段**：Claude Sonnet 4.6 基于既定 PRD 和协议实现 UI、页面与交互细节
 - **后端阶段**：Codex 根据同一份契约实现 API、状态流和后端模块
-- **评审阶段**：TRAE 对现有改动做 review，识别风险和可改进点，再形成后续修复
-
-这种方式体现的是“AI 与 AI 之间有上下游交接，且围绕统一文档协同推进”，而不是彼此孤立地产出代码。
+- **评审阶段**：TRAE 根据prd和开发计划，负责整个项目的前端和后端开发后的审查，识别风险和可改进点，再形成后续修复
 
 ### 2. 统一事实源驱动协作
 
@@ -67,7 +59,7 @@
 这些痕迹共同证明：
 
 - 哪个工具参与了哪一类工作
-- AI 参与的是设计、实现还是 review
+- AI 参与的是设计、实现、前端审查、后端审查还是 review 修复
 - 协作是否贯穿整个开发流程
 
 ---
@@ -112,7 +104,7 @@ git log --grep="Co-Authored-By" --oneline
 - Claude Code Opus 4.7: refined PRD and architecture constraints
 - Claude Sonnet 4.6: implemented frontend interaction updates
 - Codex: implemented backend contracts and workflow logic
-- TRAE: reviewed the change set and suggested follow-up fixes
+- TRAE: reviewed both frontend and backend changes and suggested follow-up fixes
 
 ## Human Decisions
 - locked the core four schemas as MVP invariants
@@ -122,7 +114,7 @@ git log --grep="Co-Authored-By" --oneline
 
 ### 4.3 Review 与修复闭环
 
-如果 TRAE 参与 review，建议不要只停留在口头检查，而要形成显式修复记录：
+如果 TRAE 参与 review，建议前端开发后和后端开发后都留下显式审查记录，而不要只停留在口头检查：
 
 - review 发现问题
 - 新增 `fix(...)` 提交
@@ -139,14 +131,14 @@ git log --grep="Co-Authored-By" --oneline
 1. **Claude Code Opus 4.7**：负责 PRD、架构和 Agent 协议演进
 2. **Claude Sonnet 4.6**：负责 `frontend/` 下页面、组件、交互和视觉细化
 3. **Codex**：负责 `backend/` 下 API、Schema、LangGraph 编排和联调
-4. **TRAE**：在阶段性 PR 上执行 review，提出风险点和修复建议
+4. **TRAE**：在前端开发后和后端开发后执行审查，必要时在阶段性 PR 上继续补充 review，提出风险点和修复建议
 
 对应到仓库中的证据形式：
 
 - 文档更新提交：体现架构阶段协作
 - 前端 feature 提交：体现交互实现阶段协作
 - 后端 feature 提交：体现系统实现阶段协作
-- review 修复提交：体现质量把关和闭环
+- 前端审查 / 后端审查后的 review 修复提交：体现质量把关和闭环
 
 ---
 
@@ -158,7 +150,7 @@ git log --grep="Co-Authored-By" --oneline
    - Claude Opus：架构
    - Sonnet：前端
    - Codex：后端
-   - TRAE：review
+   - TRAE：前后端审查与 review
 
 2. 一段 Git 历史截图
    - 展示带 `Co-Authored-By` 的 commit
@@ -171,7 +163,7 @@ git log --grep="Co-Authored-By" --oneline
 
 推荐讲解口径：
 
-> 我们不是把 AI 当作简单代码补全工具，而是把不同模型放在架构、前端、后端和 review 四个阶段分工协作，并通过文档、提交历史、PR 和修复记录保留完整证据链。
+> 我们不是把 AI 当作简单代码补全工具，而是把不同模型放在架构、前端、后端、前后端审查和 review 修复几个阶段分工协作，并通过文档、提交历史、PR 和修复记录保留完整证据链。
 
 ---
 
@@ -182,7 +174,7 @@ git log --grep="Co-Authored-By" --oneline
 - [ ] 关键 commit 带 `Co-Authored-By`
 - [ ] 至少 1 个 PR 写明 AI 分工和辅助环节
 - [ ] 至少 1 份文档明确记录 AI 协作方式
-- [ ] 至少 1 次 review 有对应修复提交
+- [ ] 至少 1 次前端或后端审查有对应修复提交
 - [ ] 答辩材料中单独展示 AI 协作证据
 
 如果只有「commit 里出现 Eric + Codex / Claude」，可以证明“使用了 AI”，但还不足以完整体现“深度协作”。本文件的目标就是把这部分证据补齐。
