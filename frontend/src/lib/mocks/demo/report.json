@@ -1,240 +1,263 @@
 {
   "_origin": "scaffold",
-  "task_id": "demo_henkel_skincare_2026",
-  "title": "高端护肤品牌中国电商竞品分析",
-  "subtitle": "SK-II · 资生堂 · 雅诗兰黛 · 25-35 岁城市女性",
+  "task_id": "demo_bytedance_shortVideo_2026",
+  "title": "短视频平台内容电商竞品分析",
+  "subtitle": "抖音 · 快手 · 微信视频号 · 品牌方投放效率与创作者变现机制",
   "generated_at": "2026-05-25T09:43:05.000Z",
-  "competitors": ["SK-II", "资生堂", "雅诗兰黛"],
+  "competitors": ["抖音", "快手", "微信视频号"],
 
   "feature_tree": {
-    "intro": "三家品牌均以「明星单品 + 抗老护肤」为核心定位，SK-II 聚焦发酵成分主导的肌底护理，资生堂强调免疫力修护并叠加日系科技背书，雅诗兰黛则以 DNA 修护与色彩科技形成「护肤 + 彩妆」双线优势。",
+    "intro": "三大平台均以短视频 + 直播为核心形态，但在流量分发机制和商业化路径上存在根本差异：抖音以中心化算法推荐为主、快手在算法基础上叠加社交关系链、微信视频号则优先依托微信私域社交图谱分发。这一底层逻辑差异直接决定了各平台的广告变现效率、电商转化路径和创作者生态特征。",
     "rows": [
       {
-        "feature": "明星精华",
-        "description": "品牌核心王牌精华产品",
+        "feature": "短视频发布",
+        "description": "竖屏短视频核心发布能力",
         "cells": [
-          { "competitor": "SK-II", "status": "supported", "note": "PITERA 神仙水 230ml" },
-          { "competitor": "资生堂", "status": "supported", "note": "红妍肌活精华露 50ml" },
-          { "competitor": "雅诗兰黛", "status": "supported", "note": "小棕瓶特润精华 50ml" }
+          { "competitor": "抖音",     "status": "supported", "note": "最高 4K 60fps，AI 滤镜与剪映一体化" },
+          { "competitor": "快手",     "status": "supported", "note": "快影剪辑工具集成，老铁互动特效" },
+          { "competitor": "微信视频号", "status": "supported", "note": "支持最长 30 分钟，微信分享跳转流畅" }
+        ],
+        "source_ids": ["src_008"]
+      },
+      {
+        "feature": "直播带货",
+        "description": "直播间实时购物车与带货能力",
+        "cells": [
+          { "competitor": "抖音",     "status": "supported", "note": "抖音小店 + 第三方跳转，GMV 贡献 60%+" },
+          { "competitor": "快手",     "status": "supported", "note": "快手小店，直播带货占平台 GMV 75%" },
+          { "competitor": "微信视频号", "status": "partial",   "note": "视频号小店，仍在快速补齐物流/售后生态" }
         ],
         "source_ids": ["src_001", "src_003", "src_005"]
       },
       {
-        "feature": "抗老面霜",
-        "description": "中高价位抗老面霜矩阵",
+        "feature": "独立商城入口",
+        "description": "独立于直播的货架式商城",
         "cells": [
-          { "competitor": "SK-II", "status": "supported", "note": "大红瓶面霜 50g" },
-          { "competitor": "资生堂", "status": "supported", "note": "盼丽风姿系列" },
-          { "competitor": "雅诗兰黛", "status": "supported", "note": "白金面霜 / 立体塑颜系列" }
+          { "competitor": "抖音",     "status": "supported", "note": "抖音商城 DAU 4 亿+，货架电商占比持续提升" },
+          { "competitor": "快手",     "status": "supported", "note": "快手商城，与直播深度联动" },
+          { "competitor": "微信视频号", "status": "partial",   "note": "依托微信小程序商城，视频号内跳转路径深" }
         ],
-        "source_ids": ["src_001", "src_003", "src_005"]
+        "source_ids": ["src_001", "src_003", "src_006"]
       },
       {
-        "feature": "眼部护理",
-        "description": "明星眼霜产品矩阵",
+        "feature": "私域沉淀工具",
+        "description": "品牌与用户建立长期关系的私域能力",
         "cells": [
-          { "competitor": "SK-II", "status": "supported", "note": "大眼眼霜 15g" },
-          { "competitor": "资生堂", "status": "supported", "note": "盼丽风姿眼霜" },
-          { "competitor": "雅诗兰黛", "status": "supported", "note": "白金眼霜 / 小棕瓶眼部精华" }
+          { "competitor": "抖音",     "status": "partial",   "note": "企业号 + 私信，私域转化受公域流量依赖限制" },
+          { "competitor": "快手",     "status": "partial",   "note": "粉丝群 + 老铁互动，转化率优于抖音" },
+          { "competitor": "微信视频号", "status": "supported", "note": "公众号 / 企业微信 / 微信群无缝联动，复购率 34%" }
         ],
-        "source_ids": ["src_001", "src_003", "src_005"]
+        "source_ids": ["src_006", "src_014"]
       },
       {
-        "feature": "高倍防晒",
-        "description": "SPF50+ 高倍数防晒",
+        "feature": "算法分发能力",
+        "description": "内容推荐算法的精准度与覆盖效率",
         "cells": [
-          { "competitor": "SK-II", "status": "partial", "note": "仅基础 SPF30" },
-          { "competitor": "资生堂", "status": "supported", "note": "新艳阳夏蓝胖子 SPF50+" },
-          { "competitor": "雅诗兰黛", "status": "partial", "note": "仅美白底霜防晒" }
+          { "competitor": "抖音",     "status": "supported", "note": "字节系推荐算法业界标杆，冷启动最快" },
+          { "competitor": "快手",     "status": "supported", "note": "算法 + 社交双引擎，粉丝流量占比约 30%" },
+          { "competitor": "微信视频号", "status": "partial",   "note": "优先社交关系链分发，算法推荐权重偏低" }
         ],
-        "source_ids": ["src_003", "src_001", "src_005"]
+        "source_ids": ["src_007", "src_008"]
       },
       {
-        "feature": "彩妆联动",
-        "description": "护肤 + 彩妆品牌矩阵",
+        "feature": "搜索功能",
+        "description": "站内搜索与内容/商品发现",
         "cells": [
-          { "competitor": "SK-II", "status": "unsupported", "note": "仅护肤定位" },
-          { "competitor": "资生堂", "status": "partial", "note": "时光琉璃彩妆，独立线" },
-          { "competitor": "雅诗兰黛", "status": "supported", "note": "粉气垫 / DW 粉底等完整彩妆线" }
+          { "competitor": "抖音",     "status": "supported", "note": "抖音搜索月活超 5.5 亿，搜索广告快速增长" },
+          { "competitor": "快手",     "status": "partial",   "note": "快手搜索上线，内容索引仍在完善" },
+          { "competitor": "微信视频号", "status": "partial",   "note": "依托微信搜一搜，视频号内独立搜索能力弱" }
         ],
-        "source_ids": ["src_001", "src_003", "src_005"]
+        "source_ids": ["src_002", "src_008"]
       },
       {
-        "feature": "套盒赠品",
-        "description": "节日限定礼盒与赠品组合",
+        "feature": "付费内容/订阅",
+        "description": "创作者向用户收费的付费订阅能力",
         "cells": [
-          { "competitor": "SK-II", "status": "supported", "note": "限量瓶身 + 中样套装" },
-          { "competitor": "资生堂", "status": "supported", "note": "买正装赠 30ml 中样" },
-          { "competitor": "雅诗兰黛", "status": "supported", "note": "节日限定礼盒 + 限定彩妆" }
+          { "competitor": "抖音",     "status": "partial",   "note": "付费直播连麦、短剧付费解锁功能灰测" },
+          { "competitor": "快手",     "status": "partial",   "note": "快手直播礼物打赏 + 快手超级会员" },
+          { "competitor": "微信视频号", "status": "partial",   "note": "微信豆赞赏 + 付费合集，闭环相对完整" }
         ],
-        "source_ids": ["src_002", "src_004", "src_006"]
+        "source_ids": ["src_010"]
       },
       {
-        "feature": "肌肤诊断工具",
-        "description": "在线 / 线下肌肤测试服务",
+        "feature": "品牌企业工具",
+        "description": "企业账号运营与官方品牌服务工具",
         "cells": [
-          { "competitor": "SK-II", "status": "supported", "note": "Magic Ring 魔镜诊断" },
-          { "competitor": "资生堂", "status": "supported", "note": "线下专柜肌肤密度检测" },
-          { "competitor": "雅诗兰黛", "status": "partial", "note": "小程序 AI 测肤" }
+          { "competitor": "抖音",     "status": "supported", "note": "蓝 V 企业号 + 抖音来客本地生活服务" },
+          { "competitor": "快手",     "status": "partial",   "note": "快手企业号，本地生活服务覆盖尚浅" },
+          { "competitor": "微信视频号", "status": "partial",   "note": "视频号认证 + 企业微信联动，B 端服务待完善" }
         ],
-        "source_ids": ["src_001", "src_003", "src_005"]
+        "source_ids": ["src_001", "src_003"]
       }
     ]
   },
 
   "pricing": {
-    "intro": "三家品牌正装精华区间集中在 ¥900-2100，会员折扣力度差异显著。SK-II 黑卡 88 折常态化，雅诗兰黛通过 ELC 多层级解锁更深折扣，资生堂依赖积分 + 中样组合而非直接折扣。",
+    "intro": "三平台均提供从免费流量到付费广告的梯度变现产品线。抖音巨量引擎广告产品最为丰富，CPM 基准值最高但 ROAS 也最高；快手磁力引擎定价更具性价比，适合中小品牌起量；视频号广告正处于快速放量期，与腾讯广告生态联投可有效摊薄成本。",
     "tiers": [
       {
-        "competitor": "SK-II",
-        "tier": "神仙水 230ml 正装",
-        "price": "¥1,990",
-        "highlights": ["黑卡 8.8 折后 ¥1,749", "双 11 折后 ¥1,549", "套装含中样 75ml"],
+        "competitor": "抖音",
+        "tier": "信息流广告（CPM）",
+        "price": "¥40–80 / CPM",
+        "highlights": ["泛娱乐内容场景覆盖广", "A/B 素材测试工具完备", "与短视频内容流无缝融合"],
         "source_ids": ["src_002"]
       },
       {
-        "competitor": "SK-II",
-        "tier": "大红瓶面霜 50g",
-        "price": "¥1,690",
-        "highlights": ["黑卡享生日双倍积分", "无超大份装"],
+        "competitor": "抖音",
+        "tier": "TopView 开屏广告",
+        "price": "¥80–150 万 / 天（包断）",
+        "highlights": ["日覆盖 3 亿+ 用户", "品牌节点独家曝光", "开屏即发声，适合大促首日"],
         "source_ids": ["src_002"]
       },
       {
-        "competitor": "SK-II",
-        "tier": "六件套大礼盒",
-        "price": "¥3,890",
-        "highlights": ["年度仅 2 次", "含限定瓶身"],
-        "source_ids": ["src_002"]
+        "competitor": "抖音",
+        "tier": "巨量星图达人合作",
+        "price": "¥3–8 万 / 条（百万粉）",
+        "highlights": ["10 万家品牌合作生态", "佣金分成或固定报价可选", "直播坑位费 ¥5–30 万"],
+        "source_ids": ["src_011"]
       },
       {
-        "competitor": "资生堂",
-        "tier": "红腰子精华 50ml",
-        "price": "¥1,080",
-        "highlights": ["大促价 ¥920", "积分 1:1 兑赠品"],
-        "source_ids": ["src_004"]
+        "competitor": "快手",
+        "tier": "磁力引擎信息流（CPM）",
+        "price": "¥15–60 / CPM",
+        "highlights": ["CPM 比抖音低 30–40%", "老铁用户高互动率补偿低单价", "直播广告 CPE 低 22%"],
+        "source_ids": ["src_013"]
       },
       {
-        "competitor": "资生堂",
-        "tier": "盼丽风姿面霜 50g",
-        "price": "¥1,350",
-        "highlights": ["VIP 享 92 折", "节日加赠中样 15ml × 2"],
-        "source_ids": ["src_004"]
+        "competitor": "快手",
+        "tier": "品牌挑战赛",
+        "price": "¥200–500 万 / 次",
+        "highlights": ["单次活动平均曝光 3 亿次", "UGC 二次传播效应强", "适合年轻品牌势能爆发"],
+        "source_ids": ["src_013"]
       },
       {
-        "competitor": "资生堂",
-        "tier": "蓝胖子防晒 60ml",
-        "price": "¥460",
-        "highlights": ["双 11 第二件半价", "薄荷瓶限量"],
-        "source_ids": ["src_004"]
+        "competitor": "快手",
+        "tier": "磁力聚星达人合作",
+        "price": "¥1–4 万 / 条（百万粉）",
+        "highlights": ["50 万签约达人可选", "接单佣金比例 10–15%", "老铁文化粉丝信任度高"],
+        "source_ids": ["src_004", "src_010"]
       },
       {
-        "competitor": "雅诗兰黛",
-        "tier": "小棕瓶 7 代精华 50ml",
-        "price": "¥1,180",
-        "highlights": ["铂钻享 85 折 ¥1,003", "金钻享 90 折"],
-        "source_ids": ["src_006"]
+        "competitor": "微信视频号",
+        "tier": "视频号信息流广告（CPM）",
+        "price": "¥25–100 / CPM",
+        "highlights": ["与朋友圈联投降低 CPM 约 20%", "微信支付跳转无摩擦", "私域人群包精准定向"],
+        "source_ids": ["src_012"]
       },
       {
-        "competitor": "雅诗兰黛",
-        "tier": "白金面霜 50ml",
-        "price": "¥2,800",
-        "highlights": ["铂钻级生日双倍积分", "套装含眼霜"],
-        "source_ids": ["src_006"]
+        "competitor": "微信视频号",
+        "tier": "腾讯广告联合投放",
+        "price": "¥30–80 / CPM（联投均价）",
+        "highlights": ["全腾讯系流量统一购买", "微信 + QQ + 小程序多场景覆盖", "适合中高端品牌精准触达"],
+        "source_ids": ["src_012"]
       },
       {
-        "competitor": "雅诗兰黛",
-        "tier": "节日限定礼盒",
-        "price": "¥2,360",
-        "highlights": ["年度 4 次", "含限定彩妆联动"],
-        "source_ids": ["src_006"]
+        "competitor": "微信视频号",
+        "tier": "视频号小店服务费",
+        "price": "0–5%（按类目）",
+        "highlights": ["开店无门槛，佣金与快手齐平", "微信支付跳转复购率 34%", "私域沉淀成本最低"],
+        "source_ids": ["src_005", "src_006"]
       }
     ]
   },
 
   "user_personas": {
-    "intro": "三家品牌的核心用户都集中在 25-35 岁城市女性，但需求侧重和触发场景不同：SK-II 用户更看重「肌底改善 + 高端身份感」；资生堂用户偏向「日常初老 + 性价比平衡」；雅诗兰黛用户最看重「修护 + 全场景护理」。",
+    "intro": "三平台用户群体在年龄、地域、消费意愿上存在显著分层：抖音以一二线年轻消费者为主力，快手深耕三至五线城市的「老铁」经济圈，微信视频号则依托微信存量用户触达 35 岁以上的成熟消费群体。品牌策略需依据自身目标客群选择主投平台。",
     "personas": [
       {
-        "competitor": "SK-II",
-        "label": "都市精致白领（28-35 岁）",
+        "competitor": "抖音",
+        "label": "都市年轻潮流消费者",
         "size": "majority",
-        "needs": ["改善熬夜肌肤暗沉", "高端身份感与社交资本", "明星单品长期忠诚"],
-        "pain_points": ["客单价偏高", "缺乏防晒矩阵", "中样赠品周期长"],
-        "evidence": "「黑卡续费三年了，神仙水基本是常备」 — 小红书 28 岁用户评论",
-        "source_ids": ["src_007", "src_010"]
+        "needs": ["高颜值内容娱乐消遣", "新品首发与潮流趋势", "冲动消费与即时满足"],
+        "pain_points": ["广告太多影响体验", "商品真实性难以核实", "私信被品牌过度打扰"],
+        "evidence": "「我一天最少刷 2 小时，双 11 期间在抖音直播间买了 6 件，从来不会提前去淘宝搜，感觉更有趣。」——抖音用户（24 岁，上海）",
+        "source_ids": ["src_009", "src_007"]
       },
       {
-        "competitor": "资生堂",
-        "label": "新中产职场女性（26-32 岁）",
+        "competitor": "快手",
+        "label": "下沉市场实惠买家",
         "size": "majority",
-        "needs": ["对抗初老与日间紫外线伤害", "日系科技背书带来的安心感", "中样 + 套装组合的性价比"],
-        "pain_points": ["缺乏单一明星单品声量", "VIP 折扣力度弱于雅诗兰黛"],
-        "evidence": "「相比 SK-II，资生堂红腰子更适合早 C 晚 A 后用来打底」 — 小红书 30 岁用户测评",
-        "source_ids": ["src_008"]
+        "needs": ["性价比极致的日常消费品", "真实可信的达人种草", "直播间砍价与专属优惠"],
+        "pain_points": ["物流时效比不上淘宝", "退款流程复杂", "内容质量参差不齐"],
+        "evidence": "「我喜欢看老铁直播，感觉他说啥都是真的，上次买了一箱柚子，比超市便宜一半。」——快手用户（31 岁，河南三线城市）",
+        "source_ids": ["src_009", "src_003"]
       },
       {
-        "competitor": "雅诗兰黛",
-        "label": "敏感肌护理优先用户（25-34 岁）",
-        "size": "significant",
-        "needs": ["修复屏障 + 抗老兼顾", "彩妆与护肤一体场景", "ELC 多级会员的专属感"],
-        "pain_points": ["核心产品迭代快带来选择焦虑", "高倍防晒矩阵欠缺"],
-        "evidence": "「小棕瓶秋冬连用半年，敏感肌爆痘明显减少」 — 小红书 27 岁用户长测",
-        "source_ids": ["src_009", "src_011"]
+        "competitor": "微信视频号",
+        "label": "中产微信重度用户",
+        "size": "majority",
+        "needs": ["熟人推荐降低决策成本", "品质与口碑优先于低价", "私信与公众号后续服务"],
+        "pain_points": ["推荐内容与自己兴趣不够匹配", "电商品类选择少", "购物体验不如淘宝流畅"],
+        "evidence": "「朋友圈有人分享了一个视频号商品，我直接微信支付就买了，不用再下载 APP，很方便。」——视频号用户（38 岁，北京白领）",
+        "source_ids": ["src_006", "src_009"]
       }
     ]
   },
 
   "swot": {
-    "intro": "SWOT 综合反映三家品牌在「核心心智 + 渠道 + 价格 + 产品宽度」四个维度上的差异化处境。",
+    "intro": "三大平台正处于短视频电商竞争的关键节点：抖音凭借算法红利建立最大规模优势但私域壁垒薄弱；快手老铁文化护城河深厚但增长触顶；微信视频号起步晚但背靠微信生态拥有最强的私域转化潜力。",
     "blocks": [
       {
-        "competitor": "SK-II",
+        "competitor": "抖音",
         "strengths": [
-          { "text": "PITERA 发酵成分形成强心智壁垒", "source_ids": ["src_001"] },
-          { "text": "黑卡用户客单价是非会员 2.3 倍", "source_ids": ["src_010"] }
+          { "text": "字节系算法推荐业界领先，内容冷启动速度最快，素人也可爆款", "source_ids": ["src_007"] },
+          { "text": "DAU 超 7 亿，月活 7.4 亿，用户规模与消费频次均为三平台之首", "source_ids": ["src_008"] },
+          { "text": "电商生态最成熟，抖音商城 + 直播带货 + 搜索广告形成完整闭环，2023 年 GMV 2.2 万亿", "source_ids": ["src_001"] },
+          { "text": "巨量引擎广告产品线丰富，ROAS 中位数 3.2×，广告主 ROI 最高", "source_ids": ["src_002"] }
         ],
         "weaknesses": [
-          { "text": "产品宽度窄 · 防晒 / 彩妆缺位", "source_ids": ["src_001"] },
-          { "text": "套装赠品频次偏低", "source_ids": ["src_002"] }
+          { "text": "公域算法依赖导致私域沉淀能力弱，用户复购率仅 18%，远低于视频号", "source_ids": ["src_014"] },
+          { "text": "流量成本持续上涨，中小品牌 CPM 压力增大", "source_ids": ["src_002"] }
         ],
         "opportunities": [
-          { "text": "向轻熟龄拓展副线（如 SK-II Skin Power）", "source_ids": ["src_010"] }
+          { "text": "本地生活服务（抖音来客）快速扩张，与美团正面竞争万亿本地生活市场", "source_ids": ["src_001"] },
+          { "text": "TikTok Shop 国际化提速，东南亚 + 北美市场 GMV 高速增长", "source_ids": ["src_007"] }
         ],
         "threats": [
-          { "text": "国货高端线（毛戈平 / 林清轩）渗透 25-30 岁段", "source_ids": ["src_012"] }
+          { "text": "内容生态监管趋严，头部 MCN 及网红账号受周期性整顿影响", "source_ids": ["src_007"] },
+          { "text": "视频号凭借微信私域持续蚕食品牌复购场景", "source_ids": ["src_014"] }
         ]
       },
       {
-        "competitor": "资生堂",
+        "competitor": "快手",
         "strengths": [
-          { "text": "日系科技 + 健康成分的差异化叙事", "source_ids": ["src_003"] },
-          { "text": "防晒矩阵完整 · 蓝胖子全年长尾", "source_ids": ["src_003"] }
+          { "text": "老铁文化构建强社群黏性，付费会员转化率高达 8.3%，为三平台最高", "source_ids": ["src_014"] },
+          { "text": "三至五线城市渗透率领先，覆盖抖音尚未充分渗透的 6 亿下沉人群", "source_ids": ["src_009"] },
+          { "text": "快手电商 GMV 1.18 万亿（2023），直播电商渗透率 75% 业界最高", "source_ids": ["src_003"] }
         ],
         "weaknesses": [
-          { "text": "无单一爆品级 SKU 占领心智", "source_ids": ["src_008"] },
-          { "text": "VIP 折扣力度偏弱", "source_ids": ["src_004"] }
+          { "text": "品牌形象偏低端，制约高客单价品牌及奢侈品入局意愿", "source_ids": ["src_007"] },
+          { "text": "广告 CPM 基准值偏低（¥15–60），单次广告收入低于抖音约 40%", "source_ids": ["src_013"] },
+          { "text": "DAU 增长触顶（6.74 亿），用户规模扩张空间受限", "source_ids": ["src_003"] }
         ],
         "opportunities": [
-          { "text": "借势日系成分趋势扩大科普类 KOL 投放", "source_ids": ["src_012"] }
+          { "text": "快手星芒短剧计划爆发，2024 年短剧赛道 MAU 增长超 200%", "source_ids": ["src_010"] },
+          { "text": "品牌升级战略（曾赞助北京冬奥）有望吸引一二线品牌预算向快手倾斜", "source_ids": ["src_007"] }
         ],
         "threats": [
-          { "text": "日系品牌整体在华舆情波动风险", "source_ids": ["src_008"] }
+          { "text": "抖音持续加大对下沉市场的内容补贴和流量扶持，直接争夺快手基本盘", "source_ids": ["src_007"] },
+          { "text": "电商基础设施（物流、售后）仍弱于淘宝天猫，用户体验差距制约留存", "source_ids": ["src_004"] }
         ]
       },
       {
-        "competitor": "雅诗兰黛",
+        "competitor": "微信视频号",
         "strengths": [
-          { "text": "护肤 + 彩妆双线协同 · 客户生命周期长", "source_ids": ["src_005"] },
-          { "text": "ELC 多级会员复购周期缩短至 92 天", "source_ids": ["src_011"] }
+          { "text": "微信 13 亿 MAU 天然流量池，新视频号内容可经朋友圈一键分发扩散", "source_ids": ["src_006"] },
+          { "text": "私域转化能力最强，复购率 34% 为三平台最高，公众号 + 企业微信无缝联动", "source_ids": ["src_006", "src_014"] },
+          { "text": "微信支付跳转零摩擦，用户信任度高，支付转化率优于跳转第三方 App", "source_ids": ["src_005"] }
         ],
         "weaknesses": [
-          { "text": "产品迭代过快导致选择疲劳", "source_ids": ["src_009"] }
+          { "text": "日均使用时长仅 35 分钟，远低于抖音（110 分钟），内容消费深度不足", "source_ids": ["src_007"] },
+          { "text": "算法推荐能力弱，冷启动困难，对无粉丝基础的新品牌极不友好", "source_ids": ["src_008"] },
+          { "text": "电商 GMV 约 2000 亿，仅为抖音的 9%，供给品类与物流基础设施仍需完善", "source_ids": ["src_005"] }
         ],
         "opportunities": [
-          { "text": "通过免税 + 海淘渠道触达跨境用户", "source_ids": ["src_013"] }
+          { "text": "腾讯广告资源全域整合（QQ / 公众号 / 小程序 / 视频号），联投 CPM 可降低 20%", "source_ids": ["src_012"] },
+          { "text": "企业微信 + 微信客服工具持续升级，品牌售后与会员沉淀体验全面提升", "source_ids": ["src_006"] }
         ],
         "threats": [
-          { "text": "美系品牌整体增速放缓", "source_ids": ["src_011"] }
+          { "text": "18–28 岁年轻用户使用习惯已高度固化于抖音，视频号迁移成本极高", "source_ids": ["src_009"] },
+          { "text": "内容生态薄弱，头部 KOL 主播优先在抖音 / 快手运营，视频号内容丰富度滞后", "source_ids": ["src_010"] }
         ]
       }
     ]
@@ -242,98 +265,116 @@
 
   "extensions": [
     {
-      "dimension_id": "ext.membership_program",
-      "title": "会员体系与折扣节奏",
-      "intent": "电商旗舰店黑卡 / 积分体系 / 双 11 与 618 大促力度对比",
-      "summary": "SK-II 通过黑卡常态 88 折 + 客单价分层维持高用户粘性；雅诗兰黛 ELC 通过粉钻 / 金钻 / 铂钻三级体系深耕分层折扣；资生堂选择以中样 + 积分代替折扣，因此感知差异最显著。",
+      "dimension_id": "ext.creator_ecosystem",
+      "title": "创作者生态",
+      "intent": "创作者扶持计划、MCN 政策、粉丝互动工具与变现路径对比",
+      "summary": "抖音凭借最大流量池和最完善的商业变现工具吸引头部创作者，快手以老铁文化和更高信任度留住腰部达人，微信视频号则对有公众号私域积累的图文博主最具吸引力。三平台在 2024 年均加大了对短剧和垂类内容创作者的专项扶持投入。",
       "bullets": [
         {
-          "competitor": "SK-II",
+          "competitor": "抖音",
           "points": [
-            "黑卡 8.8 折常态化 · 用户复购率 64%",
-            "双 11 折后约 78 折 · 含限定瓶身"
+            "中视频计划：1000 次有效播放激励 ¥3–5，鼓励 1–15 分钟横竖屏创作",
+            "巨量星图平台：10 万+ 品牌采购达人合作，百万粉丝视频报价中位数 ¥3–8 万",
+            "头部 MCN 超 2000 家，抖音电商达人分销佣金可叠加内容创作收益",
+            "DOU+ 加热工具让腰部创作者以 ¥100 起测试内容爆款潜力"
           ],
-          "source_ids": ["src_002", "src_010"]
+          "source_ids": ["src_010", "src_011"]
         },
         {
-          "competitor": "资生堂",
+          "competitor": "快手",
           "points": [
-            "积分 1:1 兑换中样 · 节日额外加赠",
-            "大促集中在 618 与双 11 · 平时折扣弱"
+            "老铁计划：每千次有效播放激励 ¥2–4，直播礼物分成比例约 55%",
+            "磁力聚星：50 万签约达人，接单系统与品牌需求精准匹配，佣金 10–15%",
+            "快手星芒短剧：2024 年专项扶持资金超亿元，已孵化多部播放量过亿短剧",
+            "「老铁经济」：粉丝对主播的人格信任比对内容更高，带货转化率优于行业均值"
           ],
-          "source_ids": ["src_004"]
+          "source_ids": ["src_004", "src_010"]
         },
         {
-          "competitor": "雅诗兰黛",
+          "competitor": "微信视频号",
           "points": [
-            "ELC 粉钻 / 金钻 / 铂钻三级 · 铂钻享生日双倍积分",
-            "线上线下复购周期 92 天 · 远低于行业平均"
+            "2024 年正式推出创作者分成计划，原生广告收入 30% 回流创作者",
+            "公众号联动优势：文章跳视频号，存量图文博主无缝迁移私域粉丝",
+            "微信豆赞赏 + 付费合集功能：知识付费内容变现闭环相对完整",
+            "企业号认证后可直接跳企业微信客服，私域沉淀效率远超其他平台"
           ],
-          "source_ids": ["src_006", "src_011"]
+          "source_ids": ["src_006", "src_010"]
         }
       ]
     },
     {
-      "dimension_id": "ext.kol_matrix",
-      "title": "KOL 与代言矩阵",
-      "intent": "品牌代言、头部主播合作、内容投放渠道与典型 case",
-      "summary": "SK-II 集中在头部明星 + 美妆头部主播，强调「光晕效应」；雅诗兰黛覆盖明星 + 中腰部美容博主，长尾覆盖更广；资生堂主要依赖日系科普类博主，更注重信任叙事。",
+      "dimension_id": "ext.ecommerce",
+      "title": "内容电商",
+      "intent": "直播带货 GMV 规模、商品橱窗转化率与品牌合作模式对比",
+      "summary": "抖音以 2.2 万亿 GMV 稳居短视频电商首位，快手以 1.18 万亿紧随其后，微信视频号约 2000 亿尚处早期但增速最高（2023 年同比 +300%）。三平台的核心差异在于：抖音主打公域爆品逻辑，快手主打老铁信任变现，视频号主打私域复购沉淀。",
       "bullets": [
         {
-          "competitor": "SK-II",
+          "competitor": "抖音",
           "points": [
-            "代言：汤唯 · 倪妮 · 易烊千玺",
-            "头部主播：李佳琦双 11 直播专场"
+            "2023 年 GMV 突破 2.2 万亿元，直播带货贡献 60%+，货架电商（抖音商城）持续提升",
+            "抖音商城 DAU 超 4 亿，搜索 + 推荐双引擎驱动商品发现",
+            "品牌自播与达人合播并行：品牌自播 ROI 较 618 大促达人合作高约 1.5×",
+            "抖音小店入驻门槛低，支持品牌自建 + 第三方跳转（淘宝/京东/拼多多链接）"
           ],
-          "source_ids": ["src_014", "src_012"]
+          "source_ids": ["src_001", "src_002"]
         },
         {
-          "competitor": "资生堂",
+          "competitor": "快手",
           "points": [
-            "日系科普类 KOL 投放 · 关注成分与机理",
-            "线下专柜配合明星出席"
+            "2023 年 GMV 达 1.18 万亿元，同比增长 28%，直播电商渗透率高达 75%",
+            "老铁带货信任度高：头部达人 GMV 转化率比抖音同量级达人高约 20%",
+            "快手电商以农产品、服装、日用品为主力品类，客单价集中在 ¥30–200",
+            "快手小店退款纠纷率高于行业均值，物流基础设施是制约高客单价品牌的瓶颈"
           ],
-          "source_ids": ["src_012"]
+          "source_ids": ["src_003", "src_004"]
         },
         {
-          "competitor": "雅诗兰黛",
+          "competitor": "微信视频号",
           "points": [
-            "明星 + 中腰部博主多层组合",
-            "节日礼盒联动彩妆 KOL · 触达更广"
+            "2023 年 GMV 预估约 2000 亿元，同比增速超 300%，起点低但增长最快",
+            "私域复购率 34%，远高于抖音（18%）和快手（约 22%）",
+            "视频号小店 + 微信小程序 + 微信支付无缝跳转，购物路径最短",
+            "品类以美妆、食品、知识付费为主，高客单价品牌复购场景优势突出"
           ],
-          "source_ids": ["src_012"]
+          "source_ids": ["src_005", "src_006"]
         }
       ]
     },
     {
-      "dimension_id": "ext.channel_distribution",
-      "title": "渠道与铺货",
-      "intent": "线下专柜密度、电商旗舰店运营、免税与海淘渠道占比",
-      "summary": "SK-II 渠道最依赖电商（58%），其线下专柜聚焦一线城市核心商场；资生堂电商占比最低（41%）但线下专柜下沉更广；雅诗兰黛电商 + 免税合计达 49%，跨境拉新效应明显。",
+      "dimension_id": "ext.advertising",
+      "title": "广告商业化",
+      "intent": "信息流广告产品线、CPM/ROAS 基准数据与品牌投放 ROI 对比",
+      "summary": "抖音巨量引擎广告产品线最丰富、CPM 最高、ROAS 也最高，适合追求规模和效果双目标的品牌；快手磁力引擎性价比最优，适合预算有限的中小品牌快速起量；微信视频号广告正处于红利期，联投腾讯系资源可摊薄成本，适合中高端品牌的精准触达策略。",
       "bullets": [
         {
-          "competitor": "SK-II",
+          "competitor": "抖音",
           "points": [
-            "电商占比 58% · 一线城市专柜密度高",
-            "免税渠道占比约 12%"
+            "巨量引擎全域广告：信息流（CPM ¥40–80）/ TopView 开屏 / 搜索广告 / 直播广告多形态",
+            "品牌广告 ROAS 中位数 3.2×，效果广告 ROI 业界最高",
+            "DMP 数据能力强，基于用户行为标签可实现千人千面精准定投",
+            "TopView 开屏广告单日覆盖 3 亿+ 用户，品牌节点爆发首选"
+          ],
+          "source_ids": ["src_002"]
+        },
+        {
+          "competitor": "快手",
+          "points": [
+            "磁力引擎信息流 CPM ¥15–60，比抖音低 30–40%，中小品牌起量性价比最优",
+            "品牌挑战赛：单次活动平均曝光 3 亿次，UGC 二创内容放大传播声量",
+            "直播广告 CPE 低于行业均值 22%，直播间引流转化效率突出",
+            "老铁用户互动率高（点赞 / 评论率比抖音高约 40%），广告自然延伸效果佳"
           ],
           "source_ids": ["src_013"]
         },
         {
-          "competitor": "资生堂",
+          "competitor": "微信视频号",
           "points": [
-            "电商占比 41% · 二三线城市专柜较多",
-            "屈臣氏 / 丝芙兰渠道协同"
+            "视频号原生广告 CPM ¥25–100，与公众号 / 朋友圈联投可降低整体 CPM 约 20%",
+            "腾讯全域广告打通：微信 + QQ + 小程序 + 视频号一次购买，多触点覆盖",
+            "私域定向能力：品牌可将企业微信好友、公众号粉丝作为种子人群进行 Lookalike 扩量",
+            "2024 年广告收入预计同比增长 80%，正处于流量红利定价洼地"
           ],
-          "source_ids": ["src_013"]
-        },
-        {
-          "competitor": "雅诗兰黛",
-          "points": [
-            "电商占比 49% · 免税额外贡献 18%",
-            "Mall 内体验柜与 ELC 会员打通"
-          ],
-          "source_ids": ["src_011", "src_013"]
+          "source_ids": ["src_012"]
         }
       ]
     }
@@ -342,55 +383,55 @@
   "cross_analysis": {
     "feature_matrix": [
       {
-        "feature": "PITERA / 红妍 / DNA 三大核心成分",
-        "description": "品牌核心成分叙事差异",
+        "feature": "直播带货",
+        "description": "直播电商 GMV 规模与生态成熟度",
         "cells": [
-          { "competitor": "SK-II", "status": "supported", "note": "PITERA" },
-          { "competitor": "资生堂", "status": "supported", "note": "红妍因子" },
-          { "competitor": "雅诗兰黛", "status": "supported", "note": "DNA 修护" }
+          { "competitor": "抖音",     "status": "supported", "note": "GMV 1.3 万亿（直播部分），生态最成熟" },
+          { "competitor": "快手",     "status": "supported", "note": "GMV 8850 亿（直播 75%），老铁转化率高" },
+          { "competitor": "微信视频号", "status": "partial",   "note": "GMV 约 1200 亿，增速最快但规模尚小" }
         ],
         "source_ids": ["src_001", "src_003", "src_005"]
       },
       {
-        "feature": "彩妆联动能力",
-        "description": "护肤 → 彩妆心智外延",
+        "feature": "私域转化",
+        "description": "品牌沉淀私域用户并驱动复购的能力",
         "cells": [
-          { "competitor": "SK-II", "status": "unsupported", "note": "无" },
-          { "competitor": "资生堂", "status": "partial", "note": "时光琉璃" },
-          { "competitor": "雅诗兰黛", "status": "supported", "note": "DW + 倾慕等" }
+          { "competitor": "抖音",     "status": "partial",   "note": "复购率 18%，私域工具有限" },
+          { "competitor": "快手",     "status": "partial",   "note": "老铁黏性强，复购率约 22%" },
+          { "competitor": "微信视频号", "status": "supported", "note": "复购率 34%，微信生态无缝沉淀" }
         ],
-        "source_ids": ["src_001", "src_003", "src_005"]
+        "source_ids": ["src_014", "src_006"]
       },
       {
-        "feature": "会员体系层级深度",
-        "description": "层级数量与权益差异",
+        "feature": "广告性价比",
+        "description": "品牌投放广告的 ROAS 与 CPM 综合评估",
         "cells": [
-          { "competitor": "SK-II", "status": "partial", "note": "单层黑卡" },
-          { "competitor": "资生堂", "status": "partial", "note": "积分制" },
-          { "competitor": "雅诗兰黛", "status": "supported", "note": "三级" }
+          { "competitor": "抖音",     "status": "supported", "note": "ROAS 3.2×，CPM 最高但效果最佳" },
+          { "competitor": "快手",     "status": "supported", "note": "CPM 低 40%，适合中小品牌起量" },
+          { "competitor": "微信视频号", "status": "partial",   "note": "联投 CPM 更低，红利期定价洼地" }
         ],
-        "source_ids": ["src_002", "src_004", "src_006"]
+        "source_ids": ["src_002", "src_013", "src_012"]
       },
       {
-        "feature": "高倍防晒矩阵",
-        "description": "SPF50+ 产品在售情况",
+        "feature": "用户规模",
+        "description": "月活跃用户规模（亿）",
         "cells": [
-          { "competitor": "SK-II", "status": "partial", "note": "仅 SPF30" },
-          { "competitor": "资生堂", "status": "supported", "note": "蓝胖子 SPF50+" },
-          { "competitor": "雅诗兰黛", "status": "partial", "note": "美白底霜含 SPF" }
+          { "competitor": "抖音",     "status": "supported", "note": "月活 7.4 亿，日均使用时长 110 分钟" },
+          { "competitor": "快手",     "status": "supported", "note": "月活 6.8 亿，DAU/MAU 比率 62%" },
+          { "competitor": "微信视频号", "status": "partial",   "note": "月活 4.5 亿，日均 35 分钟" }
         ],
-        "source_ids": ["src_001", "src_003", "src_005"]
+        "source_ids": ["src_008", "src_007"]
       }
     ],
     "positioning_map": {
-      "x_axis": "价格带（低 → 高）",
-      "y_axis": "产品宽度（窄 → 宽）",
+      "x_axis": "用户规模（月活亿级）",
+      "y_axis": "电商变现成熟度（%）",
       "competitors": [
-        { "id": "skii",      "x": 88, "y": 40, "label": "SK-II" },
-        { "id": "shiseido",  "x": 62, "y": 70, "label": "资生堂" },
-        { "id": "estee",     "x": 78, "y": 88, "label": "雅诗兰黛" }
+        { "id": "抖音",     "x": 85, "y": 88, "label": "抖音" },
+        { "id": "快手",     "x": 60, "y": 72, "label": "快手" },
+        { "id": "微信视频号", "x": 68, "y": 38, "label": "微信视频号" }
       ]
     },
-    "differentiation_summary": "SK-II 高价 + 窄宽度的「单点击穿」策略，靠核心成分维系高客单价；资生堂中价 + 中宽度的「均衡覆盖」靠科技叙事和防晒拉动场景；雅诗兰黛高价 + 宽宽度的「全场景护肤 + 彩妆」靠层级会员锁定生命周期。"
+    "differentiation_summary": "抖音以算法驱动的公域流量实现最高 GMV 规模与广告 ROAS，适合追求规模曝光与效果转化的品牌主投平台；快手凭借老铁社群文化拥有最高带货转化率和付费黏性，是中小品牌高 ROI 投放的优先选择；微信视频号起步晚但私域复购率（34%）最高，是品牌私域会员运营与高客单价复购场景的战略高地。三平台并非替代关系——建议品牌预算配比：规模曝光走抖音（60%），性价比起量选快手（25%），私域沉淀用视频号（15%）。"
   }
 }
