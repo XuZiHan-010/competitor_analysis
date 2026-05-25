@@ -128,6 +128,7 @@ competitor_analysis/
 3. **遇到歧义就停下来**：与其改错代码再回滚，不如先和项目负责人对齐——AskUserQuestion / 评论 / Issue 都行
 4. **小步提交**：单次改动控制在 1 个 feature 内，commit message 遵循 [docs/git-workflow.md](docs/git-workflow.md)
 5. **维护项目状态**：完成一个 Agent 任务 → 更新对应 `agent-states/*.json`；重要里程碑 → 同步 `claude-progress.txt`。详见 [docs/agent-states-guide.md](docs/agent-states-guide.md)
+   - **每天第一次对话**：读取 [claude-progress.txt](claude-progress.txt)，确认「更新历史」最后一条日期 = 昨天（或更近）。如果落后，主动补录昨日完成的工作后再开始当天任务
 6. **改动 = 同步更新文档**：架构改了 → 更 PRD §五；Schema 改了 → 更 PRD §七；Agent 协议改了 → 更 PRD §六；新增 `docs/` 文档 → 更新本文件 §三 索引
 7. **前端设计 / 重构必走 skill**：任何前端组件、页面、UI 设计或重构任务（在 [frontend/](frontend/) 下），**开工前必须先调用** `frontend-design` 和 `web-design-guidelines` 两个 skill——前者生成有设计感的代码、避免 generic AI 风格，后者按 Vercel Web Interface Guidelines 做 a11y / 可用性 / typography 合规审查。两者按需挑选，不要跳过
 8. **提 PR 前必须本地跑通 lint**：`git push` 发起 GitHub PR 前，本地必须跑 `npm run lint`（前端）/ `ruff check` + `mypy`（后端）**0 error 才能 push**。让 CI 失败的 PR 浪费 review 时间，也丢比赛 ③ 子项的 Git 规范分
