@@ -1,7 +1,7 @@
 # PRD: AI 驱动的竞品分析 Agent 协作系统
 
 > **文档性质**: 产品需求文档（PRD），交付给开发 Agent 拆任务用
-> **版本**: v1.4
+> **版本**: v1.5
 > **日期**: 2026-05-25
 > **作者**: PM (Claude) + 项目负责人
 >
@@ -12,6 +12,10 @@
 > **v1.3 修订说明**（2026-05-25）：新增 §十一-quater **演示模式（Demo Mode）**——纯前端静态回放路径，与真实 LangGraph 流程并存。同时把 §十一-bis 那行 `/reports/demo` 占位升级为完整规格。目的：演示日 API/网络抽风时仍可完整走完产品流程，并降低评委试用的 token 成本。**不改动任何 Agent 设计 / Schema / DAG 逻辑**，仅新增前端预录路径与对应 fixture。同步在 §九 前端线框图标注 demo 入口按钮。
 >
 > **v1.4 修订说明**（2026-05-25）：新增 **ScopingAgent**（第 5 个 Agent，DAG 外的对话式立项主语）填补 v1.1 留下的"TaskScopeContract 无人生成"漏洞。统一 NL 入口支持**三种意图模式**（A 列表式 / B 意图式 / C 混合式），混合模式 P0；§八 API 8.5 改名为 Scoping，原 `/api/competitors/suggest` 合并进 `/api/scoping/draft`；§七 7.0 TaskScopeContract 加 `intent_mode` 与 `scoping_rationale`，`competitors` 升级为 `list[CompetitorCandidate]` 保留 source 信息；§十 DB schema 加 `scoping_drafts` 表保留对话历史。详见 [plans/2026-05-25-prd-v1.4-scoping-agent-and-modes.md](../plans/2026-05-25-prd-v1.4-scoping-agent-and-modes.md)。影响章节：§四 / §六 / §七 / §八 / §九 / §十 / §十一 / §十一-quater / §十三。
+>
+> **v1.5 修订说明**（2026-05-25）：把 PRD 对齐到当前前端实际设计——`/tasks/new` 简化为**纯 NL 单一输入框**（移除"可选竞品 chip 区"），已知竞品由 ScopingAgent 从 NL 中提取；用户在 `/tasks/new/scoping` 立项页才能手动增删竞品。新增 **direct 模式**：NL 中含"直接生成 / 跳过 / 直接分析"等关键词时跳过 scoping 页，直接进入分析（演示走 `/demo/scoping`）。**演示入口迁移**：原 `/tasks/new` 顶部并排的"30 秒看完整演示"按钮已迁到全站顶部导航栏，使任务创建页只保留一个聚焦动作。`/tasks/new` 增加 3 个示例 brief 快填 chips（仅填充 NL，非竞品输入）。**不改动任何 Agent 设计 / Schema / DAG 逻辑**，仅同步入口形态。影响章节：§四 / §六（ScopingRequest 输入来源说明）/ §九（页面 1a 线框图）/ §十一-quater 11Q.1。
+>
+> **v1.5.1 修订说明**（2026-05-26）：明确 **`/demo/*` 与 `/tasks/new/*` 的路由职责边界**（新增 §十一-quater 11Q.7）。背景：Stage 1 前端临时让 `/tasks/new/scoping` 在 ScopingAgent 未接通时回退到护肤 mock（`buildSkincareMockContract`），导致"输入 AI IDE 得到护肤大纲"的演示翻车风险。新边界：`mocks/demo/*` 只能被 `/demo/*` 路由消费；真实路径**绝不**回退到任何与领域绑定的硬编码 mock，ScopingAgent 未就绪时应表现为"连线中"空骨架，让用户手动构造扩展维度。影响章节：§四 [3] / §六 5.0（未就绪行为）/ §十一-quater（11Q.7 新增）。
 
 ---
 
@@ -84,15 +88,24 @@
 [1] 用户登录（邮箱验证码 OAuth）
     ↓
 [2] 新建分析任务（任务创建页 /tasks/new）：
-    单一 NL 输入框，自然语言描述需求。ScopingAgent 自动识别 3 种意图：
+    **唯一输入：单一 NL 文本框**——不再提供独立的竞品 chip 输入区，
+    已知竞品名由 ScopingAgent 从 NL 中提取（用户后续可在 [3] 立项页增删）。
+    ScopingAgent 自动识别 3 种意图：
       A. 列表式：「对比 SK-II / 资生堂 / 雅诗兰黛，重点看会员体系」
                  → AI 提取 + 推荐 2-3 个同价位竞品 + 生成大纲
       B. 意图式：「分析中国高端护肤品牌在 KOL 营销和会员体系的差异」
                  → AI 推荐 3-5 个竞品 + 把研究意图拆解成大纲
       C. 混合式：「我知道 SK-II 和雅诗兰黛，还有谁也在这个价位？」
                  → AI 提取已知 + 补全到 3-5 个 + 大纲
-    可选 chip 区：手动追加已知竞品名，提前喂给 ScopingAgent
-    点击「生成大纲」→ 调 ScopingAgent
+    页面提供 3 个**示例 brief 快填 chip**（如 "Trae · AI 编程"、
+    "飞书 · 企业协作"、"抖音 · 内容电商"），点击仅一键填充 NL 文本框，
+    **不是竞品输入**——评委首次到访可零成本看到一份合规的 NL 写法。
+    提交动作有两种分支：
+      • 默认 →「生成研究计划」按钮 → 调 ScopingAgent → 进入 [3] 立项页
+      • **direct 模式**：NL 中含「直接生成 / 直接分析 / 跳过 / 不要大纲」
+        等关键词（中英双语词典）→ 按钮文案切换为「直接分析」→
+        跳过 [3] 立项页，直接进入分析（MVP 阶段路由到 `/demo/scoping`
+        预录路径回放；后端就绪后接真实 DAG，仍跳过 scoping）。
     ↓
 [3] 对话式立项（scoping 页 /tasks/new/scoping）：
     ScopingAgent（见 §六 5.0）一次响应同时返回：
@@ -108,6 +121,11 @@
       - 扩展章节（✏️ 任务相关维度）可改名 / 改意图 / 调顺序 / 删除 / 自定义新增
       - 「重新生成大纲」按钮 = 带当前编辑过的章节 + 竞品 + 澄清回答回到 ScopingAgent 再生成
     用户点「确认 → 开始分析」时，大纲 freeze 成 TaskScopeContract（见 §七 7.0）
+
+    ⚠️ 路由职责边界（v1.5.1，详见 §十一-quater 11Q.7）：本页**仅**渲染
+    ScopingAgent 真实产物；ScopingAgent 未接通时降级为"4 核心 + 空扩展 + 空
+    竞品 + 连线中提示"骨架，绝不回退到任何与领域绑定的硬编码 mock，也不读取
+    /demo/* fixture——这是为了避免"输入 AI IDE 看到护肤大纲"的演示翻车。
     ↓
 [4] 启动 Agent 协作（任务运行页 /tasks/{id}）：
     实时显示 DAG 进度（哪个 Agent 在跑、跑到哪一步、Trace 可点开）
@@ -129,6 +147,8 @@
 > **v1.0 → v1.1 关键变化**：原 [2] 步的 A/B/C 三选项入口被合并为"NL 输入 + 可选 chip"的单一入口；原 [3] 步"维度勾选"被完全替换为"对话式立项"。背景见 §一 v1.1 修订说明与 [plans/2026-05-23-dynamic-outline-scoping-design.md](../plans/2026-05-23-dynamic-outline-scoping-design.md)。
 >
 > **v1.3 → v1.4 关键变化**：[2] [3] 步骤的"AI"明确为 **ScopingAgent**（§六 5.0 新增）；统一 NL 入口支持 3 种意图模式（列表 / 意图 / 混合），ScopingAgent 自动判别；竞品列表升级为 `list[CompetitorCandidate]` 保留 source 信息，AI 推荐项在 UI 视觉区分；scoping 页加「让 AI 再推荐几个」按钮。背景见 §一 v1.4 修订说明与 [plans/2026-05-25-prd-v1.4-scoping-agent-and-modes.md](../plans/2026-05-25-prd-v1.4-scoping-agent-and-modes.md)。
+>
+> **v1.4 → v1.5 关键变化**：[2] 步彻底简化为**单一 NL 输入框**，移除"可选竞品 chip 区"——已知竞品全部交给 ScopingAgent 从 NL 中提取；用户增删竞品只发生在 [3] 立项页。新增 **direct 模式** NL 关键词快捷路径（跳过 [3]）。/tasks/new 页内"30 秒演示"按钮迁到顶部导航栏。背景见 §一 v1.5 修订说明。
 
 ### 用户旅程关键体验点
 
@@ -226,10 +246,15 @@
 ```python
 class ScopingRequest(BaseModel):
     user_brief: str                                       # NL 全文
-    known_competitors: list[str] = []                     # 用户手动 chip
+    known_competitors: list[str] = []                     # 已知竞品名（来源见下）
     previous_draft: ScopingDraft | None = None            # 「重新生成大纲」时回带
     clarification_answers: dict[str, str] = {}            # 上一轮澄清问题的答复
 ```
+
+**`known_competitors` 来源说明**（v1.5 修订）：
+- **首次调用**（从 `/tasks/new` 提交）：始终为空数组 `[]`——v1.5 起 `/tasks/new` 不再提供独立的竞品 chip 输入区，已知竞品名由 ScopingAgent 自己从 `user_brief` 中提取
+- **重新生成大纲调用**（从 `/tasks/new/scoping` 立项页提交）：携带用户在立项页手动**增删**后的竞品名列表，确保再生成时不丢用户已确认的竞品
+- 字段保留向后兼容：若未来恢复"任务创建页竞品 chip 输入"或第三方调用需要预填，仍可走此字段
 
 **输出 Schema** (`ScopingDraft`):
 ```python
@@ -628,24 +653,27 @@ class ExtensionFinding(BaseModel):
 ┌─────────────────────────────────────────────────────────┐
 │ [Logo] AI 竞品分析                                 [我] │
 ├─────────────────────────────────────────────────────────┤
-│ 创建分析任务                                            │
+│ Strata AI                                               │
+│ 多 Agent 竞品情报平台                                    │
 │                                                         │
-│ [⚡ 30 秒看完整演示]    [🚀 创建我自己的任务（默认）]    │
-│  ↑ 跳 /demo/scoping     ↓ 走下方真实流程                │
+│ 描述你的竞品分析需求。默认情况下，Strata 会先生成研究    │
+│ 大纲供你确认；如果需求已经足够明确，或你明确要求"直接    │
+│ 生成"，Strata 将跳过大纲直接开始分析。                  │
 │                                                         │
-│ 说说你的分析需求 *                                       │
 │ ┌─────────────────────────────────────────────────────┐ │
-│ │ 例：帮我对比 SK-II / 资生堂 / 雅诗兰黛 三个高端    │ │
-│ │ 护肤品牌在中国电商会员体系和 KOL 策略上的差异     │ │
+│ │ 例：对比 Trae、Cursor、GitHub Copilot 在 AI 编程  │ │
+│ │ 辅助上的差异，重点关注开发者体验与企业版定价…    │ │
+│ │                                              42 字 │ │
 │ └─────────────────────────────────────────────────────┘ │
 │                                                         │
-│ 竞品名称（可选——不填会从上面 NL 自动提取）              │
-│ [+ 输入名称后按 Enter]                                  │
+│ 示例快填： (Trae · AI 编程) (飞书 · 企业协作) (抖音…)   │
 │                                                         │
-│                         [生成大纲 →]                    │
+│                              [生成研究计划 →]           │
 └─────────────────────────────────────────────────────────┘
 ```
-> 演示模式入口位于页面顶部，与真实任务入口视觉对等。详见 §十一-quater。
+> **v1.5 简化**：页面只有 NL 单输入 + 示例 chips + 主操作按钮。竞品名 chip 输入区已移除（已知竞品由 ScopingAgent 从 NL 提取，立项页才允许增删）。「30 秒演示」入口已迁至全站顶部导航栏。
+>
+> **按钮文案双态**：当 NL 含「直接生成 / 跳过 / 不要大纲 / directly / skip / no plan」等关键词时，按钮文案切换为「直接分析 →」，提交后跳过 scoping 页直接进入分析（演示路径 `/demo/scoping`）。否则默认「生成研究计划」走 ScopingAgent。
 
 ### 页面 1b: 对话式立项 / scoping 页 `/tasks/new/scoping`（v1.1 新增）
 ```
@@ -956,13 +984,15 @@ manual_corrections (
 >
 > **设计原则**：**纯前端静态回放，零后端调用**。与真实 LangGraph 流程并存、互不干扰。
 
-### 11Q.1 入口
+### 11Q.1 入口（v1.5 更新）
 
-`/tasks/new` 顶部并排两个按钮，文案与视觉一视同仁、不刻意藏 demo：
+demo 现在有**两个入口**，都不藏：
 
-- **「⚡ 30 秒看完整演示」** → 进入 demo 路径（本节定义）
-- **「🚀 创建我自己的任务」** → 走 §四 主流程
+1. **全站顶部导航栏 `[▶ 30 秒demo演示]`**——任何页面都能一键直跳 `/demo/scoping`
+2. **`/tasks/new` NL 关键词触发**——用户在 NL 中写「直接生成 / 跳过 / 不要大纲 / directly / skip / no plan」等，按钮自动切换为「直接分析」，提交后跳 `/demo/scoping`（MVP 阶段；后端就绪后接真实直跑路径）
 
+> **v1.4 → v1.5 调整**：原"`/tasks/new` 页内并排两按钮"被拆开——「30 秒演示」上移到全站导航栏（任何页面可达），任务创建页只保留聚焦的 NL 输入 + 单一主按钮。
+>
 > **不藏 demo 的理由**：评委要看的就是"端到端产品体验"，demo 路径**就是**最完整的端到端，不是降级版。
 
 ### 11Q.2 路由与体验脚本
@@ -1023,7 +1053,26 @@ demo 路径走独立 route 前缀 `/demo/*`，**绝对不复用** `/tasks/new` /
 | 答辩材料 10% | 演讲稿可以"先放 demo 跑完，再现场跑一遍真实"——双保险 |
 | 技术深度 25% | demo 不会"加分"，但能确保前面三项不会**因为现场翻车而丢分** |
 
----
+### 11Q.7 路由职责边界 / Route Isolation Contract（v1.5.1 新增，🔴 强约束）
+
+为防止"演示样例污染真实路径"——例如用户在 `/tasks/new` 输入「研究 AI IDE 市场」，立项页却回退到护肤大纲——以下规则**不可违反**：
+
+| 路由前缀 | 数据来源 | 大纲内容 | 备注 |
+|---|---|---|---|
+| `/demo/*` | **仅** `frontend/src/lib/mocks/demo/*.json` fixture | 永远是预制场景（当前为 SK-II/资生堂/雅诗兰黛），与用户实时输入无关 | 顶部导航栏「30 秒demo演示」入口 |
+| `/tasks/new/*` 与 `/tasks/{id}` | **仅** ScopingAgent / DAG 4 Agent 真实产物 | 必须根据用户 NL 动态生成 | 后端未就绪时降级为"空骨架"，**绝不**回退到 demo fixture 或任何与领域绑定的硬编码 mock |
+
+**强约束**：
+1. `frontend/src/lib/mocks/demo/` 下的任何文件**只能**被 `/demo/*` 路由 import；CI 应有 ESLint rule / 自定义 import guard 防止越界（Week 1 加）
+2. 真实路径在 ScopingAgent 未接通时的合规降级形态：
+   - 4 个核心维度照常渲染（核心层与领域无关，[scope-contract.ts buildCoreDimensions()](../frontend/src/lib/mocks/scope-contract.ts) 可复用）
+   - 扩展维度区**留空**，渲染一个温和提示："ScopingAgent 连线中，请使用「+ 增加自定义维度」手动补充"
+   - 竞品 chip 区**留空**，渲染提示："使用 [+] 手动添加已知竞品"
+   - **绝不**渲染任何与领域绑定的占位扩展（"会员体系" "KOL 矩阵" 等）
+3. `/tasks/new` 页的示例 brief 快填 chips（Trae / 飞书 / 抖音）只填充 NL 文本，**不预先 mock 出对应大纲**——用户提交后仍走真实路径的空骨架降级，避免"点示例 → 看到护肤大纲"的错位
+4. 真实 ScopingAgent 上线后，本节"未就绪降级"规则失效，但**路由隔离规则（第 1 条）永久生效**
+
+**违反此约束的代价**：演示日评委点示例 chip → 看到答非所问的大纲 → 多 Agent 协作的可信度被打折扣（直接影响"业务价值 20%"与"AI 协作 35%"两大评分项）。
 
 ## 十二、3 周迭代计划
 

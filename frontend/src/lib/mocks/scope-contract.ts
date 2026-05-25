@@ -5,6 +5,11 @@ import type {
 } from "./types";
 import { CORE_DIMENSION_IDS } from "./types";
 
+// ⚠️ PRD §十一-quater 11Q.7 路由职责边界：
+// 本文件中所有以 `Skincare` / `KNOWN_BRANDS` / `extractCompetitorsFromBrief`
+// 命名的导出仅服务于 `/demo/*` fixture 生成，**禁止**被 `/tasks/new/*` 真实路径
+// 直接 import。真实路径在 ScopingAgent 未接通时应使用 `buildEmptyDraftContract`。
+
 /**
  * The 4 locked core dimensions that every task must include.
  * Titles and intents here are defaults — the AI may rewrite the intent
@@ -117,6 +122,8 @@ export function buildClarifyingQuestions(): ClarifyingQuestion[] {
 /**
  * The whole mock scope contract — what the Scoping Agent "returns"
  * after the user submits the brief about high-end skincare brands.
+ *
+ * ⚠️ 仅供 `/demo/*` fixture 生成器使用，真实路径禁止调用——见 PRD §十一-quater 11Q.7。
  */
 export function buildSkincareMockContract(
   userBrief: string,
@@ -129,6 +136,26 @@ export function buildSkincareMockContract(
     user_brief: userBrief,
     clarifications: buildClarifyingQuestions(),
     dimensions: [...buildCoreDimensions(), ...buildSkincareExtensions()],
+    frozen_at: null,
+  };
+}
+
+/**
+ * Domain-agnostic empty draft for the real `/tasks/new/scoping` path while
+ * ScopingAgent is not yet wired up. 4 locked core dimensions, zero extensions,
+ * zero competitors — the user fills in the rest by hand.
+ *
+ * Per PRD §十一-quater 11Q.7, the real path MUST use this (or the real
+ * ScopingAgent output) and MUST NOT fall back to any domain-bound mock.
+ */
+export function buildEmptyDraftContract(userBrief: string): TaskScopeContract {
+  return {
+    task_id: `task_${Date.now()}`,
+    target_product: null,
+    competitors: [],
+    user_brief: userBrief,
+    clarifications: [],
+    dimensions: buildCoreDimensions(),
     frozen_at: null,
   };
 }
