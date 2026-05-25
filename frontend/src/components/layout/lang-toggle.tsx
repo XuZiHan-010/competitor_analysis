@@ -1,16 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { useLangStore } from "@/stores/lang-store";
 
+const subscribe = () => () => {};
+
 export function LangToggle() {
   const { lang, toggle } = useLangStore();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = useSyncExternalStore(subscribe, () => true, () => false);
 
   if (!mounted) {
     return (
