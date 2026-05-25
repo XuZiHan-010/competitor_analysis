@@ -1,6 +1,6 @@
 # Design tokens — "Research Intelligence Brief"
 
-> This document explains the design vocabulary used in `apps/web/src/app/globals.css`.
+> This document explains the design vocabulary used in `frontend/src/app/globals.css`.
 > When you add a new color or font, update both files together.
 
 ## Aesthetic direction

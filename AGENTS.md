@@ -35,7 +35,7 @@
 
 - AI Agent 生成的 plan / 方案 / 草稿 / 任务拆解 **统一放 `./plans/`**
 - 不要写到 AI Agent 的全局目录（如 `~/.claude/plans/`、Codex workspace 外部目录）
-- 不要散落在项目其他位置（如 `apps/api/plan.md`）
+- 不要散落在项目其他位置（如 `backend/plan.md`）
 - 命名建议：`YYYY-MM-DD-<topic>.md`
 - 详见 [plans/README.md](plans/README.md)
 
@@ -47,16 +47,15 @@
 
 ```
 competitor_analysis/
-├── apps/
-│   ├── web/        Next.js 16 + React 19 + Tailwind v4 + shadcn/ui（前端，已脚手架）
-│   └── api/        FastAPI + LangGraph + Pydantic（后端，Week 0.5 待落地）
+├── frontend/       Next.js 16 + React 19 + Tailwind v4 + shadcn/ui（前端，已脚手架）
+├── backend/        FastAPI + LangGraph + Pydantic（后端，Week 0.5 待落地）
 ├── docs/           项目文档（PRD / 架构 / Schema / 部署等）
 ├── plans/          AI Agent plan 文件（gitignored）
 ├── agent-states/   被构建系统的运行时状态（应用层，非 Claude 记忆）
 └── claude-progress.txt  项目开发进度日志
 ```
 
-### 常用命令（前端 [apps/web/](apps/web/)，npm）
+### 常用命令（前端 [frontend/](frontend/)，npm）
 
 | 操作 | 命令 |
 |---|---|
@@ -65,9 +64,9 @@ competitor_analysis/
 | 生产构建 | `npm run build` |
 | Lint | `npm run lint` |
 
-> 后端 [apps/api/](apps/api/) 待 Week 0.5 脚手架落地后补 `uvicorn`、`pytest`、`ruff`、`mypy` 命令。届时同步更新本节，**并在 `apps/api/` 下建一份 `CLAUDE.md`**（参考已有的 [apps/web/CLAUDE.md](apps/web/CLAUDE.md)），把测试 / lint 命令写死在子目录，避免改后端一个文件却跑整个项目的测试套件浪费 context。
+> 后端 [backend/](backend/) 待 Week 0.5 脚手架落地后补 `uvicorn`、`pytest`、`ruff`、`mypy` 命令。届时同步更新本节，**并在 `backend/` 下建一份 `CLAUDE.md`**（参考已有的 [frontend/CLAUDE.md](frontend/CLAUDE.md)），把测试 / lint 命令写死在子目录，避免改后端一个文件却跑整个项目的测试套件浪费 context。
 >
-> **每个 app 的详细命令与约束**：见对应子目录的 CLAUDE.md（如 [apps/web/CLAUDE.md](apps/web/CLAUDE.md)）——本表只给入门概览。
+> **每个子目录的详细命令与约束**：见对应目录的 CLAUDE.md（如 [frontend/CLAUDE.md](frontend/CLAUDE.md)）——本表只给入门概览。
 
 ---
 
@@ -130,5 +129,5 @@ competitor_analysis/
 4. **小步提交**：单次改动控制在 1 个 feature 内，commit message 遵循 [docs/git-workflow.md](docs/git-workflow.md)
 5. **维护项目状态**：完成一个 Agent 任务 → 更新对应 `agent-states/*.json`；重要里程碑 → 同步 `claude-progress.txt`。详见 [docs/agent-states-guide.md](docs/agent-states-guide.md)
 6. **改动 = 同步更新文档**：架构改了 → 更 PRD §五；Schema 改了 → 更 PRD §七；Agent 协议改了 → 更 PRD §六；新增 `docs/` 文档 → 更新本文件 §三 索引
-7. **前端设计 / 重构必走 skill**：任何前端组件、页面、UI 设计或重构任务（在 [apps/web/](apps/web/) 下），**开工前必须先调用** `frontend-design` 和 `web-design-guidelines` 两个 skill——前者生成有设计感的代码、避免 generic AI 风格，后者按 Vercel Web Interface Guidelines 做 a11y / 可用性 / typography 合规审查。两者按需挑选，不要跳过
+7. **前端设计 / 重构必走 skill**：任何前端组件、页面、UI 设计或重构任务（在 [frontend/](frontend/) 下），**开工前必须先调用** `frontend-design` 和 `web-design-guidelines` 两个 skill——前者生成有设计感的代码、避免 generic AI 风格，后者按 Vercel Web Interface Guidelines 做 a11y / 可用性 / typography 合规审查。两者按需挑选，不要跳过
 8. **提 PR 前必须本地跑通 lint**：`git push` 发起 GitHub PR 前，本地必须跑 `npm run lint`（前端）/ `ruff check` + `mypy`（后端）**0 error 才能 push**。让 CI 失败的 PR 浪费 review 时间，也丢比赛 ③ 子项的 Git 规范分

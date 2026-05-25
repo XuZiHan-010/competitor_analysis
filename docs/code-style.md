@@ -1,6 +1,6 @@
 # 代码风格
 
-> 适用于 [apps/api](../apps/api) (Python) 和 [apps/web](../apps/web) (TypeScript)。
+> 适用于 [backend](../backend) (Python) 和 [frontend](../frontend) (TypeScript)。
 
 ---
 

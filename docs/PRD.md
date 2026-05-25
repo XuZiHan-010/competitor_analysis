@@ -864,7 +864,7 @@ manual_corrections (
 
 ### Week 0.5 (0.5 周): 架构落地与脚手架
 - [ ] **创建项目入口文档**：`CLAUDE.md` + `AGENTS.md`（指引所有编程 Agent 读取 PRD、架构图、Agent 协议、Schema 文档）
-- [ ] Repo 初始化（monorepo: `apps/web` + `apps/api`）
+- [ ] Repo 初始化（monorepo: `frontend/` + `backend/`）
 - [ ] Railway 项目搭建 + Neon + Upstash 接入
 - [ ] FastAPI + LangGraph 骨架，跑通 Hello World DAG
 - [ ] Next.js + shadcn/ui 骨架，跑通登录页 UI
@@ -1078,37 +1078,36 @@ manual_corrections (
 
 ```
 competitor_analysis/
-├── apps/
-│   ├── web/                          # Next.js
-│   │   ├── app/(auth)/login/
-│   │   ├── app/tasks/new/
-│   │   ├── app/tasks/[id]/page.tsx   # 进行中 DAG 页
-│   │   ├── app/reports/[id]/page.tsx
-│   │   └── components/dag-viewer/
-│   └── api/                          # FastAPI
-│       ├── routers/auth.py
-│       ├── routers/tasks.py
-│       ├── routers/reports.py
-│       ├── agents/
-│       │   ├── collector.py
-│       │   ├── analyst.py
-│       │   ├── writer.py
-│       │   └── qa.py
-│       ├── graph/
-│       │   ├── workflow.py           # LangGraph DAG 定义
-│       │   └── state.py              # WorkflowState Pydantic
-│       ├── schemas/
-│       │   ├── feature_tree.py
-│       │   ├── pricing.py
-│       │   ├── persona.py
-│       │   └── report.py
-│       ├── services/
-│       │   ├── search.py             # Tavily/Serper wrapper
-│       │   ├── scraper.py            # Playwright
-│       │   └── exporter.py           # PDF/PPTX
-│       └── db/
-│           ├── models.py             # SQLAlchemy
-│           └── migrations/
+├── frontend/                         # Next.js
+│   ├── app/(auth)/login/
+│   ├── app/tasks/new/
+│   ├── app/tasks/[id]/page.tsx       # 进行中 DAG 页
+│   ├── app/reports/[id]/page.tsx
+│   └── components/dag-viewer/
+├── backend/                          # FastAPI
+│   ├── routers/auth.py
+│   ├── routers/tasks.py
+│   ├── routers/reports.py
+│   ├── agents/
+│   │   ├── collector.py
+│   │   ├── analyst.py
+│   │   ├── writer.py
+│   │   └── qa.py
+│   ├── graph/
+│   │   ├── workflow.py               # LangGraph DAG 定义
+│   │   └── state.py                  # WorkflowState Pydantic
+│   ├── schemas/
+│   │   ├── feature_tree.py
+│   │   ├── pricing.py
+│   │   ├── persona.py
+│   │   └── report.py
+│   ├── services/
+│   │   ├── search.py                 # Tavily/Serper wrapper
+│   │   ├── scraper.py                # Playwright
+│   │   └── exporter.py               # PDF/PPTX
+│   └── db/
+│       ├── models.py                 # SQLAlchemy
+│       └── migrations/
 ├── packages/
 │   └── shared-schemas/               # TS+Python 共享 Schema (可选)
 ├── docs/

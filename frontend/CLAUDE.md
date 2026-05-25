@@ -1,15 +1,15 @@
-# CLAUDE.md — apps/web (前端)
+# CLAUDE.md — frontend (前端)
 
-> 作用域：**本文件只在 Claude 读 `apps/web/` 下的文件时加载**。
-> 根 [AGENTS.md](../../AGENTS.md) 的所有规则仍然适用；本文件只补本目录专属的约束。
+> 作用域：**本文件只在 Claude 读 `frontend/` 下的文件时加载**。
+> 根 [AGENTS.md](../AGENTS.md) 的所有规则仍然适用；本文件只补本目录专属的约束。
 
 ---
 
 ## 🔴 命令：改这块代码 = 只跑这块的命令
 
-**核心原则**：改了 `apps/web/` 里的文件后，**只跑本目录的 lint / typecheck / test**，不要回项目根跑「整个 monorepo」的任何命令。后端在 [apps/api/](../api/) 是另一套工具链（Python / ruff / pytest），混跑浪费几十分钟且烧 context。
+**核心原则**：改了 `frontend/` 里的文件后，**只跑本目录的 lint / typecheck / test**，不要回项目根跑「整个 monorepo」的任何命令。后端在 [backend/](../backend/) 是另一套工具链（Python / ruff / pytest），混跑浪费几十分钟且烧 context。
 
-### 必须在 `apps/web/` 目录下执行
+### 必须在 `frontend/` 目录下执行
 
 | 操作 | 命令 | 何时跑 |
 |---|---|---|
@@ -21,11 +21,11 @@
 **禁止做的事**：
 - ❌ 在项目根跑 `npm` / `pnpm` 任何命令（项目根没有 package.json）
 - ❌ 改前端文件后跑后端的 `pytest` / `ruff`（无关）
-- ❌ 跑「整个项目」的测试套件（不存在这种东西；monorepo 各 app 独立）
+- ❌ 跑「整个项目」的测试套件（不存在这种东西；monorepo 各目录独立）
 
 ### 测试现状
 
-⚠️ **`apps/web/` 目前没有自动化测试**（`package.json` 里没有 `test` script）。
+⚠️ **`frontend/` 目前没有自动化测试**（`package.json` 里没有 `test` script）。
 
 改动验证流程：
 1. `npm run lint` 0 error
@@ -66,7 +66,7 @@
 ## 目录约定
 
 ```
-apps/web/src/
+frontend/src/
 ├── app/                Next.js App Router 页面（含 layout / globals.css）
 ├── components/
 │   ├── ui/             shadcn/ui base 组件（不要手改，重新生成）
