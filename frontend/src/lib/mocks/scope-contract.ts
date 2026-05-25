@@ -5,6 +5,11 @@ import type {
 } from "./types";
 import { CORE_DIMENSION_IDS } from "./types";
 
+// ⚠️ PRD §十一-quater 11Q.7 路由职责边界：
+// 本文件中所有以 `Skincare` / `KNOWN_BRANDS` / `extractCompetitorsFromBrief`
+// 命名的导出仅服务于 `/demo/*` fixture 生成，**禁止**被 `/tasks/new/*` 真实路径
+// 直接 import。真实路径在 ScopingAgent 未接通时应使用 `buildEmptyDraftContract`。
+
 /**
  * The 4 locked core dimensions that every task must include.
  * Titles and intents here are defaults — the AI may rewrite the intent
@@ -15,6 +20,7 @@ export function buildCoreDimensions(): DimensionSpec[] {
     {
       id: CORE_DIMENSION_IDS.FEATURE_TREE,
       layer: "core",
+      source: "system",
       title: "功能树",
       intent: "对比各竞品的核心产品线、功能矩阵与差异化能力",
       schema_ref: "FeatureTree",
@@ -25,6 +31,7 @@ export function buildCoreDimensions(): DimensionSpec[] {
     {
       id: CORE_DIMENSION_IDS.PRICING_MODEL,
       layer: "core",
+      source: "system",
       title: "定价模型",
       intent: "梳理各 SKU 价格区间、套装策略、会员折扣与大促节奏",
       schema_ref: "PricingModel",
@@ -35,6 +42,7 @@ export function buildCoreDimensions(): DimensionSpec[] {
     {
       id: CORE_DIMENSION_IDS.USER_PERSONA,
       layer: "core",
+      source: "system",
       title: "用户画像",
       intent: "从电商评论与官方文案中归纳目标用户群与典型痛点",
       schema_ref: "UserPersona",
@@ -45,6 +53,7 @@ export function buildCoreDimensions(): DimensionSpec[] {
     {
       id: CORE_DIMENSION_IDS.SWOT,
       layer: "core",
+      source: "system",
       title: "SWOT",
       intent: "结合上述维度产出每家竞品的优劣势、机会与威胁分析",
       schema_ref: "SWOT",
@@ -64,6 +73,7 @@ export function buildSkincareExtensions(): DimensionSpec[] {
     {
       id: "ext.membership_promo",
       layer: "extension",
+      source: "ai_suggested",
       title: "会员体系与折扣节奏",
       intent: "电商旗舰店黑卡 / 积分 / 双11 与 618 大促力度对比",
       schema_ref: null,
@@ -74,6 +84,7 @@ export function buildSkincareExtensions(): DimensionSpec[] {
     {
       id: "ext.kol_endorsement",
       layer: "extension",
+      source: "ai_suggested",
       title: "KOL 与代言矩阵",
       intent: "品牌代言人、头部主播合作、内容投放渠道与频次",
       schema_ref: null,
@@ -84,6 +95,7 @@ export function buildSkincareExtensions(): DimensionSpec[] {
     {
       id: "ext.channel_distribution",
       layer: "extension",
+      source: "ai_suggested",
       title: "渠道与铺货",
       intent: "线下专柜密度、电商旗舰店运营、免税与海淘渠道占比",
       schema_ref: null,
@@ -110,6 +122,8 @@ export function buildClarifyingQuestions(): ClarifyingQuestion[] {
 /**
  * The whole mock scope contract — what the Scoping Agent "returns"
  * after the user submits the brief about high-end skincare brands.
+ *
+ * ⚠️ 仅供 `/demo/*` fixture 生成器使用，真实路径禁止调用——见 PRD §十一-quater 11Q.7。
  */
 export function buildSkincareMockContract(
   userBrief: string,
@@ -122,6 +136,26 @@ export function buildSkincareMockContract(
     user_brief: userBrief,
     clarifications: buildClarifyingQuestions(),
     dimensions: [...buildCoreDimensions(), ...buildSkincareExtensions()],
+    frozen_at: null,
+  };
+}
+
+/**
+ * Domain-agnostic empty draft for the real `/tasks/new/scoping` path while
+ * ScopingAgent is not yet wired up. 4 locked core dimensions, zero extensions,
+ * zero competitors — the user fills in the rest by hand.
+ *
+ * Per PRD §十一-quater 11Q.7, the real path MUST use this (or the real
+ * ScopingAgent output) and MUST NOT fall back to any domain-bound mock.
+ */
+export function buildEmptyDraftContract(userBrief: string): TaskScopeContract {
+  return {
+    task_id: `task_${Date.now()}`,
+    target_product: null,
+    competitors: [],
+    user_brief: userBrief,
+    clarifications: [],
+    dimensions: buildCoreDimensions(),
     frozen_at: null,
   };
 }

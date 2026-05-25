@@ -16,12 +16,24 @@ interface ScopingState {
   draftContract: TaskScopeContract | null;
   /** "AI is thinking" flag for the initial generation + regenerate. */
   isGenerating: boolean;
+  /**
+   * True when the user entered the `/demo/*` flow. Keeps demo fixtures from
+   * contaminating real /tasks/new state and lets pages disable destructive
+   * actions (regenerate, edit) during the curated playback.
+   */
+  demoMode: boolean;
 
   // --- intake (page 1a) ---
   setUserBrief: (brief: string) => void;
   addManualCompetitor: (name: string) => void;
   removeManualCompetitor: (name: string) => void;
   resetIntake: () => void;
+
+  // --- demo ---
+  /** Set demo flag + hydrate the draft contract from a fixture. */
+  enterDemoMode: (contract: TaskScopeContract) => void;
+  /** Clear demo flag and wipe store back to its initial values. */
+  exitDemoMode: () => void;
 
   // --- scoping (page 1b) ---
   setDraftContract: (contract: TaskScopeContract | null) => void;
@@ -49,6 +61,7 @@ export const useScopingStore = create<ScopingState>((set) => ({
   manualCompetitors: [],
   draftContract: null,
   isGenerating: false,
+  demoMode: false,
 
   setUserBrief: (brief) => set({ userBrief: brief }),
   addManualCompetitor: (name) =>
@@ -63,6 +76,23 @@ export const useScopingStore = create<ScopingState>((set) => ({
     })),
   resetIntake: () =>
     set({ userBrief: "", manualCompetitors: [], draftContract: null }),
+
+  enterDemoMode: (contract) =>
+    set({
+      demoMode: true,
+      draftContract: contract,
+      userBrief: contract.user_brief,
+      manualCompetitors: [],
+      isGenerating: false,
+    }),
+  exitDemoMode: () =>
+    set({
+      demoMode: false,
+      draftContract: null,
+      userBrief: "",
+      manualCompetitors: [],
+      isGenerating: false,
+    }),
 
   setDraftContract: (contract) => set({ draftContract: contract }),
   setIsGenerating: (flag) => set({ isGenerating: flag }),
@@ -130,6 +160,7 @@ export const useScopingStore = create<ScopingState>((set) => ({
       const newDim: DimensionSpec = {
         id: slug,
         layer: "extension",
+        source: "user_added",
         title,
         intent,
         schema_ref: null,

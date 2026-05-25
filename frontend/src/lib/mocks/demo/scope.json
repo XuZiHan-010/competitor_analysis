@@ -1,0 +1,89 @@
+{
+  "_origin": "scaffold",
+  "_note": "Hand-crafted scaffold fixture; replace with a real LangGraph capture in Week 2. See PRD §十一Q.3 & §十一Q.4.",
+  "task_id": "demo_bytedance_shortVideo_2026",
+  "target_product": null,
+  "competitors": ["抖音", "快手", "微信视频号"],
+  "user_brief": "对比抖音、快手、微信视频号三个短视频平台在内容电商和创作者变现机制上的差异，评估品牌方在各平台的投放效率与私域运营策略。",
+  "clarifications": [],
+  "frozen_at": "2026-05-25T09:42:18.000Z",
+  "dimensions": [
+    {
+      "id": "core.feature_tree",
+      "layer": "core",
+      "source": "system",
+      "title": "功能树",
+      "intent": "盘点各平台核心功能模块（短视频、直播、商城、私域工具）与差异化特性",
+      "schema_ref": "FeatureTree",
+      "enabled": true,
+      "locked": true,
+      "order": 0
+    },
+    {
+      "id": "core.pricing_model",
+      "layer": "core",
+      "source": "system",
+      "title": "定价与变现",
+      "intent": "对比创作者分成机制、广告产品 CPM 基准与商家入驻服务费率",
+      "schema_ref": "PricingModel",
+      "enabled": true,
+      "locked": true,
+      "order": 1
+    },
+    {
+      "id": "core.user_persona",
+      "layer": "core",
+      "source": "system",
+      "title": "用户画像",
+      "intent": "分析用户年龄分布、城市线级、内容偏好与消费行为差异",
+      "schema_ref": "UserPersona",
+      "enabled": true,
+      "locked": true,
+      "order": 2
+    },
+    {
+      "id": "core.swot",
+      "layer": "core",
+      "source": "system",
+      "title": "SWOT",
+      "intent": "各平台竞争优劣势、增长机会与外部威胁交叉对比",
+      "schema_ref": "SWOT",
+      "enabled": true,
+      "locked": true,
+      "order": 3
+    },
+    {
+      "id": "ext.creator_ecosystem",
+      "layer": "extension",
+      "source": "ai_suggested",
+      "title": "创作者生态",
+      "intent": "创作者扶持计划、MCN 政策、粉丝互动工具与变现路径对比",
+      "schema_ref": null,
+      "enabled": true,
+      "locked": false,
+      "order": 4
+    },
+    {
+      "id": "ext.ecommerce",
+      "layer": "extension",
+      "source": "ai_suggested",
+      "title": "内容电商",
+      "intent": "直播带货 GMV 规模、商品橱窗转化率与品牌合作模式对比",
+      "schema_ref": null,
+      "enabled": true,
+      "locked": false,
+      "order": 5
+    },
+    {
+      "id": "ext.advertising",
+      "layer": "extension",
+      "source": "ai_suggested",
+      "title": "广告商业化",
+      "intent": "信息流广告产品线、CPM/ROAS 基准数据与品牌投放 ROI 对比",
+      "schema_ref": null,
+      "enabled": true,
+      "locked": false,
+      "order": 6
+    }
+  ]
+}

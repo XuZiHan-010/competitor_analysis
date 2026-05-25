@@ -8,10 +8,7 @@ import { Button } from "@/components/ui/button";
 import { PageContainer } from "@/components/layout/page-container";
 import { useScopingStore } from "@/stores/scoping-store";
 import { simulateAIThinking } from "@/lib/mocks/delay";
-import {
-  buildSkincareMockContract,
-  extractCompetitorsFromBrief,
-} from "@/lib/mocks/scope-contract";
+import { buildEmptyDraftContract } from "@/lib/mocks/scope-contract";
 import { CompetitorChips } from "@/components/scoping/competitor-chips";
 import { DimensionList } from "@/components/scoping/dimension-list";
 import { AddDimensionDialog } from "@/components/scoping/add-dimension-dialog";
@@ -21,7 +18,6 @@ import { cn } from "@/lib/utils";
 export default function ScopingPage() {
   const {
     userBrief,
-    manualCompetitors,
     draftContract,
     isGenerating,
     setDraftContract,
@@ -30,31 +26,19 @@ export default function ScopingPage() {
 
   const [confirming, setConfirming] = useState(false);
 
-  // Bootstrap: if the user landed here directly (or refreshed), fall back to
-  // the mock skincare brief so the page is always demonstrable.
+  // Real path (PRD §十一-quater 11Q.7): ScopingAgent backend not yet wired up,
+  // so we render an empty skeleton (4 core + 0 extensions + 0 competitors)
+  // built from whatever the user typed. NEVER fall back to a domain-bound mock
+  // — that would mean "type AI IDE, see skincare outline" on demo day.
   useEffect(() => {
     if (draftContract) return;
 
-    const briefForMock =
-      userBrief ||
-      "分析 SK-II、资生堂、雅诗兰黛 三个高端护肤品牌在中国电商的会员体系和 KOL 策略上的差异。";
-    const extracted = extractCompetitorsFromBrief(briefForMock);
-    const competitors = Array.from(
-      new Set([...extracted, ...manualCompetitors]),
-    );
-
     setIsGenerating(true);
-    simulateAIThinking(1800).then(() => {
-      setDraftContract(buildSkincareMockContract(briefForMock, competitors));
+    simulateAIThinking(900).then(() => {
+      setDraftContract(buildEmptyDraftContract(userBrief));
       setIsGenerating(false);
     });
-  }, [
-    draftContract,
-    userBrief,
-    manualCompetitors,
-    setDraftContract,
-    setIsGenerating,
-  ]);
+  }, [draftContract, userBrief, setDraftContract, setIsGenerating]);
 
   async function handleConfirm() {
     if (!draftContract) return;
