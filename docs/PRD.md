@@ -1,7 +1,7 @@
 # PRD: AI 驱动的竞品分析 Agent 协作系统
 
 > **文档性质**: 产品需求文档（PRD），交付给开发 Agent 拆任务用
-> **版本**: v1.8
+> **版本**: v1.9
 > **日期**: 2026-05-27
 > **作者**: PM (Claude) + 项目负责人
 >
@@ -22,6 +22,8 @@
 > **v1.7 修订说明**（2026-05-26）：**`web_search` 升级为 HybridSearch Provider 模式**。§六 5.1 `web_search` 工具描述改为"内部走 `SearchProvider` 抽象，Tavily 主、SerpApi 备，降级写 trace"；§六 WorkflowState trace 命名表追加 `search.invoke` / `search.fallback` / `search.exhausted`；§七 7.6 `SourceCitation` 加 `provider` 字段（记录产出该引用的 search provider 实现）；§十一-ter Provider 模式架构图升级，`web_search` 从"内置"升为 `SearchProvider` 实证，实现层示例追加 `TavilyProvider` / `SerpApiProvider`。**Provider 模式实证从 1 个（SurveyDistributor）增至 2 个（+SearchProvider）**，答辩叙事更完整。详见 [plans/2026-05-26-hybrid-search-provider.md](../plans/2026-05-26-hybrid-search-provider.md)。
 >
 > **v1.8 修订说明**（2026-05-27）：**LLM 选型按 Agent 锁定**。新增 §五.X 模型选型决策表（Collector=Gemini 2.5 Flash / Analyst+Writer=DeepSeek V4 Pro / QA=gpt-4o-mini，演示周成本上限 ~$3）；§五 部署拓扑表 LLM 行同步更新；§六 5.1–5.4 各 Agent 起首加"使用模型"行；§十一-bis Non-Goals 补"MVP 不调用 embedding API（pgvector schema 字段保留为 P1 准备）"，并把"国内合规 LLM 替换"从 Non-Goals 移除（MVP 已部分国产化）；§十一-ter 第二阶段「合规」行同步更新为 MVP 已用 DeepSeek + 生产化扩展国产 Provider。**选型原则**：成本 × 能力同时兼顾，不追求最强（Analyst 用能力 86 / 成本 $0.21 的 DeepSeek V4 Pro 替代能力 90 / 成本 $1.26 的 gpt-4.1）。详见 [plans/2026-05-26-prd-open-questions.md](../plans/2026-05-26-prd-open-questions.md)。
+>
+> **v1.9 修订说明**（2026-05-27）：**借鉴 DeerFlow 运行时工程能力**（非产品主架构）。新增 §五.Y "运行时可靠性保障"小节，统一收口 SSE 心跳 + Last-Event-ID 重连 / Tool Error Wrapper / @traced_node 装饰器 / StreamBridge 抽象 / RunRecord 模型五项工程约束；§六 5.1 工具集末尾补"5 个竞品采集走 asyncio.gather 节点内并行（性能必需）"；§六 5.4 QAAgent 反馈闭环加 `correction_detected` 信号传递；§十 `task_runs` 表 schema 补完整字段（error / checkpoint_id / run_started_at 等）；§十一-ter 设计钩子第 6 条新增 StreamBridge 抽象层；§十二 风险表 SSE 行 mitigation 增强（心跳 + Last-Event-ID 重连）。同步新增项目根 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) 标注 DeerFlow（MIT License）借鉴范围。**不改动业务架构主干**（4 Agent DAG + Pydantic State + source_ids 强溯源不变）。详见 [plans/2026-05-26-deerflow-architecture-inspirations.md](../plans/2026-05-26-deerflow-architecture-inspirations.md)。
 
 ---
 
@@ -207,6 +209,26 @@
 | LLM | Gemini 2.5 Flash + DeepSeek V4 Pro + gpt-4o-mini（按 Agent 分配，见 §五.X） | 演示周约 $3 |
 | Search API | Tavily Free / SerpApi Free | 免费额度 |
 
+### 五.Y 运行时可靠性保障（v1.9 新增）
+
+> 本节统一收口长任务运行时的工程约束。**借鉴自 [ByteDance DeerFlow](https://github.com/bytedance/deerflow)（MIT License）**，详见 [plans/2026-05-26-deerflow-architecture-inspirations.md](../plans/2026-05-26-deerflow-architecture-inspirations.md) 与项目根 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)。
+
+竞品分析任务跑 2-5 分钟很正常（5 竞品 × 多维度抽取 + Survey 4 阶段 + Writer 渲染），网络抖动 / 浏览器 tab 切换 / API 失败 / LLM 死循环都可能让用户中途失去进度。本节定义 5 条**强制**工程实现约束：
+
+| # | 约束 | 实现位置 | 验收 |
+|---|------|---------|------|
+| 1 | **SSE 心跳 + Last-Event-ID 幂等重连** | `frontend/src/hooks/useTaskStream.ts` + `backend/api/routes/stream.py` | 15s 空闲发 `__heartbeat__`；断线重连传 `Last-Event-ID` 头，服务端从该 event 之后续推 |
+| 2 | **Tool Error Wrapper** | `backend/services/agents/wrappers.py` | 所有 Agent 工具调用（`web_search` / `fetch_page` / `SurveyTool` / `app_review_fetch`）统一包装：异常转成 `ToolMessage(error_content)`，不挂掉整个 DAG；写入 `trace_log` `stage="tool.error"` |
+| 3 | **@traced_node 装饰器** | `backend/services/agents/decorators.py` | 每个 LangGraph 节点函数挂 `@traced_node`，自动记录 `{stage, prompt_hash, input_summary, output_summary, tokens_in, tokens_out, latency_ms, failure_reason}` 到 `agent_traces` 表，节点代码不手写 trace |
+| 4 | **StreamBridge 抽象（producer/consumer 解耦）** | `backend/services/streaming/bridge.py` | 抽象 `publish(run_id, event)` / `subscribe(run_id) → AsyncIterator`；MVP 用内存实现，生产化平滑切 Redis（详见 §十一-ter 设计钩子 6） |
+| 5 | **RunRecord 任务生命周期** | `task_runs` 表（详见 §十）+ `backend/services/runs/manager.py` | `{run_id, task_id, status, error, checkpoint_id, started_at, completed_at}`；`checkpoint_id` 与 LangGraph PostgresCheckpointer 的 `thread_id` 一一对应，支持"刷新页面后任务还在跑 + 失败从中断点续跑" |
+
+**为什么不抄 DeerFlow 全套**：DeerFlow 的 14 层 middleware + MCP + Skill + Sandbox 是为开放式深度研究设计，与我们结构化竞品分析（4 Agent DAG + 强 Schema）正交。本节只取 5 条工程地基，**主架构（PRD §六 多 Agent DAG）不动**。
+
+**比赛评分对应**：本节 5 条直接撑起评分卡 25% "技术深度与工程完整度" 的"长任务稳定性"维度；约束 2/3 还为 35% "多 Agent 协作可信度"中的"trace 完整、可追溯"提供工程保障。
+
+---
+
 ### 五.X 模型选型决策表（v1.8 新增）
 
 按 Agent / task 锁定 LLM 模型，开发期写死在 `backend/settings.py`，不暴露给终端用户切换。
@@ -331,6 +353,8 @@ class ScopingDraft(BaseModel):
   
   每个 Stage 出口写入 `trace_log`（命名约定见 §六 WorkflowState 注）；合规抓取走主线 `fetch_page` 策略，robots 拒绝域名进 `skipped_urls`。
 
+**v1.9 并行采集约束**：5 个竞品的 `web_search` + `fetch_page` 走 `asyncio.gather` 节点内并行（**P0 性能必需**，串行 5 × 30s 演示卡 2.5 分钟）；每个竞品采集任务带 60s timeout + 单点失败隔离（一个竞品挂不拖累其他）。代码位置：`backend/services/agents/nodes/collector.py`。所有 tool 调用走 §五.Y 约束 2 的统一 wrapper，错误不挂掉 DAG。
+
 **输入 Schema**（v1.1 修订）:
 ```json
 {
@@ -442,6 +466,8 @@ class ScopingDraft(BaseModel):
 **反馈闭环逻辑**：
 - **blocker** → 打回 Collector 重抓（最多 3 次），3 次仍失败则字段标"未确认"
 - **warning** → 不阻塞流程，在最终报告中标"未充分确认"提示
+
+**v1.9 增强：correction_detected 信号**：QAAgent 输出 blocker 时同步在 `WorkflowState.feedback_signals` 写入 `correction_detected: {target_competitor, failed_field, last_evidence_summary}`，CollectorAgent 重跑时读这个信号，在 prompt 里强调"上次错的是 XX 字段，证据是 YY，这次特别检查 ZZ"，避免无指导性的盲目重抓。借鉴自 DeerFlow memory 模块（见 §五.Y 与 [plans/2026-05-26-deerflow-architecture-inspirations.md](../plans/2026-05-26-deerflow-architecture-inspirations.md) D1）。代码位置：`backend/services/agents/signals.py`。
 
 这套分层保证了 §十三 35% 评分项里"严格符合预定义 Schema、字段完整"对**核心层**始终成立；扩展层走"尽力服务"，缺失也不影响演示主流程。
 
@@ -993,12 +1019,17 @@ tasks (
   created_at, started_at, completed_at
 )
 
--- 任务运行实例（一次任务可能重跑多次）
+-- 任务运行实例（一次任务可能重跑多次）—— v1.9 字段补全
 task_runs (
-  id uuid PK, task_id FK,
-  status text, retry_count int,
-  langgraph_thread_id text,                -- LangGraph checkpointer 用
-  started_at, completed_at
+  id uuid PK,                              -- run_id（SSE/StreamBridge 的订阅 key）
+  task_id FK,
+  status text,                              -- pending/running/succeeded/failed/cancelled
+  retry_count int,
+  langgraph_thread_id text,                -- LangGraph PostgresCheckpointer 的 thread_id（与本表 id 一一对应）
+  checkpoint_id text,                       -- v1.9：最后一次成功 checkpoint，支持失败续跑
+  error_summary jsonb,                      -- v1.9：失败时记录 {stage, agent, exception_class, message, blocker_after_3_retries}
+  started_at, completed_at,
+  cancelled_at                              -- v1.9：用户主动取消时间戳（区别于 failed）
 )
 
 -- Trace 日志（每个 Agent 节点一条）
@@ -1170,6 +1201,8 @@ manual_corrections (
    （OpenAI → 智谱）只需改 prompt 模板，State Schema 不动
 5. **Schema 双层架构（核心层固定 + 扩展层动态）** —— 未来 SaaS 化按行业卖
    "扩展模板包"有现成的扩展点
+6. **StreamBridge 抽象层（v1.9 新增，§五.Y 约束 4）** —— MVP 用内存实现，生产化平滑切 Upstash Redis / RabbitMQ，
+   SSE 端点和 Worker 进程解耦，多实例横向扩展时不用重写。借鉴自 DeerFlow `runtime/stream_bridge/`
 
 ### Provider 模式统一架构（v1.6 新增，v1.7 扩充，**答辩叙事重点**）
 
@@ -1390,7 +1423,7 @@ demo 路径走独立 route 前缀 `/demo/*`，**绝对不复用** `/tasks/new` /
 | PPTX 生成质量不达预期 | 汇报体验差 | 提前 1 周做 PPTX POC，确认排版可行 |
 | LangGraph 学习曲线 | 进度延迟 | Week 0.5 集中跑通官方示例 + checkpointer |
 | 3 周时间紧 | 功能砍不动 | P0 锁死，P1 按时间允许加，P2 不做 |
-| 演示日多评委同时点 | 单实例 FastAPI 卡 SSE 长连接 | 临时把 Railway 从 Hobby 升到 Pro（workers 调到 8-16）+ 预置 3 个评委账号 + `/reports/demo` 不登录直接看的样例报告（v1.2 补充，对应 §十一-bis 演示日运维预案）|
+| 演示日多评委同时点 | 单实例 FastAPI 卡 SSE 长连接 | 临时把 Railway 从 Hobby 升到 Pro（workers 调到 8-16）+ 预置 3 个评委账号 + `/reports/demo` 不登录直接看的样例报告 + **SSE 心跳 + Last-Event-ID 幂等重连**（§五.Y 约束 1，断线即可恢复，不依赖客户端记忆进度）（v1.2 补充，对应 §十一-bis 演示日运维预案；v1.9 增强重连解法）|
 
 ---
 

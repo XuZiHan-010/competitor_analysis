@@ -116,3 +116,4 @@
 | 2026-05-22 | 初始化进度文件 | Claude |
 | 2026-05-25 | 前端脚手架完成（Stage 1 对话式立项页上线）；AGENTS.md + apps/web/CLAUDE.md 重构；删除死文档；.gitignore 修复；apps/web → frontend 重命名；PRD v1.2（Non-Goals + 生产路径规划）；package-lock.json 入库 | Claude + Eric |
 | 2026-05-27 | Q4 模型选型决策完成（方案 P2）：Collector=Gemini 2.5 Flash, Analyst+Writer=DeepSeek V4 Pro, QA=gpt-4o-mini；演示周成本上限 ~$3；PRD v1.8 回写 §五 部署拓扑 + §五.X 新增决策表 + §六 4 个 Agent 加"使用模型"行 + §十一-bis Non-Goals 调整（embedding 不做 / 国内 LLM 移除）+ §十一-ter 合规行更新 | Claude + Eric |
+| 2026-05-27 | PRD v1.9 借鉴 DeerFlow 运行时工程能力（非主架构）：新增 §五.Y 运行时可靠性保障（SSE 心跳+Last-Event-ID 重连 / Tool Error Wrapper / @traced_node / StreamBridge / RunRecord 5 项约束）；§六 5.1 补 asyncio.gather 并行采集；§六 5.4 补 correction_detected 反馈信号；§十 task_runs 表字段补全；§十一-ter 设计钩子 6 加 StreamBridge；§十二 SSE 风险行增强重连解法；新增项目根 THIRD_PARTY_NOTICES.md（DeerFlow MIT License attribution）；PRD 命名 Serper→SerpApi 统一（5 处） | Claude + Eric |
