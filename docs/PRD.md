@@ -185,7 +185,7 @@
 ┌────────▼────────────┐    ┌────────────▼────────────────┐
 │  LangGraph Engine   │    │  外部服务                    │
 │  - 4 Agent DAG      │    │  - OpenAI API (GPT-4o/4.1)  │
-│  - Checkpointer→PG  │    │  - Tavily / Serper (搜索)   │
+│  - Checkpointer→PG  │    │  - Tavily / SerpApi (搜索)   │
 │  - 反馈闭环逻辑      │    │  - Playwright (网页抓取)     │
 └─────────┬───────────┘    └─────────────────────────────┘
           │
@@ -205,7 +205,7 @@
 | Postgres + pgvector | Neon | Free Forever (3GB) |
 | Redis | Upstash | Free (10K commands/天) |
 | LLM | Gemini 2.5 Flash + DeepSeek V4 Pro + gpt-4o-mini（按 Agent 分配，见 §五.X） | 演示周约 $3 |
-| Search API | Tavily Free / Serper Free | 免费额度 |
+| Search API | Tavily Free / SerpApi Free | 免费额度 |
 
 ### 五.X 模型选型决策表（v1.8 新增）
 
@@ -1386,7 +1386,7 @@ demo 路径走独立 route 前缀 `/demo/*`，**绝对不复用** `/tasks/new` /
 | 风险 | 影响 | 缓解 |
 |---|---|---|
 | OpenAI API 速率限制 | 演示时卡死 | 实现请求队列 + 关键演示用预跑结果回放 |
-| Tavily/Serper 抓取失败 | 信源不足 | 准备 fallback 到 LLM 直接生成（带"模拟"标记）|
+| Tavily/SerpApi 抓取失败 | 信源不足 | 准备 fallback 到 LLM 直接生成（带"模拟"标记）|
 | PPTX 生成质量不达预期 | 汇报体验差 | 提前 1 周做 PPTX POC，确认排版可行 |
 | LangGraph 学习曲线 | 进度延迟 | Week 0.5 集中跑通官方示例 + checkpointer |
 | 3 周时间紧 | 功能砍不动 | P0 锁死，P1 按时间允许加，P2 不做 |
@@ -1543,7 +1543,7 @@ demo 路径走独立 route 前缀 `/demo/*`，**绝对不复用** `/tasks/new` /
 ### 14.3 技术侧决策
 
 - [ ] OpenAI API key 来源（个人 / 团队共享 / 走代理）
-- [ ] Tavily vs Serper 选型（建议 Tavily，LLM 链路更顺）
+- [ ] Tavily vs SerpApi 选型（建议 Tavily，LLM 链路更顺）
 - [ ] PPTX 模板设计（建议 Week 0.5 末做 POC 确认风格——可参考 14.2 拿到的真实模板）
 - [ ] DAG 可视化库选型（React Flow vs Dagre+D3，建议 React Flow）
 - [ ] 溯源面板的视觉规范（避免点击溯源后体验割裂）
@@ -1590,7 +1590,7 @@ competitor_analysis/
 │   │   ├── persona.py
 │   │   └── report.py
 │   ├── services/
-│   │   ├── search.py                 # Tavily/Serper wrapper
+│   │   ├── search.py                 # Tavily/SerpApi wrapper
 │   │   ├── scraper.py                # Playwright
 │   │   └── exporter.py               # PDF/PPTX
 │   └── db/
