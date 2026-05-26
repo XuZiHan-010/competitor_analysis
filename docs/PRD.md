@@ -1,8 +1,8 @@
 # PRD: AI 驱动的竞品分析 Agent 协作系统
 
 > **文档性质**: 产品需求文档（PRD），交付给开发 Agent 拆任务用
-> **版本**: v1.5
-> **日期**: 2026-05-25
+> **版本**: v1.8
+> **日期**: 2026-05-27
 > **作者**: PM (Claude) + 项目负责人
 >
 > **v1.1 修订说明**（2026-05-23）：基于汉高战略部实习生反馈与比赛评分卡复核，引入**对话式立项 + 双层 Schema** 架构。固定 Schema（功能树/定价/画像/SWOT）保留为"核心层"满足比赛"严格符合预定义 Schema"评分项；新增"扩展层"由 AI 与用户协商动态生成，解决"维度因行业而异、无法预先穷尽"的真实痛点。详见本次修订设计草案 [plans/2026-05-23-dynamic-outline-scoping-design.md](../plans/2026-05-23-dynamic-outline-scoping-design.md)。影响章节：§四 / §六 / §七 / §九 / §十三 / §十四。
@@ -16,6 +16,12 @@
 > **v1.5 修订说明**（2026-05-25）：把 PRD 对齐到当前前端实际设计——`/tasks/new` 简化为**纯 NL 单一输入框**（移除"可选竞品 chip 区"），已知竞品由 ScopingAgent 从 NL 中提取；用户在 `/tasks/new/scoping` 立项页才能手动增删竞品。新增 **direct 模式**：NL 中含"直接生成 / 跳过 / 直接分析"等关键词时跳过 scoping 页，直接进入分析（演示走 `/demo/scoping`）。**演示入口迁移**：原 `/tasks/new` 顶部并排的"30 秒看完整演示"按钮已迁到全站顶部导航栏，使任务创建页只保留一个聚焦动作。`/tasks/new` 增加 3 个示例 brief 快填 chips（仅填充 NL，非竞品输入）。**不改动任何 Agent 设计 / Schema / DAG 逻辑**，仅同步入口形态。影响章节：§四 / §六（ScopingRequest 输入来源说明）/ §九（页面 1a 线框图）/ §十一-quater 11Q.1。
 >
 > **v1.5.1 修订说明**（2026-05-26）：明确 **`/demo/*` 与 `/tasks/new/*` 的路由职责边界**（新增 §十一-quater 11Q.7）。背景：Stage 1 前端临时让 `/tasks/new/scoping` 在 ScopingAgent 未接通时回退到护肤 mock（`buildSkincareMockContract`），导致"输入 AI IDE 得到护肤大纲"的演示翻车风险。新边界：`mocks/demo/*` 只能被 `/demo/*` 路由消费；真实路径**绝不**回退到任何与领域绑定的硬编码 mock，ScopingAgent 未就绪时应表现为"连线中"空骨架，让用户手动构造扩展维度。影响章节：§四 [3] / §六 5.0（未就绪行为）/ §十一-quater（11Q.7 新增）。
+>
+> **v1.6 修订说明**（2026-05-26）：**SurveyTool 架构纳入 PRD**。新增 §七 7.8 Survey 系列 Schema（Questionnaire / TargetPersona / DistributionHandle / SurveyResponse / SurveyEvidence / SurveyInsight / SurveyResult）；§七 7.6 `SourceCitation.type` 枚举扩展（新增 `published_survey` / `public_review` / `ai_simulated`，废弃 `simulated_survey`）；§六 5.4 QAAgent 检查清单增 SurveyInsight 校验 4 条；§六 WorkflowState 加 `survey_results` 字段；§六 5.1 CollectorAgent 工具集加 SurveyTool；§十一-ter 新增"Provider 模式统一架构"小节（SurveyDistributor + KnowledgeBaseProvider）。**RAG / 企业 KB 本期不实现**，仅在 §十一-ter 作为路线图占位。详见 [plans/2026-05-26-survey-tool-design.md](../plans/2026-05-26-survey-tool-design.md) 与 [plans/2026-05-26-survey-tool-plan-revision.md](../plans/2026-05-26-survey-tool-plan-revision.md)。
+>
+> **v1.7 修订说明**（2026-05-26）：**`web_search` 升级为 HybridSearch Provider 模式**。§六 5.1 `web_search` 工具描述改为"内部走 `SearchProvider` 抽象，Tavily 主、SerpApi 备，降级写 trace"；§六 WorkflowState trace 命名表追加 `search.invoke` / `search.fallback` / `search.exhausted`；§七 7.6 `SourceCitation` 加 `provider` 字段（记录产出该引用的 search provider 实现）；§十一-ter Provider 模式架构图升级，`web_search` 从"内置"升为 `SearchProvider` 实证，实现层示例追加 `TavilyProvider` / `SerpApiProvider`。**Provider 模式实证从 1 个（SurveyDistributor）增至 2 个（+SearchProvider）**，答辩叙事更完整。详见 [plans/2026-05-26-hybrid-search-provider.md](../plans/2026-05-26-hybrid-search-provider.md)。
+>
+> **v1.8 修订说明**（2026-05-27）：**LLM 选型按 Agent 锁定**。新增 §五.X 模型选型决策表（Collector=Gemini 2.5 Flash / Analyst+Writer=DeepSeek V4 Pro / QA=gpt-4o-mini，演示周成本上限 ~$3）；§五 部署拓扑表 LLM 行同步更新；§六 5.1–5.4 各 Agent 起首加"使用模型"行；§十一-bis Non-Goals 补"MVP 不调用 embedding API（pgvector schema 字段保留为 P1 准备）"，并把"国内合规 LLM 替换"从 Non-Goals 移除（MVP 已部分国产化）；§十一-ter 第二阶段「合规」行同步更新为 MVP 已用 DeepSeek + 生产化扩展国产 Provider。**选型原则**：成本 × 能力同时兼顾，不追求最强（Analyst 用能力 86 / 成本 $0.21 的 DeepSeek V4 Pro 替代能力 90 / 成本 $1.26 的 gpt-4.1）。详见 [plans/2026-05-26-prd-open-questions.md](../plans/2026-05-26-prd-open-questions.md)。
 
 ---
 
@@ -198,8 +204,32 @@
 | Backend (FastAPI) | Railway | Hobby ~$3-5/月 |
 | Postgres + pgvector | Neon | Free Forever (3GB) |
 | Redis | Upstash | Free (10K commands/天) |
-| LLM | OpenAI API | 按用量计费（演示约 $20-50） |
+| LLM | Gemini 2.5 Flash + DeepSeek V4 Pro + gpt-4o-mini（按 Agent 分配，见 §五.X） | 演示周约 $3 |
 | Search API | Tavily Free / Serper Free | 免费额度 |
+
+### 五.X 模型选型决策表（v1.8 新增）
+
+按 Agent / task 锁定 LLM 模型，开发期写死在 `backend/settings.py`，不暴露给终端用户切换。
+
+| Agent | 模型 | 输入 / 输出（USD/1M tokens） | 7 天演示成本 | 能力分 | 选择理由 |
+|-------|------|----------------------------|-------------|--------|---------|
+| CollectorAgent | `gemini-2.5-flash` | $0.30 / $2.50 | ~$0.28 | 78 | 1M 上下文塞检索结果；tool use 稳定；Google 索引内核做 query 改写参考 |
+| AnalystAgent | `deepseek-v4-pro` | $0.435 / $0.87 | ~$0.21 | 86 | 推理强 + 384K 输出容量；成本仅 gpt-4.1 的 1/6（2026-05 永久 75% 降价后） |
+| WriterAgent | `deepseek-v4-pro` | $0.435 / $0.87 | ~$0.21 | 88（中文） | 中文长报告自然度高；与 AnalystAgent 同模型简化 prompt 协调 |
+| QAAgent | `gpt-4o-mini` | $0.15 / $0.60 | ~$0.10 | 75 | JSON 结构化检查任务简单，便宜款够用 |
+
+**演示周（7 天 × 5 任务/天）总成本上限**：~$3（含 20% 缓冲）；单次任务 token 消耗假设 100K input + 20K output。
+
+**选型原则**："成本 × 能力同时兼顾，不追求最强"——例如 Analyst 不用 gpt-4.1（能力 90 / 成本 $1.26），改用 DeepSeek V4 Pro（能力 86 / 成本 $0.21），**用 1/6 的钱买 95% 的能力**。
+
+**为什么不全用 DeepSeek**：CollectorAgent 一格保留 Gemini 2.5 Flash —— 因为它的 1M 上下文 + Google 索引内核做 query 改写参考时质量更好；QAAgent 用 gpt-4o-mini 是因为 OpenAI SDK 与 DeepSeek 兼容 SDK 同源，跨家协调成本最低。
+
+**SDK 与配置**：
+- DeepSeek 兼容 OpenAI SDK（base_url=`https://api.deepseek.com/v1`），与 gpt-4o-mini 共用 `openai` Python 包
+- Gemini 用 `google-genai` SDK
+- 环境变量：`OPENAI_API_KEY` / `GEMINI_API_KEY` / `DEEPSEEK_API_KEY`（密钥管理见 [docs/security.md](security.md)）
+
+**未来路径**：见 §十一-ter 第二阶段「合规」行——MVP 已部分国产化（Analyst+Writer），生产化阶段补充智谱 GLM / 阿里通义 / MiniMax 多 Provider。
 
 ---
 
@@ -279,13 +309,27 @@ class ScopingDraft(BaseModel):
 
 ### Agent 5.1: 采集 Agent (`CollectorAgent`)
 
+**使用模型**：`gemini-2.5-flash`（1M 上下文塞检索结果不慌；tool use 稳定；详见 §五.X 选型决策）
+
 **职责**: 把"产品/竞品名"变成结构化原始数据
 
 **工具集**:
-- `web_search(query)` — 调 Tavily/Serper
+- `web_search(query, max_results=5)` — v1.7 升级为 **HybridSearch Provider 模式**，对 CollectorAgent 透明（仍一句调用，拿到 `list[SourceCitation]`）；内部实现：
+  - `SearchProvider` Protocol 抽象：`TavilyProvider`（主）→ `SerpApiProvider`（备）
+  - **降级策略**：Tavily 失败（429 / timeout / 500 / 空结果）→ 自动切换 SerpApi，每次降级写入 `trace_log`（`stage="search.fallback"`）
+  - **全失败**：抛 `SearchUnavailableError`，LangGraph CollectorAgent 节点走 retry（最多 3 次）
+  - **启动时探测**：按 `TAVILY_API_KEY` / `SERPAPI_API_KEY` 可用性自动构建 provider 顺序；无任何 key 时明确报错
+  - 返回的每条 `SourceCitation` 含 `provider` 字段（记录实际使用的 provider 实现名）
+  - 代码路径：`backend/services/search/`（`providers/base.py` / `providers/tavily.py` / `providers/serpapi.py` / `hybrid.py`）
 - `fetch_page(url)` — Playwright 抓取
 - `app_review_fetch(app_name)` — 应用商店评论（可选）
-- `generate_survey(competitor)` — LLM 生成模拟问卷调研方案 + 模拟数据
+- `SurveyTool(competitor, dimension_intent, collected_sources)` — v1.6 新增，问卷调研子工作流，四层级联：
+  1. **Stage 1**：AI 设计问卷（`questionnaire_designer`，5-10 道题）
+  2. **Stage 2**：检索公开调研数据（`existing_survey_finder`）+ 复用已采集用户评论（`user_voice_collector`）
+  3. **Stage 3**：推断目标画像（`persona_inferrer`）→ `SurveyDistributor.distribute()` → 回收答卷（MVP 用 `SimulatedDistributor`，LLM 模拟作答，**显式标注 `ai_simulated`**）
+  4. **Stage 4**：洞察归纳（`insight_aggregator`），强制溯源，产出 `SurveyResult`
+  
+  每个 Stage 出口写入 `trace_log`（命名约定见 §六 WorkflowState 注）；合规抓取走主线 `fetch_page` 策略，robots 拒绝域名进 `skipped_urls`。
 
 **输入 Schema**（v1.1 修订）:
 ```json
@@ -305,7 +349,7 @@ class ScopingDraft(BaseModel):
   "competitor": "string",
   "sources": [
     {
-      "type": "official_site | search | app_store_review | simulated_survey",
+      "type": "official_site | search | app_store_review | published_survey | public_review | ai_simulated",
       "url": "string",
       "title": "string",
       "snippet": "string",
@@ -318,6 +362,8 @@ class ScopingDraft(BaseModel):
 ```
 
 ### Agent 5.2: 分析 Agent (`AnalystAgent`)
+
+**使用模型**：`deepseek-v4-pro`（推理能力 86 分 + 384K 输出容量足够 4 维度+SWOT 综合；成本仅为 gpt-4.1 的约 1/6；详见 §五.X 选型决策）
 
 **职责**: 把原始数据结构化为竞品知识 Schema
 
@@ -344,6 +390,8 @@ class ScopingDraft(BaseModel):
 
 ### Agent 5.3: 撰写 Agent (`WriterAgent`)
 
+**使用模型**：`deepseek-v4-pro`（中文长报告自然度 88，384K 输出容量写完 10-15 页不截断；与 AnalystAgent 同模型简化 prompt 风格协调；详见 §五.X 选型决策）
+
 **职责**: 把结构化 Profile + 扩展产物写成给人看的报告
 
 **v1.1 渲染规则**：
@@ -368,6 +416,8 @@ class ScopingDraft(BaseModel):
 
 ### Agent 5.4: 质检 Agent (`QAAgent`)
 
+**使用模型**：`gpt-4o-mini`（JSON 结构化检查任务简单，便宜款够用；与跨家协调最少；详见 §五.X 选型决策）
+
 **职责**: 触发反馈闭环
 
 **v1.1 检查清单（分层判断）**:
@@ -379,6 +429,15 @@ class ScopingDraft(BaseModel):
 | 事实校验 | 抽样 LLM 校验，矛盾 → blocker | 抽样 LLM 校验，矛盾 → warning |
 | 数据新鲜度 | 信源 > 2 年 → warning | 信源 > 2 年 → warning |
 | 覆盖度 | 每个竞品 ≥ 5 独立信源 → 否则 blocker | 每个维度 ≥ 1 信源 → 否则 warning |
+
+**v1.6 新增：SurveyInsight 专项校验**（仅在 `WorkflowState.survey_results` 存在时触发）：
+
+| 检查项 | 级别 | 说明 |
+|---|---|---|
+| `SurveyInsight.evidence_ids` 非空 | **blocker** | 每条洞察必须关联至少 1 条 `SurveyEvidence`，不可为空列表 |
+| 每条 `SurveyInsight` 含 ≥1 条真实来源 | **blocker** | `evidence_ids` 指向的 evidence 中，`source_type` 为 `published_survey` 或 `public_review` 的条数 ≥ 1；不允许一条洞察 100% 由 `ai_simulated` 支撑 |
+| `SurveyResult.source_breakdown["ai_simulated"] / total` ≤ 60% | **warning** | 整个 SurveyResult 的模拟占比过高时写入 trace 并在报告页"数据构成"区显示黄色警示；不阻塞流程 |
+| `representative_quotes` 含 `ai_simulated` 时前端强制显示 ⚠️ | **约定**（非阻塞） | QAAgent 输出 issue 标记（`severity: "convention"`），前端渲染必须消费此标记；若前端未渲染则视为前端 bug |
 
 **反馈闭环逻辑**：
 - **blocker** → 打回 Collector 重抓（最多 3 次），3 次仍失败则字段标"未确认"
@@ -416,6 +475,7 @@ class WorkflowState(BaseModel):
     raw_collections: dict[str, RawCollectionResult]       # competitor → result
     structured_profiles: dict[str, StructuredCompetitorProfile]  # 核心层产物
     extension_findings: list[ExtensionFinding]            # v1.1 新增，扩展层产物
+    survey_results: dict[str, SurveyResult] | None        # v1.6 新增，competitor → SurveyResult
     cross_analysis: CrossCompetitorAnalysis | None
     draft_report: ReportDraft | None
     qa_result: QAResult | None
@@ -424,6 +484,28 @@ class WorkflowState(BaseModel):
 ```
 
 `scope_contract` 在进入 DAG 时已 `frozen`，下游所有 Agent **只读**；保证一次任务的"维度规格"不可在跑批中途漂移。
+
+**v1.6 SurveyTool trace 命名约定**：SurveyTool 每个 Stage 出口必须写入一条 `TraceEntry`，`stage` 字段命名如下：
+
+| Stage | trace stage 值 |
+|---|---|
+| Stage 1 问卷设计 | `survey.stage1.designer` |
+| Stage 2a 公开调研检索 | `survey.stage2a.existing` |
+| Stage 2b 用户声音收集 | `survey.stage2b.voice` |
+| Stage 3a 目标画像推断 | `survey.stage3a.persona` |
+| Stage 3b 问卷分发 | `survey.stage3b.distribute` |
+| Stage 3c 答卷回收 | `survey.stage3c.collect` |
+| Stage 4 洞察归纳 | `survey.stage4.aggregate` |
+
+**v1.7 新增：HybridSearch trace 命名约定**：
+
+| 事件 | trace stage 值 | 必含字段 |
+|---|---|---|
+| 主搜索调用 | `search.invoke` | `provider`（使用的 provider 名）、`query`、`results_count` |
+| Provider 降级 | `search.fallback` | `failed_provider`、`failure_reason`、`next_provider` |
+| 全部 provider 失败 | `search.exhausted` | `tried_providers`、`final_error` |
+
+每条 trace entry 需包含：`prompt_hash`、`input_summary`、`output_summary`、`latency_ms`、`tokens_in`、`tokens_out`、`failure_reason`（nullable）、`provider_impl`（Stage 3 Survey 专用，值为 Distributor 实现类名）。
 
 **禁止**：Agent 之间用自然语言对话传消息。所有交互必须通过 State 字段（满足评分项"结构化消息传递 / function calling"）。
 
@@ -581,16 +663,25 @@ class TaskScopeContract(BaseModel):
 ```json
 {
   "id": "src_001",
-  "type": "url | document | simulated_survey",
+  "type": "url | document | published_survey | public_review | ai_simulated",
   "url": "string",
   "title": "string",
   "snippet": "string",  // 原文片段
   "agent": "CollectorAgent",
+  "provider": "string | null",  // v1.7 新增：产出该引用的 SearchProvider 实现名（"tavily" / "serpapi" / null）
   "fetched_at": "ISO8601"
 }
 ```
 
-所有报告字段中的 `source_ids: ["src_001", ...]` 都指向 `SourceCitation`，前端渲染时变成可点击图标。
+**v1.6 type 枚举变更**：
+- `url` — 普通网页抓取（web_search / fetch_page）
+- `document` — 上传文档（本期不实现，枚举占位）
+- `published_survey` — 公开调研报告 / 行业数字（SurveyTool Stage 2a）
+- `public_review` — 公开评论 / 社媒帖子（SurveyTool Stage 2b）
+- `ai_simulated` — LLM 模拟答卷（SurveyTool Stage 3，**必须显示 ⚠️ AI 生成标记**）
+- ~~`simulated_survey`~~ → 废弃，统一用 `ai_simulated`（如有历史数据迁移到 `ai_simulated`）
+
+所有报告字段中的 `source_ids: ["src_001", ...]` 都指向 `SourceCitation`，前端渲染时变成可点击图标。`ai_simulated` 类型在前端渲染时**强制**显示灰色 badge + 🤖 图标 + ⚠️ 警示标，不可省略。
 
 ### 7.7 扩展维度产出 (`ExtensionFinding`)（扩展层）
 
@@ -614,6 +705,109 @@ class ExtensionFinding(BaseModel):
 **与核心层的差别**（决定 QA 行为）：
 - 核心层 Schema 字段缺失 → QA 标 blocker → 打回 Collector 重抓（触发反馈闭环）
 - 扩展层 `ExtensionFinding` 缺失或字段稀疏 → QA 标 warning → 报告里那一节标"未充分确认" → 不阻塞流程
+
+---
+
+### 7.8 Survey 系列 Schema（v1.6 新增）
+
+> SurveyTool 产物的完整 Pydantic Schema 定义。存放于 `backend/schemas/survey.py`。
+> 所有 `SurveyEvidence.source_id` 指向 §7.6 `SourceCitation`，不破坏现有溯源模型。
+
+```python
+# backend/schemas/survey.py
+
+from datetime import datetime
+from typing import Literal
+from pydantic import BaseModel
+
+# ─── 问卷设计层 ────────────────────────────────────────────────
+
+class SurveyQuestion(BaseModel):
+    id: str                                        # "sq_001"
+    text: str                                      # 题目原文
+    type: Literal["open", "multiple_choice", "scale"]
+    options: list[str] | None                      # 选择题 / 量表题选项
+    intent: str                                    # 这道题想了解什么
+
+class Questionnaire(BaseModel):
+    id: str                                        # "qn_<uuid>"，供 DistributionHandle 引用
+    competitor: str
+    dimension_intent: str                          # 来自 TaskScopeContract.dimensions[].intent
+    questions: list[SurveyQuestion]                # 5-10 道
+    design_rationale: str                          # AI 解释为什么这样设计
+
+# ─── 目标画像层 ────────────────────────────────────────────────
+
+class TargetPersona(BaseModel):
+    label: str                                     # "高消费会员"
+    traits: str                                    # "年消费 5 万+，会员等级 V5+"
+    est_size: Literal["majority", "significant", "niche"]
+    inferred_from: list[str]                       # source_ids（推断画像所依据的源）
+
+# ─── 分发回收层 ────────────────────────────────────────────────
+
+class DistributionHandle(BaseModel):
+    id: str                                        # "dist_<uuid>"
+    distributor_impl: str                          # "SimulatedDistributor" / "TypeformDistributor"
+    questionnaire_id: str                          # 指向 Questionnaire.id
+    target_personas: list[TargetPersona]
+    sample_size: int
+    status: Literal["dispatched", "collecting", "completed", "failed"]
+    dispatched_at: datetime
+
+class SurveyResponse(BaseModel):
+    id: str
+    distribution_id: str
+    persona: TargetPersona
+    answers: dict[str, str]                        # question_id → 答案文本
+    submitted_at: datetime
+
+# ─── Evidence + Insight 层（报告渲染用）──────────────────────
+
+class SurveyEvidence(BaseModel):
+    id: str
+    question_id: str                               # 关联到具体题目
+    source_type: Literal[
+        "published_survey",                        # Stage 2a：公开调研报告 / 行业数字
+        "public_review",                           # Stage 2b：公开评论 / 社媒
+        "ai_simulated",                            # Stage 3：LLM 模拟答卷（⚠️ 必须标注）
+    ]
+    source_id: str                                 # 指向 §7.6 SourceCitation
+    raw_quote: str                                 # 原文片段 / 模拟回答文本
+    persona_inferred: str | None                   # LLM 推断的画像标签
+
+class SurveyInsight(BaseModel):
+    question_id: str
+    point: str                                     # "黑卡门槛过高"
+    frequency: int                                 # 在 evidence 里出现次数
+    representative_quotes: list[str]               # 代表性原话 2-3 句
+    evidence_ids: list[str]                        # 强制溯源，非空（QAAgent blocker）
+    confidence: Literal["high", "medium", "low"]  # 按 source_type 构成自动推断
+
+# confidence 推断规则：
+#   real_ratio = (published_survey + public_review 数) / total evidence 数
+#   real_ratio >= 0.7 → "high"；>= 0.3 → "medium"；else → "low"
+
+# ─── 顶层产物 ──────────────────────────────────────────────────
+
+class SurveyResult(BaseModel):
+    competitor: str
+    dimension_intent: str
+    questionnaire: Questionnaire
+    target_personas: list[TargetPersona]
+    distribution: DistributionHandle
+    responses: list[SurveyResponse]                # Distributor 原始答卷
+    evidence: list[SurveyEvidence]                 # 3 种 source_type 混合
+    insights: list[SurveyInsight]
+    coverage_note: str
+    source_breakdown: dict[str, int]               # {"published_survey": 8, "public_review": 12, "ai_simulated": 12}
+```
+
+**强制约束**：
+- `SurveyInsight.evidence_ids` 不可为空（§六 5.4 QAAgent blocker）
+- 每条 `SurveyInsight` 至少 1 条真实来源（`published_survey` 或 `public_review`）
+- `ai_simulated` 证据在报告页必须显示 ⚠️ AI 生成标记，前端渲染不可省略
+- `SurveyResult` 存入 `WorkflowState.survey_results[competitor]`
 
 ---
 
@@ -920,7 +1114,8 @@ manual_corrections (
 ### 数据与合规层面（MVP 外）
 - ❌ GDPR / 数据出域审计 / 数据脱敏管线
 - ❌ 内部数据上传（如 §十四 G 提到的"上传公司销售数据"）—— 留给 P2
-- ❌ 国内合规 LLM 替换（演示用 OpenAI；生产环境另说，见 §十一-ter）
+- ❌ **调用 embedding API**（MVP 不走 RAG；pgvector schema 字段保留 NULL，为 P1 "历史报告语义检索复用"准备，见 §十一-ter 设计钩子 2）
+- ℹ️ ~~国内合规 LLM 替换~~ —— v1.8 起 MVP 已部分国产化（AnalystAgent + WriterAgent 用 DeepSeek V4 Pro，见 §五.X）；生产化阶段补充更多国产 Provider，见 §十一-ter 第二阶段
 
 ### 仍然要做的（提醒）
 - ✅ **单任务内多 Agent 并行**（LangGraph `Send` API 做 fan-out，4 个竞品的采集并行而非串行）
@@ -955,7 +1150,7 @@ manual_corrections (
 | **任务队列** | Upstash Redis → 自建 Redis Cluster / 用 Celery + Redis Broker | 当前 LangGraph checkpointer 已支持 |
 | **多实例** | FastAPI 单实例 → K8s/Fly.io 多实例 + sticky session（SSE 长连接） | SSE 是最麻烦的，要么换 WebSocket 要么粘性 |
 | **数据库** | Neon → 自建 PG / 云厂商托管 + 主从读写分离 | 主要瓶颈在 pgvector 相似度检索 |
-| **合规** | OpenAI → 国内合规 LLM（智谱 / 阿里通义）双供应商 | 客户在国内必走 |
+| **合规** | MVP 已用 DeepSeek V4 Pro（Analyst+Writer）部分国产化；生产化补充智谱 GLM / 阿里通义 / MiniMax 多 Provider + 国内云直连 | 客户在国内必走；详见 §五.X |
 
 ### 第三阶段：真正的 SaaS 化（远期，不在 12 个月规划内）
 - 多租户隔离（数据库 schema-per-tenant 或 row-level security）
@@ -975,6 +1170,83 @@ manual_corrections (
    （OpenAI → 智谱）只需改 prompt 模板，State Schema 不动
 5. **Schema 双层架构（核心层固定 + 扩展层动态）** —— 未来 SaaS 化按行业卖
    "扩展模板包"有现成的扩展点
+
+### Provider 模式统一架构（v1.6 新增，v1.7 扩充，**答辩叙事重点**）
+
+> 本节说明 SurveyTool、HybridSearch、企业 KB 接入在架构上的统一设计思路。
+> **MVP 已实现的 Provider 抽象**（2 个实证）：
+> - `SearchProvider`（v1.7 升级）— 代码在 `backend/services/search/providers/`
+> - `SurveyDistributor`（v1.6 引入）— 代码在 `backend/services/survey/distributors/`
+>
+> **生产化路线图占位**（本期 0 代码）：
+> - `KnowledgeBaseProvider`
+
+**核心思路**：所有外部数据采集能力都收敛为可插拔的 Provider，CollectorAgent 只与抽象接口通信，不感知底层实现；失败时按策略降级，全过程进 `trace_log`。
+
+```
+CollectorAgent
+  ├── web_search()            → SearchProvider（Protocol）           [v1.7 升级]
+  │     ├── TavilyProvider          ← 主，AI 优化的搜索
+  │     └── SerpApiProvider         ← 备，Google 搜索 fallback
+  │         降级策略：Tavily 429/超时 → 自动切 SerpApi
+  │         全失败：抛 SearchUnavailableError → LangGraph 节点 retry
+  │
+  ├── fetch_page()            → (内置，Playwright；非 Provider)
+  ├── app_review_fetch()      → (内置；非 Provider)
+  │
+  ├── SurveyTool              → SurveyDistributor（Protocol）         [v1.6]
+  │     └── SimulatedDistributor  ← MVP 唯一实现（LLM 模拟）
+  │         未来可替换为:
+  │         TypeformDistributor / WenjuanxingProvider / 企业样本池
+  │
+  └── KnowledgeBaseProvider   ← 生产化占位（本期不实现）              [路线图]
+        未来可实现:
+        ConfluenceProvider / SharePointProvider /
+        NielsenProvider / GleanProvider / SQLProvider
+```
+
+**`SearchProvider` Protocol（v1.7 MVP 已实现）**：
+
+```python
+class SearchProvider(Protocol):
+    name: str                                          # "tavily" / "serpapi"
+    def search(self, query: str, max_results: int = 5) -> list[SourceCitation]: ...
+    def is_available(self) -> bool: ...                # 按 env key + 依赖库探测
+```
+
+- `HybridSearchTool` 编排器按 `[TavilyProvider, SerpApiProvider]` 顺序串行降级
+- 每次降级写入 `trace_log`（`stage="search.fallback"`，含 failed_provider / reason / next_provider）
+- 返回的每条 `SourceCitation` 自带 `provider` 字段，溯源面板可显示"该证据来自哪个 search provider"
+- CollectorAgent 调用方式不变：`results = web_search(query, max_results=5)`
+
+**`SurveyDistributor` Protocol（v1.6 MVP 已实现）**：
+
+```python
+class SurveyDistributor(Protocol):
+    def distribute(self, questionnaire, target_personas, sample_size) -> DistributionHandle: ...
+    def collect_responses(self, handle, timeout_seconds) -> list[SurveyResponse]: ...
+```
+
+- 签名是生产级的，MVP 只切换实现层（`SimulatedDistributor`）
+- 替换为真实问卷平台时，CollectorAgent 代码不动，只换 Distributor 实现
+
+**`KnowledgeBaseProvider` 架构占位（生产化路线图）**：
+
+```python
+class KnowledgeBaseProvider(Protocol):  # 本期不实现
+    def search(self, query: str, filters: dict) -> list[KBDocument]: ...
+```
+
+生产环境中，CollectorAgent 可通过 `internal_kb_search()` 将企业内部知识（Confluence、SharePoint、历史报告、付费数据库）与公开 web search 并列形成混合检索结果，统一写入 `SourceCitation` 溯源体系。
+
+**答辩话术建议**：
+> "我们用 Provider 模式统一了所有外部数据采集能力。演示中 `web_search` 内部走 `SearchProvider` 抽象——Tavily 主、SerpApi 备，失败自动降级，每条溯源都标记来自哪个 provider；`SurveyDistributor` 同样的形态，`SimulatedDistributor` 是 MVP 实现，替换为 Typeform 零改动。再加上 `KnowledgeBaseProvider` 占位，未来企业 Confluence、SharePoint、付费数据库可以以同一形态接入，让公开调研、用户声音、内部知识并列进溯源体系。"
+
+**本期硬约束（不得违反）**：
+- 主流程 / 报告页 / API **不**暴露企业 KB 上传入口
+- Settings 页**不**加"数据源管理"功能
+- 演示中**不**暗示 KB 接入已实现（只讲架构可插拔）
+- HybridSearch 不做"并发查多源 + 结果融合"，只做串行降级（future work）
 
 ---
 

@@ -1,6 +1,6 @@
 # 竞品分析系统 - 全局进度日志
 
-**最后更新**: 2026-05-25
+**最后更新**: 2026-05-27
 **系统状态**: Week 0.5 脚手架阶段
 
 ---
@@ -115,3 +115,4 @@
 |------|--------|--------|
 | 2026-05-22 | 初始化进度文件 | Claude |
 | 2026-05-25 | 前端脚手架完成（Stage 1 对话式立项页上线）；AGENTS.md + apps/web/CLAUDE.md 重构；删除死文档；.gitignore 修复；apps/web → frontend 重命名；PRD v1.2（Non-Goals + 生产路径规划）；package-lock.json 入库 | Claude + Eric |
+| 2026-05-27 | Q4 模型选型决策完成（方案 P2）：Collector=Gemini 2.5 Flash, Analyst+Writer=DeepSeek V4 Pro, QA=gpt-4o-mini；演示周成本上限 ~$3；PRD v1.8 回写 §五 部署拓扑 + §五.X 新增决策表 + §六 4 个 Agent 加"使用模型"行 + §十一-bis Non-Goals 调整（embedding 不做 / 国内 LLM 移除）+ §十一-ter 合规行更新 | Claude + Eric |
