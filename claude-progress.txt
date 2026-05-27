@@ -10,10 +10,13 @@
 | 阶段 | 状态 | 完成度 | 备注 |
 |------|------|--------|------|
 | 脚手架 / 工程化 | ✅ 完成 | 100% | Week 0.5 — 前端已就绪 |
-| 架构设计 | ⏳ 进行中 | 40% | PRD v1.2 已定稿；后端待脚手架 |
-| Agent 单体开发 | ⏸ 待开始 | 0% | Week 1 |
-| 联调与反馈闭环 | ⏸ 待开始 | 0% | Week 2 |
-| 答辩准备 | ⏸ 待开始 | 0% | Week 2.5 |
+| 架构设计 / 规划 | ✅ 完成 | 100% | PRD v1.9 定稿；后端 + 前端 + Survey 三份开发计划全部落地 |
+| 后端骨架（S0） | ⏸ 待开始 | 0% | Week 0.5 — 计划已就位 |
+| 后端 Agent 单体（S1-S2） | ⏸ 待开始 | 0% | Week 1 |
+| SurveyTool（S3） | ⏸ 待开始 | 0% | Week 2 上半 |
+| 前端 Stage 2 | ⏸ 待开始 | 0% | 与后端 S0-S2 并行，计划已就位 |
+| 联调 + 真后端切换（S4 / 前端 S2.7） | ⏸ 待开始 | 0% | Week 2 下半 |
+| 答辩准备（S5） | ⏸ 待开始 | 0% | Week 2.5 |
 
 ---
 
@@ -91,11 +94,14 @@
 
 ## 📌 重要里程碑
 
-- [ ] **M1**: 架构定稿 + LangGraph DAG 搭建完成 (Week 0.5)
-- [ ] **M2**: 所有 Agent 单体开发完成 + 单元测试全过 (Week 1)
-- [ ] **M3**: 端到端流程可运行 + 首个竞品分析完整输出 (Week 2)
-- [ ] **M4**: 反馈闭环真实可触发 + 质检 Agent 能独立工作 (Week 2)
-- [ ] **M5**: 演示环境就绪 + 代码审查完成 (Week 2.5)
+- [x] **M0**: 前端 Stage 1 上线（对话式立项页 + Demo 路由）(2026-05-25)
+- [x] **M0.5**: 三份开发计划落地（后端 5 阶段 / 前端 Stage 2 / Survey schema 修复）(2026-05-27)
+- [ ] **M1**: 后端骨架跑通（mock LLM 全链路 SSE → 前端 + Postgres checkpointer 落库）(Week 0.5 末)
+- [ ] **M1.5**: ScopingAgent + CollectorAgent 主线接真 LLM，前端 DAG 页 mock SSE 可演示 (Week 1 上)
+- [ ] **M2**: DAG 完整 + QA 反馈闭环可现场触发 + 前端报告页 mock 数据渲染 (Week 1 下)
+- [ ] **M2.5**: SurveyTool 4-Stage 跑通 + Survey 报告区块前端完成 (Week 2 上)
+- [ ] **M3**: 端到端真后端：3 个真实竞品完整报告 + PDF/PPTX 导出可用 (Week 2 下)
+- [ ] **M4**: 演示环境就绪 + README + 答辩材料完成 (Week 2.5)
 
 ---
 
@@ -104,8 +110,11 @@
 - [agent-states-guide.md](docs/agent-states-guide.md) — 状态文件使用指南
 - [agent-states/](agent-states/) — 各 Agent 的实时状态目录
 - [docs/git-workflow.md](docs/git-workflow.md) — Git 提交规范
-- [docs/architecture.md](docs/architecture.md) — 系统架构（待创建）
-- [docs/agent-protocol.md](docs/agent-protocol.md) — Agent 通信协议（待创建）
+- [docs/architecture.md](docs/architecture.md) — 系统架构（待创建，S5）
+- [docs/agent-protocol.md](docs/agent-protocol.md) — Agent 通信协议（待创建，S5）
+- [plans/2026-05-27-backend-dev-plan.md](plans/2026-05-27-backend-dev-plan.md) — 后端 5 阶段开发计划 + 测试方案
+- [plans/2026-05-27-frontend-stage-2-plan.md](plans/2026-05-27-frontend-stage-2-plan.md) — 前端 Stage 2 计划（DAG / 报告 / Survey 区块 / RAG 占位）
+- [plans/2026-05-27-survey-schema-fix-execution.md](plans/2026-05-27-survey-schema-fix-execution.md) — Survey schema 修复执行清单（S3 开工前置）
 
 ---
 
@@ -117,3 +126,4 @@
 | 2026-05-25 | 前端脚手架完成（Stage 1 对话式立项页上线）；AGENTS.md + apps/web/CLAUDE.md 重构；删除死文档；.gitignore 修复；apps/web → frontend 重命名；PRD v1.2（Non-Goals + 生产路径规划）；package-lock.json 入库 | Claude + Eric |
 | 2026-05-27 | Q4 模型选型决策完成（方案 P2）：Collector=Gemini 2.5 Flash, Analyst+Writer=DeepSeek V4 Pro, QA=gpt-4o-mini；演示周成本上限 ~$3；PRD v1.8 回写 §五 部署拓扑 + §五.X 新增决策表 + §六 4 个 Agent 加"使用模型"行 + §十一-bis Non-Goals 调整（embedding 不做 / 国内 LLM 移除）+ §十一-ter 合规行更新 | Claude + Eric |
 | 2026-05-27 | PRD v1.9 借鉴 DeerFlow 运行时工程能力（非主架构）：新增 §五.Y 运行时可靠性保障（SSE 心跳+Last-Event-ID 重连 / Tool Error Wrapper / @traced_node / StreamBridge / RunRecord 5 项约束）；§六 5.1 补 asyncio.gather 并行采集；§六 5.4 补 correction_detected 反馈信号；§十 task_runs 表字段补全；§十一-ter 设计钩子 6 加 StreamBridge；§十二 SSE 风险行增强重连解法；新增项目根 THIRD_PARTY_NOTICES.md（DeerFlow MIT License attribution）；PRD 命名 Serper→SerpApi 统一（5 处） | Claude + Eric |
+| 2026-05-27 | 开发规划完成（M0.5）：① 后端 5 阶段 plan（S0 骨架→S1 输入→S2 中段→S3 SurveyTool→S4 联调→S5 答辩）+ 9 类测试矩阵 + GitHub Actions CI 方案；② 前端 Stage 2 plan（S2.1 登录/列表→S2.3 DAG 可视化→S2.4 报告+溯源→S2.5 Survey 区块→S2.6 RAG 占位→S2.7 切真后端）；③ Survey schema 修复执行清单（PRD 补 trace 命名约定 + design plan 7 处回写，S3 开工前置）；确认架构范式：ScopingAgent(Planner) + Sequential Pipeline(4 Agent) + Evaluator-Optimizer 闭环 + Collector 内 Parallelization + SurveyTool 嵌套子工作流 | Claude + Eric |
