@@ -22,8 +22,19 @@ export interface DimensionSpec {
   source: DimensionSource;
   /** User-editable section title rendered in the report TOC */
   title: string;
+  /**
+   * Per-language default titles for system/ai dimensions.
+   * When present, the UI renders title_i18n[lang] instead of title.
+   * Cleared when the user manually edits the title (user takes ownership).
+   */
+  title_i18n?: Partial<Record<"zh" | "en", string>>;
   /** User-editable one-line description that steers Analyst prompts */
   intent: string;
+  /**
+   * Per-language default intents for system/ai dimensions.
+   * Same ownership semantics as title_i18n.
+   */
+  intent_i18n?: Partial<Record<"zh" | "en", string>>;
   /** Points at a core schema name ("FeatureTree" etc.) or null for extension */
   schema_ref: string | null;
   /** User checkbox state. Core layer is forced true. */
