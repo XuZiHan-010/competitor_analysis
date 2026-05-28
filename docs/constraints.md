@@ -59,11 +59,12 @@ MVP 阶段单用户 / 低并发，架构留扩展口子即可，不要：
 - `prompt`
 - `input_payload`
 - `output_payload`
-- `tokens_used`
+- `tokens_in` / `tokens_out` / `cost_usd`
 - `latency_ms`
+- `langsmith_run_id`（关联 LangSmith trace，可空）
 - `decision_meta`（决策摘要，如"为何打回"）
 
-**理由**：评分项"可观测性达标"（25% 权重）。
+**理由**：评分项"可观测性达标"（25% 权重，明确要求 Token 消耗可查）。完整定义见 [PRD §五.Y](PRD.md) 约束 3/6 与 §十 `agent_traces` 表。
 
 ### ✅ 3. 反馈闭环要能真实触发
 
