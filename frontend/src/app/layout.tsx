@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Fraunces } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { TopNav } from "@/components/layout/top-nav";
+import { LanguageDocumentSync } from "@/components/layout/language-document-sync";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
@@ -54,6 +55,7 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-paper-grain">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+          <LanguageDocumentSync />
           <TopNav />
           <main className="flex-1 flex flex-col">{children}</main>
           <Toaster
