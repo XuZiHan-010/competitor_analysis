@@ -327,7 +327,7 @@ class ScopingDraft(BaseModel):
   - 返回的每条 `SourceCitation` 含 `provider` 字段（记录实际使用的 provider 实现名）
   - 代码路径：`backend/services/search/`（`providers/base.py` / `providers/tavily.py` / `providers/serpapi.py` / `hybrid.py`）
 - `fetch_page(url)` — Playwright 抓取
-- `app_review_fetch(app_name)` — 应用商店评论（可选）
+- `app_review_fetch(app_name)` — 应用商店评论真实抓取（P1 答辩前必达）：优先抓 App Store / Google Play / Product Hunt 等公开评论；失败时降级到 `web_search` 用户反馈或 `ai_simulated` 兜底，必须在 `SourceCitation.type/source_type/provider` 中明确标识真实来源或模拟来源
 - `SurveyTool(competitor, dimension_intent, collected_sources, user_research_plan)` — 用户研究子工作流（方案 C 混合），四层级联：
   1. **Stage 1**：AI 设计问卷 / 访谈提纲（`questionnaire_designer`，5-10 道题）；**用户可在 scoping 阶段编辑题目**（题目来自 `TaskScopeContract.user_research_plan.questionnaire`，访谈提纲=问卷的一种形态）
   2. **Stage 2**：检索公开调研数据（`existing_survey_finder` → `published_survey`）+ 复用已采集用户评论（`user_voice_collector` → `public_review`）
@@ -421,6 +421,7 @@ class ScopingDraft(BaseModel):
 - 网页结构（JSON，前端渲染用）
 - Markdown 全文（用于 PDF/PPTX 导出）
 - 每段文字带 `source_ids` 引用，前端渲染时变成可点击的溯源链接
+- 多语言报告（P1 答辩前必达）：支持 `language="zh" | "en"`；英文版复用中文报告的 claim/source 结构，只改写语言表达，不允许删除 `source_ids` 或新增无来源结论
 
 **关键约束**: 不允许产生不带引用的结论（强制引用机制，抑制幻觉），核心层和扩展层一视同仁
 
@@ -439,6 +440,8 @@ class ScopingDraft(BaseModel):
 | 事实校验 | 抽样 LLM 校验，矛盾 → blocker | 抽样 LLM 校验，矛盾 → warning |
 | 数据新鲜度 | 信源 > 2 年 → warning | 信源 > 2 年 → warning |
 | 覆盖度 | 每个竞品 ≥ 5 独立信源 → 否则 blocker | 每个维度 ≥ 1 信源 → 否则 warning |
+
+**P1 扩展质量指标（答辩前必达）**：QAAgent 必须对 `report_claims` 写入 `source_support` 与 `validity`，供 `GET /api/reports/{task_id}/metrics` 聚合来源支撑率、无效来源率、信息源类型覆盖率；同时输出 `ai_self_assessment`，报告页与导出摘要页展示"AI 自评 vs 人工验证"对比块。
 
 **SurveyInsight 专项校验**（仅在 `WorkflowState.survey_results` 存在时触发）：
 
@@ -520,6 +523,21 @@ class WorkflowState(BaseModel):
 每条 trace entry 需包含：`prompt_hash`、`input_summary`、`output_summary`、`latency_ms`、`tokens_in`、`tokens_out`、`failure_reason`（nullable）、`provider_impl`（Stage 3 Survey 专用，值为 Distributor 实现类名）。
 
 **禁止**：Agent 之间用自然语言对话传消息。所有交互必须通过 State 字段（满足评分项"结构化消息传递 / function calling"）。
+
+**设计辨析：信封 vs 载荷（对标 Claude Code，本系统更严格）**
+
+Claude Code 的父子 Agent 通信也是「异步消息驱动」：父向子的信箱（`pendingMessages`）追加字条、子在 agentic loop 边界自取；子完成后把结果拼成 `<task-notification>` XML **伪装成一条用户消息**注入父对话。这套**传输信封**（异步队列 + 共享状态表 + 完成即通知）的思路值得借鉴，本系统已有对应实现：
+
+| Claude Code 机制 | 本系统对应 |
+|---|---|
+| `pendingMessages` 信箱 + 子在循环边界自取 | QA blocker → `feedback_signals.correction_detected`，CollectorAgent 重跑时读取（见 5.4） |
+| 全局 task 状态表（读写 agent 档案） | `WorkflowState`（强 Schema Pydantic）+ `agent_traces` 表 |
+| 异步不阻塞 → 多 subagent 并发 | CollectorAgent `asyncio.gather` 并行采集 5 竞品（见 5.1 并行采集约束） |
+| 完成通知注入父对话 | LangGraph 节点进度 SSE 推送（见 §八） |
+
+**但本系统刻意不照搬它的载荷格式**：Claude Code 的 `<result>` / `<summary>` 标签内是**自由文本散文**——父子同为一个通用 LLM，散文够用。本系统的 Agent 间载荷必须是 **Schema 校验过的 Pydantic 对象**（`StructuredCompetitorProfile` / `ExtensionFinding` / `QAResult` …），字段缺失即校验失败、直接触发 QA 打回。
+
+> **一句话**：借其**信封**（异步消息 + 共享状态 + 完成通知），弃其**载荷**（自由文本散文），载荷换成 typed schema。这比 Claude Code 的通信约束更"硬"，正是评分项"结构化消息传递 / function calling，非纯自然语言对话"的硬性兑现，也是答辩时一个清晰的对比叙事点。
 
 ---
 
@@ -891,6 +909,7 @@ class ReportClaim(BaseModel):
 - `POST /api/tasks/{id}/run` — 启动 Agent DAG（异步，返回 run_id）
 - `GET /api/tasks/{id}/stream` — **SSE 推送**：实时 DAG 状态、Agent 当前步骤、Trace 增量
 - `GET /api/tasks/{id}/trace` — 完整执行日志（每个 Agent 的 prompt / input / output / token / 时间）
+- `GET /api/tasks/{run_id}/timeline` — Agent 决策时间轴回放（按 `agent_traces.sequence_no/created_at` 排序，返回节点开始/结束、关键输入摘要、决策摘要、QA 打回原因、重跑链路）
 - `POST /api/tasks/{id}/retry-node` — 用户手动触发某节点重跑
 
 ### 8.4 报告
@@ -899,7 +918,9 @@ class ReportClaim(BaseModel):
 - `PATCH /api/reports/{task_id}/field` — 人工修正某字段（body 带 `correction_type`：事实修正/表述优化/补充信息/删除无效/结构调整；写 `manual_corrections` + 更新对应 `ReportClaim.edit_status`，可触发局部重跑）
 - `PATCH /api/reports/{task_id}/claims/{claim_id}/review` — 人工复核某 claim（body：`review_status` ∈ correct/partial/wrong/unverifiable），产出人工确认准确率
 - `POST /api/reports/{task_id}/dimensions/{dimension_id}/regenerate` — 用户要求某模块重新生成（复用反馈闭环路由，计重跑率）
-- `GET /api/reports/{task_id}/metrics` — 聚合返回全部业务价值指标（§十三），生成时指标 + 人工闭环指标
+- `GET /api/reports/{task_id}/metrics` — 聚合返回 P0 MVP-5 + P1 扩展质量指标（§十三），生成时指标 + 人工闭环指标
+- `GET /api/reports/search?q=...` — 历史报告语义检索（pgvector），返回可复用的历史 report / claim / source 片段；仅检索本用户历史报告，不接企业 KB
+- `POST /api/reports/{task_id}/language` — 生成或切换报告语言（body：`language` ∈ `zh`/`en`），所有语言版本必须保留同一套 `source_ids`
 
 ### 8.5 竞品推荐（B 入口）
 - `POST /api/competitors/suggest` — 输入产品+赛道描述，返回竞品候选
@@ -1091,14 +1112,16 @@ task_runs (
 -- Trace 日志（每个 Agent 节点一条）
 agent_traces (
   id uuid PK, task_run_id FK,
+  sequence_no int,                         -- 单个 run 内严格递增，用于时间轴回放
   agent_name text, node_name text,
+  status text,                             -- started/succeeded/failed/skipped/retried
   prompt text, input_payload jsonb, output_payload jsonb,
   tokens_in int, tokens_out int,           -- 与 §五.Y 约束 3 一致
   cost_usd numeric,                         -- 按 §五.X 模型单价 × token 估算
   latency_ms int,
   langsmith_run_id text,                    -- 关联 LangSmith trace（§五.Y 约束 6，可空）
   decision_meta jsonb,                     -- 决策摘要（为何打回等）
-  created_at
+  started_at, completed_at, created_at
 )
 
 -- 信源
@@ -1132,10 +1155,13 @@ reports (
   id uuid PK, task_id FK,
   structured_content jsonb,                -- 前端渲染用
   markdown_content text,                   -- 导出用
+  language text,                            -- zh/en；默认 zh
+  source_report_id uuid nullable,           -- 英文版等派生报告指回原报告
   version int,
   qa_status text,                          -- passed/issues
   qa_issues jsonb,
   metrics jsonb,                           -- 业务价值指标快照（§十三）：生成时指标 + 人工闭环指标聚合
+  embedding vector(1536),                  -- 历史报告语义检索，S5/P1 必达
   created_at
 )
 
@@ -1149,8 +1175,11 @@ report_claims (
   generating_agent text,
   qa_status text,                          -- pass/warning/blocker
   source_support text,                     -- supported/weak/unsupported/unchecked
+  validity text,                            -- valid/invalid/stale/unknown，用于无效来源率
   edit_status text,                        -- untouched/edited
   review_status text,                      -- unreviewed/correct/partial/wrong/unverifiable
+  correction_type text,                     -- null 或 5 类修正类型，便于 P1 细分
+  embedding vector(1536),                  -- claim 级历史复用检索
   created_at
 )
 
@@ -1197,15 +1226,17 @@ survey_uploads (
 | 用户研究 | 用户研究模块（方案 C）：AI 生成问卷/访谈提纲 + 用户可编辑 + 启用开关 | scoping 折叠卡片，可开关 |
 | 用户研究 | 数据来源三层：上传真实问卷/访谈记录（一手）> 公开二手 > 模拟兜底 | 上传即脱敏；source_type 区分可信度 |
 
-### P1 (第二期/加分项)
+### P1 (答辩前增强必达项)
 
-- 扩展质量指标：来源支撑率（QA 判源）、信息源类型覆盖率、无效来源率、重跑率、修正类型 5 分类细分、AI 自评vs人工验证对比块
-- Agent 决策时间轴回放
-- 历史报告语义检索（RAG 复用素材）
-- 应用商店评论真实抓取（目前用 LLM 模拟也可）
-- 多语言报告（中/英切换）
+> P1 不再是"时间允许再做"的加分范围，而是**答辩前必须完成**的增强能力；区别只在交付顺序：P0 先保证主链路稳定可演示，P1 在 S5 前补齐产品完整度和评分增强项。
 
-### P2 (远期，PRD 仅占位)
+- 扩展质量指标：来源支撑率（QA 判源）、信息源类型覆盖率、无效来源率、重跑率、修正类型 5 分类细分、AI 自评vs人工验证对比块；报告页和导出摘要页都可见
+- Agent 决策时间轴回放：`GET /api/tasks/{run_id}/timeline` + 前端 Trace/Timeline 面板可查看每个节点的输入摘要、输出摘要、失败原因、QA 打回和重跑链路
+- 历史报告语义检索（RAG 复用素材）：`GET /api/reports/search?q=...` 基于本用户历史 `reports/report_claims` 的 pgvector 检索；不接企业 KB，不上传公司内部资料
+- 应用商店评论真实抓取：CollectorAgent 增加 app review provider；失败时降级到公开网页/模拟兜底，并在 `SourceCitation.type/source_type` 明确标识真实来源或 `ai_simulated`
+- 多语言报告（中/英切换）：WriterAgent 支持 `zh/en` 输出模板；英文版必须复用原报告 claim/source 结构，不能丢 `source_ids`
+
+### P2 (远期，PRD 仅占位；本轮比赛不做)
 
 - 全自动竞品发现（仅赛道关键词输入）
 - 自适应任务拆分（Agent 自决定要不要拆子任务）
@@ -1236,7 +1267,7 @@ survey_uploads (
 - ❌ GDPR / 数据出域审计 / 完整数据脱敏管线（但方案 C 上传问卷/访谈记录时做**最小脱敏**：去姓名/手机/邮箱，§八 8.6——这是合规底线，不是完整管线）
 - ❌ 内部数据上传（如 §十四 G 提到的"上传公司销售数据" / 企业 KB 文档）—— 留给 P2
   - ℹ️ **边界澄清**：方案 C 的"上传**问卷结果 / 访谈记录**"（§八 8.6）**属于 P0 in scope**，与此处的"企业 KB / 销售数据上传"不同——前者是用户研究模块的一手数据（窄范围 + 强制脱敏），后者是通用异构知识库（仍 P2）
-- ❌ **调用 embedding API**（MVP 不走 RAG；pgvector schema 字段保留 NULL，为 P1 "历史报告语义检索复用"准备，见 §十一-ter 设计钩子 2）
+- ❌ 企业 KB / 通用外部文档 RAG（Confluence、SharePoint、付费数据库、内部销售数据等仍为 P2）—— 本轮 P1 只做**历史报告语义检索**，数据来源限定为本系统已经生成并可溯源的 `reports/report_claims/source_citations`
 - ℹ️ 国内合规 LLM —— MVP 已部分国产化（AnalystAgent + WriterAgent 用 DeepSeek V4 Pro，见 §五.X）；生产化阶段补充更多国产 Provider，见 §十一-ter 第二阶段
 
 ### 仍然要做的（提醒）
@@ -1470,30 +1501,33 @@ demo 路径走独立 route 前缀 `/demo/*`，**绝对不复用** `/tasks/new` /
 
 ## 十二、3 周迭代计划
 
+> **进度状态说明**：下方复选框为「计划项是否已落地」的勾选；`[x]`=完成、`[~]`=部分、`[ ]`=未做。
+> 实时、细粒度的进度真相源是 [claude-progress.txt](../claude-progress.txt) 的系统级进度表，本节随重要里程碑同步勾选即可。最后核对：2026-05-28（读代码盘点）。
+
 ### Week 0.5 (0.5 周): 架构落地与脚手架
-- [ ] **创建项目入口文档**：`CLAUDE.md` + `AGENTS.md`（指引所有编程 Agent 读取 PRD、架构图、Agent 协议、Schema 文档）
-- [ ] Repo 初始化（monorepo: `frontend/` + `backend/`）
-- [ ] Railway 项目搭建 + Neon + Upstash 接入
-- [ ] FastAPI + LangGraph 骨架，跑通 Hello World DAG
-- [ ] Next.js + shadcn/ui 骨架，跑通登录页 UI
-- [ ] 数据库 Schema 落库（Alembic 迁移）
-- [ ] 关键 Pydantic Schema 定义（章节七的 Schema 转代码）
+- [x] **创建项目入口文档**：`CLAUDE.md` + `AGENTS.md`（指引所有编程 Agent 读取 PRD、架构图、Agent 协议、Schema 文档）
+- [x] Repo 初始化（monorepo: `frontend/` + `backend/`）
+- [ ] Railway 项目搭建 + Neon + Upstash 接入（云端部署未验证；本地 Postgres 已迁移到 head、Redis 依赖已装）
+- [x] FastAPI + LangGraph 骨架，跑通 Hello World DAG
+- [x] Next.js + shadcn/ui 骨架，跑通登录页 UI
+- [x] 数据库 Schema 落库（Alembic 迁移）
+- [x] 关键 Pydantic Schema 定义（章节七的 Schema 转代码）
 
 ### Week 1 (1 周): Agent 单体开发
-- [ ] CollectorAgent：搜索 + 网页抓取 + 输出 RawCollectionResult
-- [ ] AnalystAgent：原始数据 → StructuredProfile
-- [ ] WriterAgent：StructuredProfile → ReportDraft（带引用）
-- [ ] QAAgent：检查 + 输出 issues
-- [ ] 每个 Agent 单元测试（mock LLM）
-- [ ] LangGraph DAG 串起来（无反馈闭环版本）
+- [x] CollectorAgent：搜索 + 网页抓取 + 输出 RawCollectionResult
+- [x] AnalystAgent：原始数据 → StructuredProfile
+- [x] WriterAgent：StructuredProfile → ReportDraft（带引用）
+- [x] QAAgent：检查 + 输出 issues
+- [~] 每个 Agent 单元测试（mock LLM）（已有 workflow/scoping/survey/scraper/auth 测试，未逐 Agent 拆单测）
+- [x] LangGraph DAG 串起来（无反馈闭环版本）（已超出：直接含 QA→collect 反馈闭环）
 
 ### Week 2 (1 周): 联调 + 反馈闭环 + 前端联动
-- [ ] 反馈闭环逻辑（QA → 打回 → 重跑 → 改善验证）
-- [ ] SSE 实时推送 DAG 状态
+- [x] 反馈闭环逻辑（QA → 打回 → 重跑 → 改善验证）（后端 LangGraph 条件边，retry≤3）
+- [x] SSE 实时推送 DAG 状态（StreamBridge / RedisStreamBridge + `/stream` 路由；前端尚未接）
 - [ ] 前端 DAG 可视化（用 React Flow 或 D3）
 - [ ] 报告页交互（溯源面板、字段展开）
-- [ ] PDF 导出（用 WeasyPrint 或 Playwright print）
-- [ ] PPTX 导出（用 python-pptx）
+- [x] PDF 导出（标准库实现，返回真实字节）
+- [x] PPTX 导出（用 python-pptx）
 - [ ] 端到端跑通：3 个真实竞品的演示案例
 
 ### Week 0.5 (0.5 周): 答辩准备
@@ -1511,7 +1545,7 @@ demo 路径走独立 route 前缀 `/demo/*`，**绝对不复用** `/tasks/new` /
 | Tavily/SerpApi 抓取失败 | 信源不足 | 准备 fallback 到 LLM 直接生成（带"模拟"标记）|
 | PPTX 生成质量不达预期 | 汇报体验差 | 提前 1 周做 PPTX POC，确认排版可行 |
 | LangGraph 学习曲线 | 进度延迟 | Week 0.5 集中跑通官方示例 + checkpointer |
-| 3 周时间紧 | 功能砍不动 | P0 锁死，P1 按时间允许加，P2 不做 |
+| 3 周时间紧 | 功能砍不动 | P0 先形成稳定主链路，P1 在答辩前收口；若时间紧，只压缩 P1 的样本量/展示深度，不取消 P1 能力；P2 不做 |
 | 演示日多评委同时点 | 单实例 FastAPI 卡 SSE 长连接 | 临时把 Railway 从 Hobby 升到 Pro（workers 调到 8-16）+ 预置 3 个评委账号 + `/reports/demo` 不登录直接看的样例报告 + **SSE 心跳 + Last-Event-ID 幂等重连**（§五.Y 约束 1，断线即可恢复，不依赖客户端记忆进度）|
 
 ---
@@ -1538,7 +1572,7 @@ demo 路径走独立 route 前缀 `/demo/*`，**绝对不复用** `/tasks/new` /
 - ✅ 异常处理：网络失败重试、API 限流降级、节点失败标记并继续
 - ✅ **动态 Schema 演化**已落地：TaskScopeContract + 双层 Schema，可演示同一套代码跑日化 / SaaS / 工业品三类截然不同的报告
 - ✅ **自适应任务拆分**已落地：Collector 按 `dimension.intent` 做 query 改写，Analyst 按 `layer` 走差异化抽取器
-- ✅ 前瞻性：pgvector 已接入，为 P1 的语义检索复用铺路
+- ✅ P1 增强能力答辩前完成：pgvector 历史报告语义检索、Agent 决策时间轴、应用商店真实评论 provider、多语言报告
 
 ### 业务价值与产品体验 (20%)
 - ✅ 5-10 分钟出报告 vs 人工 1-2 天（演示时计时对比）—— 注意：对话式立项阶段计入"分析时间"还是分开报告？演讲时建议分开，因为这是用户感知的"主动配置"时间，不算等待
@@ -1567,7 +1601,8 @@ demo 路径走独立 route 前缀 `/demo/*`，**绝对不复用** `/tasks/new` /
 - **三指标递进关系**（答辩核心叙事）：`引用覆盖率`(有源) ⊇ `来源支撑率`(源有效) ⊇ `人工确认准确率`(事实对)——回答评委"溯源到底可不可靠"
 - **真·准确率回算** = `1 − (事实修正 claim / T)`；表述优化 / 结构调整不计入"AI 出错"
 - 指标随人工编辑 / 复核实时更新，沉淀为下一轮 Prompt / Source 策略 / Schema 优化依据（支持"运营迭代"评分点）
-- **P0 底线 = MVP-5**：分析耗时 / 字段覆盖率 / 引用覆盖率 / 人工修正率 / 人工确认准确率；其余 P1 时间允许再加
+- **P0 首批交付 = MVP-5**：分析耗时 / 字段覆盖率 / 引用覆盖率 / 人工修正率 / 人工确认准确率，保证主链路尽早可演示
+- **P1 答辩前必达**：来源支撑率 / 信息源类型覆盖率 / 无效来源率 / 重跑率 / 修正类型 5 分类细分 / AI 自评 vs 人工验证对比块，必须在报告页和导出摘要页可见
 
 ### 代码质量与文档 (10%)
 - ✅ Monorepo 结构清晰，TS/Python 各自 lint+test
