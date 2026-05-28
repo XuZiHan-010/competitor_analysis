@@ -5,11 +5,11 @@ import { FileText, PlayCircle, User } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ThemeToggle } from "./theme-toggle";
 import { LangToggle } from "./lang-toggle";
-import { useLangStore } from "@/stores/lang-store";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 export function TopNav() {
-  const { lang } = useLangStore();
+  const { t } = useI18n();
 
   return (
     <header className="border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">
@@ -23,9 +23,7 @@ export function TopNav() {
             )}
           >
             <FileText className="h-5 w-5" />
-            <span className="hidden sm:inline">
-              {lang === "zh" ? "我的报告" : "My Reports"}
-            </span>
+            <span className="hidden sm:inline">{t("navReports")}</span>
           </Link>
           <LangToggle />
           <ThemeToggle />
@@ -33,7 +31,7 @@ export function TopNav() {
             variant="ghost"
             size="icon"
             className="rounded-full"
-            aria-label={lang === "zh" ? "账户" : "Account"}
+            aria-label={t("navAccount")}
           >
             <User className="h-4 w-4" />
           </Button>
@@ -47,7 +45,7 @@ export function TopNav() {
             )}
           >
             <PlayCircle className="h-4 w-4 text-[var(--color-accent-warm)]" />
-            {lang === "zh" ? "30秒demo演示" : "30s demo"}
+            {t("navDemo")}
           </Link>
         </nav>
       </div>

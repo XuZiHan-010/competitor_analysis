@@ -16,9 +16,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useScopingStore } from "@/stores/scoping-store";
+import { useI18n } from "@/lib/i18n";
 
 export function AddDimensionDialog() {
   const addExtensionDimension = useScopingStore((s) => s.addExtensionDimension);
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [intent, setIntent] = useState("");
@@ -44,7 +46,7 @@ export function AddDimensionDialog() {
         }
       >
         <Plus className="h-4 w-4" />
-        增加自定义维度
+        {t("addDimension")}
       </DialogTrigger>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
@@ -55,17 +57,16 @@ export function AddDimensionDialog() {
               fontVariationSettings: '"opsz" 144',
             }}
           >
-            新增分析维度
+            {t("newDimensionTitle")}
           </DialogTitle>
           <DialogDescription>
-            添加一个不在 AI 推荐列表里的扩展章节。AI
-            会基于你写的意图描述去采集和分析这一节内容。
+            {t("newDimensionDescription")}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-2">
             <Label htmlFor="new-dim-title" className="text-sm font-medium">
-              章节标题
+              {t("sectionTitle")}
               <span className="text-destructive ml-1">*</span>
             </Label>
             <Input
@@ -74,7 +75,7 @@ export function AddDimensionDialog() {
               autoFocus
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="例：可持续包装策略"
+              placeholder={t("sectionTitlePlaceholder")}
               autoComplete="off"
               spellCheck={false}
               maxLength={40}
@@ -82,9 +83,9 @@ export function AddDimensionDialog() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="new-dim-intent" className="text-sm font-medium">
-              意图描述
+              {t("intentLabel")}
               <span className="ml-2 text-xs font-normal text-muted-foreground">
-                可选 · 帮 AI 知道这章重点抽什么
+                {t("optionalIntentHint")}
               </span>
             </Label>
             <Textarea
@@ -92,7 +93,7 @@ export function AddDimensionDialog() {
               name="new-dim-intent"
               value={intent}
               onChange={(e) => setIntent(e.target.value)}
-              placeholder="例：包材碳足迹声明、可回收/可补充装比例、品牌承诺…"
+              placeholder={t("intentPlaceholder")}
               rows={3}
               maxLength={200}
             />
@@ -100,10 +101,10 @@ export function AddDimensionDialog() {
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={() => setOpen(false)}>
-            取消
+            {t("cancel")}
           </Button>
           <Button onClick={handleSubmit} disabled={!canSubmit}>
-            添加
+            {t("add")}
           </Button>
         </DialogFooter>
       </DialogContent>

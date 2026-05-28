@@ -7,16 +7,15 @@ import { Button } from "@/components/ui/button";
 import { useScopingStore } from "@/stores/scoping-store";
 import { jitteredThinking } from "@/lib/mocks/delay";
 import { buildSkincareMockContract } from "@/lib/mocks/scope-contract";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-
-const PLACEHOLDER =
-  "换需求、补维度、改重点都行——例：加入会员等级与积分体系的对比";
 
 export function ReguideInput() {
   const draftContract = useScopingStore((s) => s.draftContract);
   const isGenerating = useScopingStore((s) => s.isGenerating);
   const setDraftContract = useScopingStore((s) => s.setDraftContract);
   const setIsGenerating = useScopingStore((s) => s.setIsGenerating);
+  const { t } = useI18n();
 
   const [guidance, setGuidance] = useState("");
   const [focused, setFocused] = useState(false);
@@ -36,8 +35,8 @@ export function ReguideInput() {
     );
     setIsGenerating(false);
     setGuidance("");
-    toast.success("已根据新指导重新生成", {
-      description: "之前对章节的人工编辑会被覆盖",
+    toast.success(t("reguideSuccess"), {
+      description: t("reguideSuccessDescription"),
     });
   }
 
@@ -50,7 +49,7 @@ export function ReguideInput() {
 
   return (
     <section
-      aria-label="向 AI 提供补充指导，重新生成大纲"
+      aria-label={t("reguideAria")}
       className="mt-10 animate-[slide-up_0.5s_cubic-bezier(0.16,1,0.3,1)_0.2s_both]"
     >
       <div
@@ -72,7 +71,7 @@ export function ReguideInput() {
           onBlur={() => setFocused(false)}
           disabled={isGenerating}
           rows={1}
-          placeholder={PLACEHOLDER}
+          placeholder={t("reguidePlaceholder")}
           spellCheck={false}
           aria-describedby="reguide-help"
           className={cn(
@@ -96,7 +95,7 @@ export function ReguideInput() {
             style={{ fontFamily: "var(--font-mono)" }}
           >
             <Sparkles className="h-3 w-3" strokeWidth={1.75} />
-            重新指导 · Re-brief
+            {t("reguideLabel")}
           </label>
 
           <div className="flex items-center gap-2.5">
@@ -130,11 +129,11 @@ export function ReguideInput() {
               {isGenerating ? (
                 <>
                   <Loader2 className="h-3 w-3 animate-spin" />
-                  重新生成中
+                  {t("regenerating")}
                 </>
               ) : (
                 <>
-                  应用并重新生成
+                  {t("applyReguide")}
                   <CornerDownLeft className="h-3 w-3" />
                 </>
               )}
