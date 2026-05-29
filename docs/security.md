@@ -69,6 +69,7 @@
 2. **采集的网页内容**：尊重目标站点的 robots.txt 与服务条款
 3. **如果未来接入真实用户访谈数据**：必须脱敏（去掉姓名 / 手机 / 邮箱）后再入库
 4. **日志中的敏感字段**：API key / JWT / 密码必须打码（如 `sk-***`）
+5. **LangSmith trace 上报**（[PRD §五.Y 约束 6](PRD.md#L188)）：竞品公开网页数据可全量上报；但 **SurveyTool 涉敏节点（访谈 / 用户声音 / persona）必须用 `hide_inputs`/`hide_outputs` 或 anonymizer 脱敏后再上报**。`LANGCHAIN_API_KEY` 走 env 不入库；CI 默认关闭 trace 上报，仅本地 debug / 答辩演示时开启
 
 ---
 
@@ -76,7 +77,7 @@
 
 - [ ] `git status` 不显示 `.env*`（除 `.env.example`）
 - [ ] `git diff --cached` 没有形如 `sk-xxx` / `postgresql://user:pass@...` / `https://...up.railway.app/...?token=` 的字符串
-- [ ] 新增依赖不引入任何会自动上报数据的 telemetry SDK
+- [ ] 新增依赖不引入任何会自动上报数据的 telemetry SDK（**例外**：LangSmith 是受控接入，受 env 开关 + 涉敏脱敏约束，见黄线第 5 条）
 - [ ] 日志输出（特别是 Trace 表）没记录原始 API key
 
 ---

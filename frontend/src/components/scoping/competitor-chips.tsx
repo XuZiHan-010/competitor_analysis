@@ -3,11 +3,13 @@
 import { useState, type KeyboardEvent } from "react";
 import { Plus, X } from "lucide-react";
 import { useScopingStore } from "@/stores/scoping-store";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 export function CompetitorChips() {
   const draftContract = useScopingStore((s) => s.draftContract);
   const { addCompetitor, removeCompetitor } = useScopingStore();
+  const { t } = useI18n();
 
   const [draft, setDraft] = useState("");
   const [adding, setAdding] = useState(false);
@@ -38,7 +40,7 @@ export function CompetitorChips() {
         className="tabular text-xs uppercase tracking-[0.18em] text-muted-foreground mr-1"
         style={{ fontFamily: "var(--font-mono)" }}
       >
-        AI 推荐竞品
+        {t("recommendedCompetitors")}
       </span>
       {competitors.map((name) => (
         <span
@@ -54,7 +56,7 @@ export function CompetitorChips() {
             type="button"
             onClick={() => removeCompetitor(name)}
             className="rounded-sm p-0.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40"
-            aria-label={`移除 ${name}`}
+            aria-label={t("removeCompetitor", { name })}
           >
             <X className="h-3 w-3" />
           </button>
@@ -70,11 +72,11 @@ export function CompetitorChips() {
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
           onKeyDown={onKey}
-          placeholder="名称后 Enter…"
+          placeholder={t("competitorPlaceholder")}
           autoComplete="off"
           autoCorrect="off"
           spellCheck={false}
-          aria-label="新增竞品名称"
+          aria-label={t("competitorInputLabel")}
           className={cn(
             "inline-flex h-7 min-w-[120px] px-2 text-sm",
             "bg-card border border-primary/40 rounded outline-none",
@@ -85,7 +87,7 @@ export function CompetitorChips() {
         <button
           type="button"
           onClick={() => setAdding(true)}
-          aria-label="添加竞品"
+          aria-label={t("addCompetitorLabel")}
           className={cn(
             "inline-flex items-center gap-1 px-2.5 py-1 text-sm",
             "border border-dashed border-border rounded",
@@ -95,7 +97,7 @@ export function CompetitorChips() {
           )}
         >
           <Plus className="h-3 w-3" />
-          添加
+          {t("add")}
         </button>
       )}
     </div>

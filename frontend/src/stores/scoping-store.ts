@@ -117,7 +117,7 @@ export const useScopingStore = create<ScopingState>((set) => ({
         draftContract: {
           ...s.draftContract,
           dimensions: s.draftContract.dimensions.map((d) =>
-            d.id === id ? { ...d, title } : d,
+            d.id === id ? { ...d, title, title_i18n: undefined } : d,
           ),
         },
       };
@@ -130,7 +130,7 @@ export const useScopingStore = create<ScopingState>((set) => ({
         draftContract: {
           ...s.draftContract,
           dimensions: s.draftContract.dimensions.map((d) =>
-            d.id === id ? { ...d, intent } : d,
+            d.id === id ? { ...d, intent, intent_i18n: undefined } : d,
           ),
         },
       };

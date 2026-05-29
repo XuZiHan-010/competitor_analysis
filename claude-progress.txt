@@ -1,7 +1,7 @@
 # 竞品分析系统 - 全局进度日志
 
-**最后更新**: 2026-05-25
-**系统状态**: Week 0.5 脚手架阶段
+**最后更新**: 2026-05-28
+**系统状态**: 后端 S1-S2 进行中、S3 起步（前端仍停在 Stage 1，前后端未联调）
 
 ---
 
@@ -10,10 +10,13 @@
 | 阶段 | 状态 | 完成度 | 备注 |
 |------|------|--------|------|
 | 脚手架 / 工程化 | ✅ 完成 | 100% | Week 0.5 — 前端已就绪 |
-| 架构设计 | ⏳ 进行中 | 40% | PRD v1.2 已定稿；后端待脚手架 |
-| Agent 单体开发 | ⏸ 待开始 | 0% | Week 1 |
-| 联调与反馈闭环 | ⏸ 待开始 | 0% | Week 2 |
-| 答辩准备 | ⏸ 待开始 | 0% | Week 2.5 |
+| 架构设计 / 规划 | ✅ 完成 | 100% | PRD v2.0 定稿；后端 + 前端 + Survey 三份开发计划全部落地 |
+| 后端骨架（S0） | ✅ 完成 | 100% | FastAPI + 7 路由 + Pydantic schema + SSE StreamBridge + 内存 RunRecord/Trace；pytest 通过 |
+| 后端 Agent 单体（S1-S2） | ⏳ 进行中 | ~80% | 4 Agent 真 LLM 路径 + fallback；LangGraph DAG 真接（含 QA→collect Evaluator-Optimizer 闭环，retry≤3）；HybridSearch(Tavily→SerpApi)/AppReview/robots/并行采集；额外已落 DB 持久化 + PDF/PPTX/MD 导出 + Redis SSE replay + 邮箱码/JWT 登录。深度待真实 3 竞品端到端验证 |
+| SurveyTool（S3） | ⏳ 进行中 | ~45% | 4-stage 最小链路通（公开评论优先 + ai_simulated 兜底 + QA blocker/warning）。缺口：问卷写死非 LLM 生成、Schema 偏离 PRD §7.8、无 questionnaire_designer / persona / Distributor 层 |
+| 前端 Stage 2 | ⏸ 待开始 | 0% | DAG 页 / 报告页 / Survey 区块均未做 |
+| 联调 + 真后端切换（S4 / 前端 S2.7） | ⏸ 待开始 | 0% | 前端对后端零 fetch，完全未对接（M1 的「→前端」半步因此卡住） |
+| 答辩准备（S5） | ⏸ 待开始 | 0% | architecture.md / agent-protocol.md / 根 README 均未建 |
 
 ---
 
@@ -78,24 +81,36 @@
 
 ---
 
-## 📊 关键指标
+## 📊 关键指标（业务闭环量化，claim 级 / 定义见 PRD §十三）
 
-| 指标 | 目标 | 当前 | 进度 |
-|------|------|------|------|
-| 竞品覆盖度 | 100% | 0% | - |
-| 采集准确率 | >95% | - | - |
-| 质检一致性 | >90% | - | - |
-| 反馈闭环成功率 | >80% | - | - |
+> claim = 报告中带 source_ids 的节点（PRD §7.9）；T = claim 总数。一律 claim/字段级，不用字数。
+> 「当前」列在 S4 真跑 3 竞品时采集真实值；现阶段为占位。
+
+| 指标 | 公式 | 目标 | 当前 | 优先级 |
+|------|------|------|------|--------|
+| 分析耗时 | completed_at − started_at | <10 min | - | P0 |
+| 字段覆盖率 | 已填核心必填字段 / 应填核心字段 | ≥95% | - | P0 |
+| 引用覆盖率 | 有 source 的 claim / T | ≥90% | - | P0 |
+| 人工修正率 | 被改 claim / T（按 correction_type 拆 5 类） | 越低越好 | - | P0 |
+| 人工确认准确率 | (正确 + 0.5×部分) / 抽检数 | >85% | - | P0 |
+| 需求覆盖率 | 已完成维度 / 要求维度 | 100% | - | P1 |
+| 来源支撑率 | QA 判源支撑的 claim / T | >80% | - | P1 |
+| 信息源类型覆盖率 | 命中 category 数 / 5 | ≥4/5 | - | P1 |
+| 无效来源率 | valid=false / source 总数 | 越低越好 | - | P1 |
+| 重跑率 | 重生成模块 / 总模块 | 越低越好 | - | P1 |
 
 ---
 
 ## 📌 重要里程碑
 
-- [ ] **M1**: 架构定稿 + LangGraph DAG 搭建完成 (Week 0.5)
-- [ ] **M2**: 所有 Agent 单体开发完成 + 单元测试全过 (Week 1)
-- [ ] **M3**: 端到端流程可运行 + 首个竞品分析完整输出 (Week 2)
-- [ ] **M4**: 反馈闭环真实可触发 + 质检 Agent 能独立工作 (Week 2)
-- [ ] **M5**: 演示环境就绪 + 代码审查完成 (Week 2.5)
+- [x] **M0**: 前端 Stage 1 上线（对话式立项页 + Demo 路由）(2026-05-25)
+- [x] **M0.5**: 三份开发计划落地（后端 5 阶段 / 前端 Stage 2 / Survey schema 修复）(2026-05-27)
+- [ ] **M1**: 后端骨架跑通（mock LLM 全链路 SSE → 前端 + Postgres checkpointer 落库）(Week 0.5 末)
+- [ ] **M1.5**: ScopingAgent + CollectorAgent 主线接真 LLM，前端 DAG 页 mock SSE 可演示 (Week 1 上)
+- [ ] **M2**: DAG 完整 + QA 反馈闭环可现场触发 + 前端报告页 mock 数据渲染 (Week 1 下)
+- [ ] **M2.5**: SurveyTool 4-Stage 跑通 + Survey 报告区块前端完成 (Week 2 上)
+- [ ] **M3**: 端到端真后端：3 个真实竞品完整报告 + PDF/PPTX 导出可用 (Week 2 下)
+- [ ] **M4**: 演示环境就绪 + P1 增强项收口（扩展指标 / 时间轴 / 历史报告检索 / 应用商店评论 / 多语言）+ README + 答辩材料完成 (Week 2.5)
 
 ---
 
@@ -104,8 +119,11 @@
 - [agent-states-guide.md](docs/agent-states-guide.md) — 状态文件使用指南
 - [agent-states/](agent-states/) — 各 Agent 的实时状态目录
 - [docs/git-workflow.md](docs/git-workflow.md) — Git 提交规范
-- [docs/architecture.md](docs/architecture.md) — 系统架构（待创建）
-- [docs/agent-protocol.md](docs/agent-protocol.md) — Agent 通信协议（待创建）
+- [docs/architecture.md](docs/architecture.md) — 系统架构（待创建，S5）
+- [docs/agent-protocol.md](docs/agent-protocol.md) — Agent 通信协议（待创建，S5）
+- [plans/2026-05-27-backend-dev-plan.md](plans/2026-05-27-backend-dev-plan.md) — 后端 5 阶段开发计划 + 测试方案
+- [plans/2026-05-27-frontend-stage-2-plan.md](plans/2026-05-27-frontend-stage-2-plan.md) — 前端 Stage 2 计划（DAG / 报告 / Survey 区块 / RAG 占位）
+- [plans/2026-05-27-survey-schema-fix-execution.md](plans/2026-05-27-survey-schema-fix-execution.md) — Survey schema 修复执行清单（S3 开工前置）
 
 ---
 
@@ -115,3 +133,16 @@
 |------|--------|--------|
 | 2026-05-22 | 初始化进度文件 | Claude |
 | 2026-05-25 | 前端脚手架完成（Stage 1 对话式立项页上线）；AGENTS.md + apps/web/CLAUDE.md 重构；删除死文档；.gitignore 修复；apps/web → frontend 重命名；PRD v1.2（Non-Goals + 生产路径规划）；package-lock.json 入库 | Claude + Eric |
+| 2026-05-27 | Q4 模型选型决策完成（方案 P2）：Collector=Gemini 2.5 Flash, Analyst+Writer=DeepSeek V4 Pro, QA=gpt-4o-mini；演示周成本上限 ~$3；PRD v1.8 回写 §五 部署拓扑 + §五.X 新增决策表 + §六 4 个 Agent 加"使用模型"行 + §十一-bis Non-Goals 调整（embedding 不做 / 国内 LLM 移除）+ §十一-ter 合规行更新 | Claude + Eric |
+| 2026-05-27 | PRD v1.9 借鉴 DeerFlow 运行时工程能力（非主架构）：新增 §五.Y 运行时可靠性保障（SSE 心跳+Last-Event-ID 重连 / Tool Error Wrapper / @traced_node / StreamBridge / RunRecord 5 项约束）；§六 5.1 补 asyncio.gather 并行采集；§六 5.4 补 correction_detected 反馈信号；§十 task_runs 表字段补全；§十一-ter 设计钩子 6 加 StreamBridge；§十二 SSE 风险行增强重连解法；新增项目根 THIRD_PARTY_NOTICES.md（DeerFlow MIT License attribution）；PRD 命名 Serper→SerpApi 统一（5 处） | Claude + Eric |
+| 2026-05-27 | 开发规划完成（M0.5）：① 后端 5 阶段 plan（S0 骨架→S1 输入→S2 中段→S3 SurveyTool→S4 联调→S5 答辩）+ 9 类测试矩阵 + GitHub Actions CI 方案；② 前端 Stage 2 plan（S2.1 登录/列表→S2.3 DAG 可视化→S2.4 报告+溯源→S2.5 Survey 区块→S2.6 RAG 占位→S2.7 切真后端）；③ Survey schema 修复执行清单（PRD 补 trace 命名约定 + design plan 7 处回写，S3 开工前置）；确认架构范式：ScopingAgent(Planner) + Sequential Pipeline(4 Agent) + Evaluator-Optimizer 闭环 + Collector 内 Parallelization + SurveyTool 嵌套子工作流 | Claude + Eric |
+| 2026-05-28 | PRD v2.0 三项落地：① LangSmith 执行 trace（§五.Y 约束 6，env 开关 + 涉敏脱敏）+ agent_traces token/cost 字段对齐（修 tokens_used 全仓不一致）；② 业务闭环质量指标体系（§7.9 claim 注册表 + §十三 claim 级公式：覆盖率/引用覆盖率/来源支撑率/人工修正率/人工确认准确率，三指标严格分层；人工修正闭环 P1→P0）；③ 方案 C 混合用户研究模块（数据来源三层 user_uploaded_primary>公开>模拟兜底；UserResearchPlan 进 TaskScopeContract；访谈并入问卷；问卷/访谈上传 P0+脱敏；scoping 折叠卡片）—— 反转旧决策：纯模拟兜底/去掉访谈/不上传 | Claude + Eric |
+| 2026-05-28 | 范围口径更新：P0 和 P1 均为答辩前必达；PRD §八/§十/§十一/§十三 与后端计划同步补齐 P1 接口、数据字段、Agent 能力和测试验收（扩展质量指标、Agent 时间轴、历史报告 pgvector 检索、应用商店评论真实抓取、多语言报告） | Codex + Eric |
+| 2026-05-28 | 后端 S0 开工：新增 `backend/` FastAPI 骨架、ScopingAgent mock、4 Agent mock workflow、SSE StreamBridge、RunRecord/Trace 内存实现、P0/P1 API 契约占位、pytest 验证 4 passed；`.gitignore` 补 `.env.example` 白名单 | Codex + Eric |
+| 2026-05-28 | 后端 S1 起步：将 mock 调整为本地/CI fallback，新增真实路径 `LLMClient`（OpenAI/DeepSeek JSON）、HybridSearch（Tavily→SerpApi）、AppReviewProvider；ScopingAgent / CollectorAgent 在 `MOCK_LLM=false` 且 key 存在时走真实服务，pytest 6 passed | Codex + Eric |
+| 2026-05-28 | 后端继续推进：Collector 补并行采集、robots.txt 检查、HTTP PageFetcher、真实采集错误隔离与 skipped_urls；新增邮箱验证码 + HMAC JWT 登录骨架；新增 Postgres `db/schema.sql`（PRD §十全表 + pgvector 字段）；pytest 8 passed | Codex + Eric |
+| 2026-05-28 | 后端 DB 地基继续：接入用户新增的 SQLAlchemy models / Alembic 0001 / CI workflow；修 pyproject flat-layout 包发现；新增 SQL persistence adapter，RunManager 在 `DATABASE_URL` 可用时持久化 task_runs / traces / reports / claims，测试环境强制内存模式；pytest 8 passed | Codex + Eric |
+| 2026-05-28 | 后端 P0/P1 接口闭环继续推进：报告人工修正与 claim 复核会真实更新 Report/metrics；多语言切换写回报告对象；历史报告搜索从占位改为本地语义 fallback；新增标准库 PDF/PPTX/Markdown 导出器，接口返回真实文件字节；pytest 10 passed + compileall passed | Codex + Eric |
+| 2026-05-28 | 后端 SurveyTool 4-stage 最小链路接入 LangGraph：Collector 后生成用户研究 evidence/insight/source_breakdown，公开评论优先、无证据时 AI simulated 兜底；Writer 输出 survey 区块和 SurveyTool claims；QA 支持 Survey evidence blocker / 模拟占比 warning；pytest 10 passed + compileall passed | Codex + Eric |
+| 2026-05-28 | 后端生产化继续：RunManager 报告/Timeline/搜索改为 DB-first 读取，内存仅 fallback；RedisStreamBridge 基于 Redis Streams 支持跨进程 SSE replay；补齐 `redis` 依赖并成功安装后端 dev 依赖；ruff、mypy、pytest 全通过；Alembic 使用 psycopg async 并修复 Windows SelectorEventLoop，真实数据库迁移至 `0001 (head)` | Codex + Eric |
+| 2026-05-28 | 进度对账（读代码盘点）：系统级进度表此前停在「S0 待开始 0%」已严重过期，按实际代码刷新为 S0 完成 / S1-S2 ~80% / S3 ~45% / 前端 Stage 2 + S4 联调 + S5 文档均 0%。确认 LangGraph DAG 与 QA→collect 反馈闭环为真实现；定位两处 PRD↔代码偏离待修：① 问卷由 `_default_survey_plan()` 写死 2 题、非 LLM 生成（违 PRD §332 Stage 1 questionnaire_designer）；② backend survey Schema 偏离 PRD §7.8（缺 Questionnaire/intent/design_rationale）。前端对后端零 fetch，S4 联调未启动 | Claude + Eric |

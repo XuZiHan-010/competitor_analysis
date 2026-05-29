@@ -13,6 +13,7 @@ import { CompetitorChips } from "@/components/scoping/competitor-chips";
 import { DimensionList } from "@/components/scoping/dimension-list";
 import { AddDimensionDialog } from "@/components/scoping/add-dimension-dialog";
 import { ReguideInput } from "@/components/scoping/reguide-input";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 export default function ScopingPage() {
@@ -25,6 +26,7 @@ export default function ScopingPage() {
   } = useScopingStore();
 
   const [confirming, setConfirming] = useState(false);
+  const { lang, t } = useI18n();
 
   // Real path (PRD §十一-quater 11Q.7): ScopingAgent backend not yet wired up,
   // so we render an empty skeleton (4 core + 0 extensions + 0 competitors)
@@ -48,8 +50,8 @@ export default function ScopingPage() {
       ...draftContract,
       frozen_at: new Date().toISOString(),
     });
-    toast.success("任务已创建", {
-      description: "Stage 2 接入 DAG 页后会跳到运行页",
+    toast.success(t("taskCreated"), {
+      description: t("taskCreatedDescription"),
     });
     setConfirming(false);
     // Stage 2 will route to /tasks/{id}. For now stay put.
@@ -69,19 +71,19 @@ export default function ScopingPage() {
           style={{ fontFamily: "var(--font-mono)" }}
         >
           <ArrowLeft className="h-3 w-3" />
-          重写需求
+          {t("rewriteBrief")}
         </Link>
         <span className="h-px flex-1 bg-border" />
         <span
           className="tabular text-xs uppercase tracking-[0.22em] text-primary"
           style={{ fontFamily: "var(--font-mono)" }}
         >
-          Scoping / 立项中
+          {t("scopingStatus")}
         </span>
       </div>
 
       {/* sr-only h1 for screen reader semantics */}
-      <h1 className="sr-only">确定分析维度</h1>
+      <h1 className="sr-only">{t("scopingTitle")}</h1>
 
       {/* Loading state */}
       {isGenerating && !draftContract && (
@@ -96,7 +98,7 @@ export default function ScopingPage() {
             className="text-sm uppercase tracking-[0.22em] text-muted-foreground animate-[thinking-pulse_2s_ease-in-out_infinite]"
             style={{ fontFamily: "var(--font-mono)" }}
           >
-            Scoping Agent 正在分析需求
+            {t("scopingLoading")}
           </p>
         </div>
       )}
@@ -106,15 +108,31 @@ export default function ScopingPage() {
           {/* Intro paragraph + Subjects band */}
           <section className="mb-10 animate-[slide-up_0.5s_cubic-bezier(0.16,1,0.3,1)_0.05s_both]">
             <p className="text-base text-muted-foreground leading-relaxed max-w-[52ch] mb-6">
-              AI 已根据需求拟了一份大纲：
-              <span className="tabular font-medium text-foreground mx-1">
-                4&nbsp;项核心
-              </span>
-              维度（不可删除）加
-              <span className="tabular font-medium text-foreground mx-1">
-                {Math.max(0, totalCount - 4)}&nbsp;项扩展
-              </span>
-              维度。你可以编辑标题、改意图、增删扩展项、调整顺序。
+              {lang === "zh" ? (
+                <>
+                  {t("scopingIntroBefore")}
+                  <span className="tabular font-medium text-foreground mx-1">
+                    4&nbsp;{t("scopingCore")}
+                  </span>
+                  {t("scopingMiddle")}
+                  <span className="tabular font-medium text-foreground mx-1">
+                    {Math.max(0, totalCount - 4)}&nbsp;{t("scopingExtension")}
+                  </span>
+                  {t("scopingIntroAfter")}
+                </>
+              ) : (
+                <>
+                  {t("scopingIntroBefore")}{" "}
+                  <span className="tabular font-medium text-foreground">
+                    4 {t("scopingCore")}
+                  </span>{" "}
+                  {t("scopingMiddle")}{" "}
+                  <span className="tabular font-medium text-foreground">
+                    {Math.max(0, totalCount - 4)} {t("scopingExtension")}
+                  </span>{" "}
+                  {t("scopingIntroAfter")}
+                </>
+              )}
             </p>
             <CompetitorChips />
           </section>
@@ -129,18 +147,18 @@ export default function ScopingPage() {
                   fontWeight: 500,
                 }}
               >
-                本次分析大纲
+                {t("outlineTitle")}
               </h2>
               <span
                 className="tabular text-xs text-muted-foreground"
                 style={{ fontFamily: "var(--font-mono)" }}
               >
-                {enabledCount} / {totalCount} 启用
+                {enabledCount} / {totalCount} {t("enabled")}
               </span>
             </div>
 
             <p className="text-xs text-muted-foreground mb-4 italic">
-              拖拽 ⋮ 调整顺序 · 点标题或意图直接编辑 · 取消勾选 = 本次不输出
+              {t("outlineTip")}
             </p>
 
             <div
@@ -185,7 +203,7 @@ export default function ScopingPage() {
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <>
-                  确认 · 开始分析
+                  {t("confirmAnalysis")}
                   <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                 </>
               )}

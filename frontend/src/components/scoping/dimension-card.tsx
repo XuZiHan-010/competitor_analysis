@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { DimensionSpec } from "@/lib/mocks/types";
 import { useScopingStore } from "@/stores/scoping-store";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 interface DimensionCardProps {
@@ -16,6 +17,7 @@ interface DimensionCardProps {
 }
 
 export function DimensionCard({ dimension, index }: DimensionCardProps) {
+  const { lang, t } = useI18n();
   const {
     attributes,
     listeners,
@@ -32,10 +34,13 @@ export function DimensionCard({ dimension, index }: DimensionCardProps) {
     removeDimension,
   } = useScopingStore();
 
+  const displayTitle = dimension.title_i18n?.[lang] ?? dimension.title;
+  const displayIntent = dimension.intent_i18n?.[lang] ?? dimension.intent;
+
   const [editingTitle, setEditingTitle] = useState(false);
   const [editingIntent, setEditingIntent] = useState(false);
-  const [titleDraft, setTitleDraft] = useState(dimension.title);
-  const [intentDraft, setIntentDraft] = useState(dimension.intent);
+  const [titleDraft, setTitleDraft] = useState(displayTitle);
+  const [intentDraft, setIntentDraft] = useState(displayIntent);
 
   const titleRef = useRef<HTMLInputElement>(null);
   const intentRef = useRef<HTMLTextAreaElement>(null);
@@ -48,6 +53,15 @@ export function DimensionCard({ dimension, index }: DimensionCardProps) {
     if (editingIntent) intentRef.current?.focus();
   }, [editingIntent]);
 
+  // Keep draft in sync with the active language when not in edit mode
+  useEffect(() => {
+    if (!editingTitle) setTitleDraft(displayTitle);
+  }, [displayTitle, editingTitle]);
+
+  useEffect(() => {
+    if (!editingIntent) setIntentDraft(displayIntent);
+  }, [displayIntent, editingIntent]);
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -59,20 +73,20 @@ export function DimensionCard({ dimension, index }: DimensionCardProps) {
 
   function commitTitle() {
     const trimmed = titleDraft.trim();
-    if (trimmed && trimmed !== dimension.title) {
+    if (trimmed && trimmed !== displayTitle) {
       updateDimensionTitle(dimension.id, trimmed);
     } else {
-      setTitleDraft(dimension.title);
+      setTitleDraft(displayTitle);
     }
     setEditingTitle(false);
   }
 
   function commitIntent() {
     const trimmed = intentDraft.trim();
-    if (trimmed && trimmed !== dimension.intent) {
+    if (trimmed && trimmed !== displayIntent) {
       updateDimensionIntent(dimension.id, trimmed);
     } else {
-      setIntentDraft(dimension.intent);
+      setIntentDraft(displayIntent);
     }
     setEditingIntent(false);
   }
@@ -132,7 +146,10 @@ export function DimensionCard({ dimension, index }: DimensionCardProps) {
             "h-4 w-4 rounded-sm border-border",
             dimension.locked && "opacity-60 cursor-not-allowed",
           )}
-          aria-label={`${dimension.enabled ? "取消" : ""}启用 ${dimension.title}`}
+          aria-label={t("disableOrEnableDimension", {
+            action: dimension.enabled ? t("cancelAction") : "",
+            title: displayTitle,
+          })}
         />
       </div>
 
@@ -150,14 +167,14 @@ export function DimensionCard({ dimension, index }: DimensionCardProps) {
                       "bg-primary/8 text-primary border border-primary/15",
                       "cursor-default",
                     )}
-                    aria-label="核心维度"
+                    aria-label={t("coreDimension")}
                   />
                 }
               >
                 <Lock className="h-2.5 w-2.5" strokeWidth={2.5} />
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">
-                核心维度 · 比赛要求保留
+                {t("coreDimensionTooltip")}
               </TooltipContent>
             </Tooltip>
           ) : (
@@ -170,14 +187,14 @@ export function DimensionCard({ dimension, index }: DimensionCardProps) {
                       "bg-accent-warm/12 border border-accent-warm/20 cursor-default",
                     )}
                     style={{ color: "var(--accent-warm)" }}
-                    aria-label="扩展维度"
+                    aria-label={t("extensionDimension")}
                   />
                 }
               >
                 <Pencil className="h-2.5 w-2.5" strokeWidth={2.5} />
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">
-                扩展维度 · 按本次任务定制
+                {t("extensionDimensionTooltip")}
               </TooltipContent>
             </Tooltip>
           )}
@@ -192,7 +209,7 @@ export function DimensionCard({ dimension, index }: DimensionCardProps) {
               onKeyDown={onTitleKey}
               autoComplete="off"
               spellCheck={false}
-              aria-label="编辑章节标题"
+              aria-label={t("editSectionTitle")}
               className={cn(
                 "flex-1 min-w-0 bg-transparent border-b border-primary",
                 "text-[15px] font-semibold leading-tight",
@@ -204,7 +221,7 @@ export function DimensionCard({ dimension, index }: DimensionCardProps) {
             <button
               type="button"
               onClick={() => setEditingTitle(true)}
-              aria-label={`编辑标题：${dimension.title}`}
+              aria-label={t("editTitleWithName", { title: displayTitle })}
               className={cn(
                 "flex-1 min-w-0 text-left text-[15px] font-semibold leading-tight",
                 "border-b border-transparent hover:border-border",
@@ -213,7 +230,7 @@ export function DimensionCard({ dimension, index }: DimensionCardProps) {
               )}
               style={{ fontFamily: "var(--font-display)" }}
             >
-              {dimension.title}
+              {displayTitle}
             </button>
           )}
 
@@ -240,14 +257,14 @@ export function DimensionCard({ dimension, index }: DimensionCardProps) {
               onBlur={commitIntent}
               onKeyDown={onIntentKey}
               rows={2}
-              aria-label="编辑章节意图描述"
+              aria-label={t("editIntentDescription")}
               className={cn(
                 "w-full resize-none bg-transparent",
                 "text-sm leading-snug text-muted-foreground italic",
                 "border-l-2 border-primary pl-3 pr-12 py-0.5",
                 "outline-none",
               )}
-              placeholder="一句话描述这章重点关注什么…"
+              placeholder={t("intentInlinePlaceholder")}
             />
             <Check className="absolute top-1.5 right-1.5 h-3.5 w-3.5 text-primary/60" />
           </div>
@@ -255,7 +272,7 @@ export function DimensionCard({ dimension, index }: DimensionCardProps) {
           <button
             type="button"
             onClick={() => setEditingIntent(true)}
-            aria-label="编辑章节意图"
+            aria-label={t("editIntent")}
             className={cn(
               "block w-full text-left",
               "text-sm leading-snug text-muted-foreground italic",
@@ -266,8 +283,10 @@ export function DimensionCard({ dimension, index }: DimensionCardProps) {
               "focus-visible:outline-none focus-visible:border-primary",
             )}
           >
-            {dimension.intent || (
-              <span className="text-muted-foreground/50">添加意图描述…</span>
+            {displayIntent || (
+              <span className="text-muted-foreground/50">
+                {t("addIntentDescription")}
+              </span>
             )}
           </button>
         )}
@@ -286,7 +305,7 @@ export function DimensionCard({ dimension, index }: DimensionCardProps) {
             "touch-none",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
           )}
-          aria-label="拖拽排序"
+          aria-label={t("dragToSort")}
         >
           <GripVertical className="h-4 w-4" />
         </button>
@@ -301,7 +320,7 @@ export function DimensionCard({ dimension, index }: DimensionCardProps) {
                     "p-1 rounded text-muted-foreground/30",
                     "cursor-not-allowed",
                   )}
-                  aria-label="核心章节不可删除"
+                  aria-label={t("coreCannotDelete")}
                   aria-disabled="true"
                   onClick={(e) => e.preventDefault()}
                 />
@@ -310,7 +329,7 @@ export function DimensionCard({ dimension, index }: DimensionCardProps) {
               <X className="h-4 w-4" />
             </TooltipTrigger>
             <TooltipContent side="left" className="text-xs">
-              核心章节不可删除
+              {t("coreCannotDelete")}
             </TooltipContent>
           </Tooltip>
         ) : (
@@ -323,7 +342,7 @@ export function DimensionCard({ dimension, index }: DimensionCardProps) {
               "transition-colors",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40",
             )}
-            aria-label={`删除 ${dimension.title}`}
+            aria-label={t("deleteDimension", { title: displayTitle })}
           >
             <X className="h-4 w-4" />
           </button>

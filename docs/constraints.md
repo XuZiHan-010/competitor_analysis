@@ -59,11 +59,12 @@ MVP 阶段单用户 / 低并发，架构留扩展口子即可，不要：
 - `prompt`
 - `input_payload`
 - `output_payload`
-- `tokens_used`
+- `tokens_in` / `tokens_out` / `cost_usd`
 - `latency_ms`
+- `langsmith_run_id`（关联 LangSmith trace，可空）
 - `decision_meta`（决策摘要，如"为何打回"）
 
-**理由**：评分项"可观测性达标"（25% 权重）。
+**理由**：评分项"可观测性达标"（25% 权重，明确要求 Token 消耗可查）。完整定义见 [PRD §五.Y](PRD.md) 约束 3/6 与 §十 `agent_traces` 表。
 
 ### ✅ 3. 反馈闭环要能真实触发
 
@@ -78,7 +79,7 @@ QA Agent 必须能识别问题并打回上游 Agent，且重跑后输出有改�
 ### ✅ 5. 遵守 PRD 优先级
 
 - **P0**：必须完成（见 [docs/PRD.md](PRD.md) §11）
-- **P1**：时间允许才做
+- **P1**：答辩前必须完成；允许压缩样本量 / 展示深度，不允许取消能力
 - **P2**：不在 MVP 范围，禁止提前实现
 
 ---

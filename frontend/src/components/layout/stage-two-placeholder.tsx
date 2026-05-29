@@ -1,15 +1,19 @@
+"use client";
+
 import Link from "next/link";
 import { ArrowLeft, Construction } from "lucide-react";
 import { PageContainer } from "./page-container";
+import { useI18n, type TranslationKey } from "@/lib/i18n";
 
 interface StageTwoPlaceholderProps {
-  /** Display name of the page (Chinese). */
-  label: string;
-  /** Short blurb describing what Stage 2 will deliver. */
-  blurb: string;
+  label?: string;
+  labelKey?: TranslationKey;
+  blurb?: string;
+  blurbKey?: TranslationKey;
   /** Route for the back link. Defaults to /tasks/new. */
   backHref?: string;
   backLabel?: string;
+  backLabelKey?: TranslationKey;
 }
 
 /**
@@ -19,10 +23,20 @@ interface StageTwoPlaceholderProps {
  */
 export function StageTwoPlaceholder({
   label,
+  labelKey,
   blurb,
+  blurbKey,
   backHref = "/tasks/new",
-  backLabel = "回到任务创建",
+  backLabel,
+  backLabelKey,
 }: StageTwoPlaceholderProps) {
+  const { t } = useI18n();
+  const displayLabel = labelKey ? t(labelKey) : (label ?? "");
+  const displayBlurb = blurbKey ? t(blurbKey) : (blurb ?? "");
+  const displayBackLabel = backLabelKey
+    ? t(backLabelKey)
+    : (backLabel ?? t("stageBackDefault"));
+
   return (
     <PageContainer width="narrow" className="py-24">
       <div className="flex items-baseline gap-3 mb-10">
@@ -30,7 +44,7 @@ export function StageTwoPlaceholder({
           className="tabular text-xs uppercase tracking-[0.22em] text-muted-foreground"
           style={{ fontFamily: "var(--font-mono)" }}
         >
-          Stage 2 · 施工中
+          {t("stageStatus")}
         </span>
         <span className="h-px flex-1 bg-border" />
       </div>
@@ -50,13 +64,13 @@ export function StageTwoPlaceholder({
               fontWeight: 400,
             }}
           >
-            {label}
+            {displayLabel}
           </h1>
         </div>
       </div>
 
       <p className="text-base text-muted-foreground leading-relaxed max-w-[44ch] mb-12">
-        {blurb}
+        {displayBlurb}
       </p>
 
       <div className="rule-fade mb-10" />
@@ -66,7 +80,7 @@ export function StageTwoPlaceholder({
         className="inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 transition-colors"
       >
         <ArrowLeft className="h-4 w-4" />
-        {backLabel}
+        {displayBackLabel}
       </Link>
     </PageContainer>
   );
