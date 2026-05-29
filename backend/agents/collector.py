@@ -1,4 +1,5 @@
 import asyncio
+from functools import partial
 from urllib.parse import quote_plus
 
 from graph.state import RawCollectionResult, WorkflowState
@@ -6,11 +7,13 @@ from schemas.scope import ScopeDimension
 from schemas.source import SourceCitation
 from services.agents.decorators import traced_node
 from services.agents.wrappers import ToolError, run_tool_safely
+from services.llm import LLMClient
 from services.scraper import PageFetcher
 from services.search import AppReviewProvider, HybridSearch
 from services.search.providers import SearchProvider
 from services.search.serpapi import SerpApiProvider
 from services.search.tavily import TavilyProvider
+from services.survey.existing_survey_finder import ExistingSurveyFinder
 from services.survey.tool import SurveyTool
 from settings import get_settings
 
@@ -37,13 +40,22 @@ class CollectorAgent:
             if settings.serpapi_api_key:
                 providers.append(SerpApiProvider(settings.serpapi_api_key))
             if providers:
-                raw = await self._run_real_collection(state, HybridSearch(providers))
-                survey = SurveyTool().run(
-                    state.model_copy(update={"raw_collections": raw})
+                search = HybridSearch(providers)
+                llm = LLMClient(settings)
+                raw = await self._run_real_collection(state, search)
+                survey = await SurveyTool(
+                    existing_survey_finder=ExistingSurveyFinder(search),
+                    llm_client=llm,
+                ).run(
+                    state.model_copy(update={"raw_collections": raw}),
+                    trace_context=trace_context,
                 )
                 return raw, survey
         raw = await self._run_fallback_collection(state)
-        survey = SurveyTool().run(state.model_copy(update={"raw_collections": raw}))
+        survey = await SurveyTool().run(
+            state.model_copy(update={"raw_collections": raw}),
+            trace_context=trace_context,
+        )
         return raw, survey
 
     def _build_dimension_queries(
@@ -70,6 +82,43 @@ class CollectorAgent:
             queries.append(("default", f"{competitor_name} pricing features user reviews"))
         return queries
 
+    def _build_feedback_queries(
+        self,
+        competitor_name: str,
+        dimensions: list[ScopeDimension],
+        failed_fields: list[str],
+    ) -> list[tuple[str, str]]:
+        """Augment base queries with targeted recovery queries for QA-reported failed fields."""
+        base = self._build_dimension_queries(competitor_name, dimensions)
+        extra: list[tuple[str, str]] = []
+        joined = " ".join(failed_fields).lower()
+        if "pricing" in joined:
+            extra.append((
+                "core.pricing",
+                f"{competitor_name} pricing cost subscription fee plans 2024",
+            ))
+        if "feature" in joined or "feature_tree" in joined:
+            extra.append((
+                "core.feature_tree",
+                f"{competitor_name} product features capabilities detailed comparison",
+            ))
+        if "source_ids" in joined or "sources" in joined:
+            extra.append((
+                "default",
+                f"{competitor_name} official site product overview documentation",
+            ))
+        if "swot" in joined:
+            extra.append((
+                "core.swot",
+                f"{competitor_name} strengths weaknesses market position analysis",
+            ))
+        if "persona" in joined or "user_personas" in joined:
+            extra.append((
+                "core.persona",
+                f"{competitor_name} target customers user reviews who uses",
+            ))
+        return base + extra
+
     async def _run_real_collection(
         self,
         state: WorkflowState,
@@ -79,6 +128,24 @@ class CollectorAgent:
     ) -> dict[str, RawCollectionResult]:
         app_reviews = app_reviews or AppReviewProvider()
         fetcher = fetcher or PageFetcher()
+
+        # When QA detected blockers, re-run with targeted recovery queries
+        correction = state.feedback_signals.get("correction_detected")
+        failed_fields: list[str] = []
+        if correction and isinstance(correction, dict):
+            failed_fields = [
+                issue.get("failed_field", "")
+                for issue in correction.get("issues", [])
+                if issue.get("failed_field")
+            ]
+
+        def _queries(competitor_name: str) -> list[tuple[str, str]]:
+            if failed_fields:
+                return self._build_feedback_queries(
+                    competitor_name, state.scope_contract.dimensions, failed_fields
+                )
+            return self._build_dimension_queries(competitor_name, state.scope_contract.dimensions)
+
         tasks = {
             competitor.name: asyncio.wait_for(
                 self._collect_real_competitor(
@@ -86,9 +153,7 @@ class CollectorAgent:
                     search,
                     app_reviews,
                     fetcher,
-                    dimension_queries=self._build_dimension_queries(
-                        competitor.name, state.scope_contract.dimensions
-                    ),
+                    dimension_queries=_queries(competitor.name),
                 ),
                 timeout=_COLLECTOR_TIMEOUT_S,
             )
@@ -109,29 +174,75 @@ class CollectorAgent:
 
     async def _collect_fallback_competitor(self, competitor_name: str) -> RawCollectionResult:
         source_id = f"src_{quote_plus(competitor_name.lower())}_001"
+        sources = [
+            SourceCitation(
+                id=source_id,
+                type="official",
+                category="official",
+                url="https://example.com",
+                title=f"{competitor_name} official overview",
+                snippet=f"Fallback source for {competitor_name}.",
+                provider="fallback_web_search",
+            ),
+            SourceCitation(
+                id=f"{source_id}_review",
+                type="app_review",
+                category="user_feedback",
+                url="https://example.com/reviews",
+                title=f"{competitor_name} public reviews",
+                snippet=f"Fallback app review signal for {competitor_name}.",
+                provider="fallback_app_review_fetch",
+            ),
+        ]
         return RawCollectionResult(
             competitor_name=competitor_name,
-            completeness_score=0.3,
-            sources=[
-                SourceCitation(
-                    id=source_id,
-                    type="official",
-                    category="official",
-                    url="https://example.com",
-                    title=f"{competitor_name} official overview",
-                    snippet=f"Fallback source for {competitor_name}.",
-                    provider="fallback_web_search",
-                ),
-                SourceCitation(
-                    id=f"{source_id}_review",
-                    type="app_review",
-                    category="user_feedback",
-                    url="https://example.com/reviews",
-                    title=f"{competitor_name} public reviews",
-                    snippet=f"Fallback app review signal for {competitor_name}.",
-                    provider="fallback_app_review_fetch",
-                ),
-            ],
+            completeness_score=min(len(sources) / 5, 1.0),
+            sources=sources,
+        )
+
+    async def _collect_feedback_fallback_competitor(
+        self,
+        competitor_name: str,
+    ) -> RawCollectionResult:
+        base = await self._collect_fallback_competitor(competitor_name)
+        source_prefix = f"src_{quote_plus(competitor_name.lower())}"
+        recovery_sources = [
+            SourceCitation(
+                id=f"{source_prefix}_pricing_recovery",
+                type="commercial",
+                category="commercial",
+                url="https://example.com/pricing",
+                title=f"{competitor_name} pricing recovery source",
+                snippet=f"Recovered pricing and packaging signal for {competitor_name}.",
+                provider="feedback_recovery",
+                dimension_id="core.pricing",
+            ),
+            SourceCitation(
+                id=f"{source_prefix}_feature_recovery",
+                type="media",
+                category="media",
+                url="https://example.com/features",
+                title=f"{competitor_name} feature recovery source",
+                snippet=f"Recovered feature comparison signal for {competitor_name}.",
+                provider="feedback_recovery",
+                dimension_id="core.feature_tree",
+            ),
+            SourceCitation(
+                id=f"{source_prefix}_persona_recovery",
+                type="user_feedback",
+                category="user_feedback",
+                url="https://example.com/persona",
+                title=f"{competitor_name} persona recovery source",
+                snippet=f"Recovered user persona signal for {competitor_name}.",
+                provider="feedback_recovery",
+                dimension_id="core.persona",
+            ),
+        ]
+        sources = [*base.sources, *recovery_sources]
+        return RawCollectionResult(
+            competitor_name=competitor_name,
+            completeness_score=min(len(sources) / 5, 1.0),
+            sources=sources,
         )
 
     async def _collect_real_competitor(
@@ -146,9 +257,9 @@ class CollectorAgent:
         errors: list[str] = []
         sources: list[SourceCitation] = []
 
-        for dimension_id, query in (dimension_queries or []):
+        for dimension_id, query in dimension_queries or []:
             search_result = await run_tool_safely(
-                "web_search", lambda q=query: search.search(q, max_results=5)
+                "web_search", partial(search.search, query, max_results=5)
             )
             if isinstance(search_result, ToolError):
                 errors.append(f"search({query}): {search_result.error_content}")
@@ -173,7 +284,7 @@ class CollectorAgent:
                 enriched_sources.append(source)
                 continue
             fetch_result = await run_tool_safely(
-                "fetch_page", lambda url=str(source.url): fetcher.fetch_page(url)
+                "fetch_page", partial(fetcher.fetch_page, str(source.url))
             )
             if isinstance(fetch_result, ToolError):
                 errors.append(f"fetch_page {source.url}: {fetch_result.error_content}")
@@ -204,8 +315,15 @@ class CollectorAgent:
     async def _run_fallback_collection(
         self, state: WorkflowState
     ) -> dict[str, RawCollectionResult]:
+        recovery_mode = bool(state.feedback_signals.get("correction_detected")) or (
+            state.retry_counts.get("collector", 0) > 0
+        )
         tasks = [
-            self._collect_fallback_competitor(competitor.name)
+            (
+                self._collect_feedback_fallback_competitor(competitor.name)
+                if recovery_mode
+                else self._collect_fallback_competitor(competitor.name)
+            )
             for competitor in state.scope_contract.competitors
         ]
         results = await asyncio.gather(*tasks)

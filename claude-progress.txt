@@ -1,7 +1,7 @@
 # 竞品分析系统 - 全局进度日志
 
-**最后更新**: 2026-05-28
-**系统状态**: 后端 S1-S2 进行中、S3 起步（前端仍停在 Stage 1，前后端未联调）
+**最后更新**: 2026-05-29
+**系统状态**: 后端 S1-S3 代码收口完成（前端仍停在 Stage 1，前后端未联调）
 
 ---
 
@@ -12,8 +12,8 @@
 | 脚手架 / 工程化 | ✅ 完成 | 100% | Week 0.5 — 前端已就绪 |
 | 架构设计 / 规划 | ✅ 完成 | 100% | PRD v2.0 定稿；后端 + 前端 + Survey 三份开发计划全部落地 |
 | 后端骨架（S0） | ✅ 完成 | 100% | FastAPI + 7 路由 + Pydantic schema + SSE StreamBridge + 内存 RunRecord/Trace；pytest 通过 |
-| 后端 Agent 单体（S1-S2） | ⏳ 进行中 | ~80% | 4 Agent 真 LLM 路径 + fallback；LangGraph DAG 真接（含 QA→collect Evaluator-Optimizer 闭环，retry≤3）；HybridSearch(Tavily→SerpApi)/AppReview/robots/并行采集；额外已落 DB 持久化 + PDF/PPTX/MD 导出 + Redis SSE replay + 邮箱码/JWT 登录。深度待真实 3 竞品端到端验证 |
-| SurveyTool（S3） | ⏳ 进行中 | ~45% | 4-stage 最小链路通（公开评论优先 + ai_simulated 兜底 + QA blocker/warning）。缺口：问卷写死非 LLM 生成、Schema 偏离 PRD §7.8、无 questionnaire_designer / persona / Distributor 层 |
+| 后端 Agent 单体（S1-S2） | ✅ 完成 | 100% | 4 Agent 真 LLM 路径 + fallback；LangGraph DAG 真接（含 QA→collect Evaluator-Optimizer 闭环，retry≤3）；QA blocker 会写入 `feedback_signals.correction_detected`，Collector 重跑会补充 recovery sources 并改善；HybridSearch(Tavily→SerpApi)/AppReview/robots/并行采集；ScopingDraft 生成后可持久化查询；报告 metrics 含耗时/覆盖率/引用/人工修正/复核/重跑；真实 3 竞品端到端验证归入 S4 |
+| SurveyTool（S3） | ✅ 完成 | 100% | 代码层面完成 4-stage SurveyTool：一手上传 `user_uploaded_primary` 优先进入 workflow；Stage 1 真 LLM 问卷设计 + fallback；Stage 2a HybridSearch 公开调研 finder + 质量过滤 + sources 并回报告；Stage 2b 公开评论；Stage 3 persona + SimulatedDistributor；Stage 4 insight；QA blocker/warning、claims、timeline trace 和后端 E2E smoke 均覆盖。真实 API key 下 3 竞品跑批归入 S4/验收 |
 | 前端 Stage 2 | ⏸ 待开始 | 0% | DAG 页 / 报告页 / Survey 区块均未做 |
 | 联调 + 真后端切换（S4 / 前端 S2.7） | ⏸ 待开始 | 0% | 前端对后端零 fetch，完全未对接（M1 的「→前端」半步因此卡住） |
 | 答辩准备（S5） | ⏸ 待开始 | 0% | architecture.md / agent-protocol.md / 根 README 均未建 |
@@ -146,3 +146,10 @@
 | 2026-05-28 | 后端 SurveyTool 4-stage 最小链路接入 LangGraph：Collector 后生成用户研究 evidence/insight/source_breakdown，公开评论优先、无证据时 AI simulated 兜底；Writer 输出 survey 区块和 SurveyTool claims；QA 支持 Survey evidence blocker / 模拟占比 warning；pytest 10 passed + compileall passed | Codex + Eric |
 | 2026-05-28 | 后端生产化继续：RunManager 报告/Timeline/搜索改为 DB-first 读取，内存仅 fallback；RedisStreamBridge 基于 Redis Streams 支持跨进程 SSE replay；补齐 `redis` 依赖并成功安装后端 dev 依赖；ruff、mypy、pytest 全通过；Alembic 使用 psycopg async 并修复 Windows SelectorEventLoop，真实数据库迁移至 `0001 (head)` | Codex + Eric |
 | 2026-05-28 | 进度对账（读代码盘点）：系统级进度表此前停在「S0 待开始 0%」已严重过期，按实际代码刷新为 S0 完成 / S1-S2 ~80% / S3 ~45% / 前端 Stage 2 + S4 联调 + S5 文档均 0%。确认 LangGraph DAG 与 QA→collect 反馈闭环为真实现；定位两处 PRD↔代码偏离待修：① 问卷由 `_default_survey_plan()` 写死 2 题、非 LLM 生成（违 PRD §332 Stage 1 questionnaire_designer）；② backend survey Schema 偏离 PRD §7.8（缺 Questionnaire/intent/design_rationale）。前端对后端零 fetch，S4 联调未启动 | Claude + Eric |
+| 2026-05-29 | 后端 S3 继续：`backend/schemas/survey.py` 对齐 PRD §7.8，新增 Questionnaire / TargetPersona / DistributionHandle / SurveyResponse / Evidence / Insight / SurveyResult 完整结构；SurveyTool 拆出 `QuestionnaireDesigner`、`PersonaInferrer`、`SimulatedDistributor`，Collector 输出的 Survey 区块保留公开评论优先与 ai_simulated 兜底；Writer/QA/上传端点同步新字段；ruff、mypy、pytest 10 passed | Codex + Eric |
+| 2026-05-29 | 后端 S3 继续收口：`QuestionnaireDesigner` 增加 OpenAI 真 LLM 问卷设计路径（CI/mock 自动 fallback）；新增 `ExistingSurveyFinder` 作为 Stage 2a，真实路径复用 `HybridSearch` 查询公开调研 / 用户满意度报告并映射为 `published_survey` evidence；SurveyTool 改为 async workflow，Collector 真路径注入 finder；补测试覆盖 designer fallback 与 finder evidence 映射；ruff、mypy、pytest 12 passed | Codex + Eric |
+| 2026-05-29 | 后端 S3 可观测补强：SurveyTool 7 个 stage（designer / existing / voice / persona / distribute / collect / aggregate）全部写入 `agent_traces`，`GET /api/tasks/{run_id}/timeline` 可回放 PRD 命名约定；Stage 2a finder 返回 evidence + SourceCitation，SurveyTool 将公开调研来源并回报告 sources 池，避免 evidence 有 source_id 但报告不可溯源；补 timeline 断言；ruff、mypy、pytest 12 passed | Codex + Eric |
+| 2026-05-29 | 后端验证支架补齐：新增 `services/validation/e2e_smoke.py` 和 `POST /api/validation/e2e-smoke`，同步跑 SaaS 协作工具、AI 助手、短视频平台 3 组样例，检查 report/claims/sources/survey/timeline/export/metrics；可在 mock/fallback 下稳定跑通，后续填真实 key 即可复用同一路径做真端到端验收；pytest 增至 13 passed，ruff/mypy 全通过 | Codex + Eric |
+| 2026-05-29 | 后端 S3 SurveyTool 代码收口：上传端点现在会把脱敏后的一手问卷/访谈 evidence 挂到 task，RunManager 启动 workflow 时注入 `WorkflowState.uploaded_survey_evidence`，SurveyTool 优先使用并映射到问卷题目；Stage 2a `ExistingSurveyFinder` 增加调研关键词 query 和质量过滤，拒绝普通营销页，返回 rejected_count；新增测试覆盖上传 evidence 进入报告、公开调研过滤；ruff、mypy、pytest 15 passed | Codex + Eric |
+| 2026-05-29 | 后端 S1-S3 缺口修复（6 项）：① CollectorAgent 真路径读 `correction_detected` 并生成 targeted recovery queries（P0，反馈闭环真实生效）；② RunManager 在 `DATABASE_URL` 可用时通过 `_checkpointer_ctx` 注入 `AsyncPostgresSaver`，回退 MemorySaver（P0，LangGraph checkpoint 持久化）；③ SurveyTool Stage 4 增加 LLM 驱动 insight 聚合路径（gpt-4o-mini，fallback 到规则统计，P0）；④ ScopingAgent 补加 `@traced_node` 装饰器，ScopingAgent 调用写入 agent_traces（P1）；⑤ WriterAgent fallback/llm 路径均对 ai_simulated 全量支撑的 insight 加 ⚠️ [AI模拟] 前缀（P1）；⑥ SimulatedDistributor `collect_responses` 按 `sample_size` 生成多条多样化 response，循环遍历 personas（P1）；ruff 0 error、mypy 0 error、pytest 15 passed | Claude + Eric |
+| 2026-05-29 | 后端 S1/S2 收口：`POST /api/tasks/scoping` 生成的 ScopingDraft 现在写入本地 store，并可通过 `GET /api/tasks/scoping/drafts/{task_id}` 查询；QA 节点将 blocker 转成 `feedback_signals.correction_detected`，Collector fallback 在重跑时补 recovery sources，使反馈闭环具备“打回后改善”的可验证行为；RunManager 成功结束时回填 `analysis_duration_seconds`；测试补 ScopingDraft 查询、Collector 重跑、recovery source 和耗时指标断言；ruff、mypy、pytest 15 passed | Codex + Eric |

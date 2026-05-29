@@ -3,16 +3,27 @@ from schemas.scope import (
     ScopeDimension,
     ScopingDraft,
     ScopingRequest,
-    SurveyQuestion,
     TaskScopeContract,
     UserResearchPlan,
 )
+from schemas.survey import Questionnaire, SurveyQuestion
+from services.agents.decorators import traced_node
 from services.llm import LLMClient
 from settings import get_settings
 
 
 class ScopingAgent:
-    async def run(self, request: ScopingRequest) -> ScopingDraft:
+    @traced_node(
+        agent_name="ScopingAgent",
+        node_name="run_scoping",
+        prompt="Extract competitors and dimensions from user brief, return ScopingDraft.",
+    )
+    async def run(
+        self,
+        request: ScopingRequest,
+        *,
+        trace_context: object | None = None,
+    ) -> ScopingDraft:
         settings = get_settings()
         llm = LLMClient(settings)
         if llm.enabled and settings.openai_api_key:
@@ -169,20 +180,26 @@ class ScopingAgent:
     def _default_survey_plan(self) -> UserResearchPlan:
         return UserResearchPlan(
             enabled=True,
-            questionnaire=[
-                SurveyQuestion(
-                    id="q1",
-                    text="你选择该产品的首要原因是什么？",
-                    question_type="free_text",
-                ),
-                SurveyQuestion(
-                    id="q2",
-                    text="你对价格、功能、服务三项的满意度如何？",
-                    question_type="scale",
-                    options=["1", "2", "3", "4", "5"],
-                ),
-            ],
-            interview_outline=["购买或采用产品的触发事件", "最不满意的体验节点"],
+            questionnaire=Questionnaire(
+                competitor="all",
+                dimension_intent="聚合用户声音、公开评论和问卷/访谈信号。",
+                questions=[
+                    SurveyQuestion(
+                        id="sq_001",
+                        text="你选择该产品的首要原因是什么？",
+                        type="open",
+                        intent="识别购买或采用产品的核心触发因素。",
+                    ),
+                    SurveyQuestion(
+                        id="sq_002",
+                        text="你对价格、功能、服务三项的满意度如何？",
+                        type="scale",
+                        options=["1", "2", "3", "4", "5"],
+                        intent="量化用户对关键体验维度的满意度。",
+                    ),
+                ],
+                design_rationale="覆盖采用动机与满意度，作为用户研究模块的基础提纲。",
+            ),
         )
 
     def _competitors_from_request(self, request: ScopingRequest) -> list[CompetitorCandidate]:

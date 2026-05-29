@@ -1,5 +1,7 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -7,11 +9,32 @@ from pydantic import BaseModel, Field
 from graph.state import WorkflowState
 from graph.workflow import run_workflow
 from schemas.report import Report
-from schemas.scope import TaskScopeContract
+from schemas.scope import ScopingDraft, TaskScopeContract
+from schemas.survey import SurveyEvidence
 from schemas.traces import AgentTrace
 from services.metrics import calculate_report_metrics
 from services.storage import InMemoryStore
 from services.streaming.bridge import StreamBridge
+from settings import get_settings
+
+
+@asynccontextmanager
+async def _checkpointer_ctx() -> AsyncIterator[Any]:
+    """Yield an AsyncPostgresSaver when DATABASE_URL is configured, else MemorySaver."""
+    settings = get_settings()
+    if settings.database_url:
+        try:
+            from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
+            async with AsyncPostgresSaver.from_conn_string(settings.database_url) as saver:
+                await saver.setup()
+                yield saver
+                return
+        except Exception:
+            pass
+    from langgraph.checkpoint.memory import MemorySaver
+
+    yield MemorySaver()
 
 
 class RunRecord(BaseModel):
@@ -98,6 +121,7 @@ class RunManager:
             task_id=scope_contract.id,
             run_id=record.id,
             scope_contract=scope_contract,
+            uploaded_survey_evidence=list(self._store.survey_uploads.get(scope_contract.id, [])),
             feedback_signals={"force_pricing_blocker": force_feedback_demo},
         )
 
@@ -121,6 +145,16 @@ class RunManager:
         self._store.update_report(report)
         if self._persistence is not None:
             await self._persistence.save_report(report, report.task_id)
+
+    def add_survey_upload(self, task_id: UUID, evidence: list[SurveyEvidence]) -> None:
+        self._store.survey_uploads[task_id].extend(evidence)
+
+    def save_scoping_draft(self, draft: ScopingDraft) -> None:
+        self._store.scoping_drafts[draft.scope_contract.id] = draft
+        self._store.task_scopes[draft.scope_contract.id] = draft.scope_contract
+
+    def get_scoping_draft(self, task_id: UUID) -> ScopingDraft | None:
+        return self._store.scoping_drafts.get(task_id)
 
     async def search_reports(self, query: str, *, limit: int = 10) -> list[Report]:
         if self._persistence is not None:
@@ -163,10 +197,12 @@ class RunManager:
             await self._persistence.update_run(record)
         await self._bridge.publish(str(run_id), "run.started", {"task_id": str(record.task_id)})
         try:
-            result = await run_workflow(
-                state,
-                trace_context=RunTraceContext(run_id=run_id, store=self._store),
-            )
+            async with _checkpointer_ctx() as checkpointer:
+                result = await run_workflow(
+                    state,
+                    trace_context=RunTraceContext(run_id=run_id, store=self._store),
+                    checkpointer=checkpointer,
+                )
         except Exception as exc:
             record.status = "failed"
             record.error_summary = {
@@ -185,13 +221,16 @@ class RunManager:
                 "qa.blocker",
                 {"issues": [issue.model_dump(mode="json") for issue in result.qa_result.issues]},
             )
-        if result.report is not None:
-            self._store.task_reports[result.task_id] = result.report
-            if self._persistence is not None:
-                await self._persistence.save_report(result.report, result.task_id)
         record.status = "succeeded"
         record.retry_count = result.retry_counts.get("collector", 0)
         record.completed_at = datetime.now(UTC)
+        if result.report is not None:
+            result.report.metrics.analysis_duration_seconds = (
+                record.completed_at - (record.started_at or record.completed_at)
+            ).total_seconds()
+            self._store.task_reports[result.task_id] = result.report
+            if self._persistence is not None:
+                await self._persistence.save_report(result.report, result.task_id)
         if self._persistence is not None:
             await self._persist_traces(run_id)
             await self._persistence.update_run(record)
