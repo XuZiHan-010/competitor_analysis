@@ -38,6 +38,7 @@ class WriterAgent:
         }
         profiles_payload = [p.model_dump(mode="json") for p in state.structured_profiles.values()]
         dims_payload = [d.model_dump() for d in state.scope_contract.dimensions if d.enabled]
+        simulated_warnings = _build_simulated_warnings(state)
 
         payload = await llm.complete_json(
             provider="deepseek",
@@ -48,7 +49,9 @@ class WriterAgent:
                     "content": (
                         "You are WriterAgent. Return JSON with summary, sections, claims. "
                         "Render sections in the order of scope_contract dimensions. "
-                        "Every claim must include source_ids from the provided profiles."
+                        "Every claim must include source_ids from the provided profiles. "
+                        "For any survey insight backed only by AI-simulated evidence, "
+                        "prefix the text with '⚠️ [AI模拟] '."
                     ),
                 },
                 {
@@ -57,7 +60,8 @@ class WriterAgent:
                         f"Language: {language}\n"
                         f"Dimensions (ordered): {dims_payload}\n"
                         f"Profiles: {profiles_payload}\n"
-                        f"Allowed source ids: {source_ids_by_profile}"
+                        f"Allowed source ids: {source_ids_by_profile}\n"
+                        f"AI-simulated survey sections requiring ⚠️: {simulated_warnings}"
                     ),
                 },
             ],
@@ -91,17 +95,31 @@ class WriterAgent:
                 )
             )
 
+        evidence_index = {
+            e.id: e
+            for survey in state.survey_results.values()
+            for e in survey.evidence
+        }
         for index, (_, survey) in enumerate(state.survey_results.items(), start=1):
             for insight_index, insight in enumerate(survey.insights, start=1):
+                source_support = "supported" if insight.confidence != "low" else "weak"
+                all_simulated = insight.evidence_ids and all(
+                    evidence_index.get(eid) is not None
+                    and evidence_index[eid].source_type == "ai_simulated"
+                    for eid in insight.evidence_ids
+                )
+                claim_text = (
+                    f"⚠️ [AI模拟] {insight.point}" if all_simulated else insight.point
+                )
                 claims.append(
                     ReportClaim(
                         claim_path=f"survey[{index}].insights[{insight_index}]",
-                        claim_text=insight.summary,
+                        claim_text=claim_text,
                         layer="survey",
                         field_type="free_text",
                         source_ids=insight.evidence_ids,
                         generating_agent="SurveyTool",
-                        source_support=insight.source_support,
+                        source_support=source_support,
                         validity="valid",
                     )
                 )
@@ -122,7 +140,7 @@ class WriterAgent:
             name: profile.source_ids for name, profile in state.structured_profiles.items()
         }
         for index, item in enumerate(payload.get("claims", []), start=1):
-            competitor_name = str(item.get("competitor_name", ""))
+            competitor_name = str(item.get("competitor_name") or item.get("competitor", ""))
             source_ids = item.get("source_ids") or fallback_source_ids.get(competitor_name, [])
             claims.append(
                 ReportClaim(
@@ -184,3 +202,20 @@ class WriterAgent:
                 else []
             ),
         )
+
+
+def _build_simulated_warnings(state: WorkflowState) -> list[dict]:
+    """Return a list of survey competitors whose evidence is predominantly AI-simulated."""
+    warnings = []
+    for competitor, survey in state.survey_results.items():
+        if not survey.evidence:
+            continue
+        simulated = sum(1 for e in survey.evidence if e.source_type == "ai_simulated")
+        ratio = simulated / len(survey.evidence)
+        if ratio > 0:
+            warnings.append({
+                "competitor": competitor,
+                "ai_simulated_ratio": round(ratio, 2),
+                "note": "⚠️ mark required on insights from simulated evidence",
+            })
+    return warnings

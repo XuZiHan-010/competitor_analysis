@@ -42,14 +42,21 @@ def test_run_mock_workflow_and_report_contract() -> None:
     assert report["claims"]
     assert all(claim["source_ids"] for claim in report["claims"])
     assert report["structured_content"]["survey"]
+    survey = report["structured_content"]["survey"][0]
+    assert survey["questionnaire"]["design_rationale"]
+    assert survey["distribution"]["distributor_impl"] == "SimulatedDistributor"
+    assert survey["responses"]
+    assert survey["coverage_note"]
     assert any(claim["generating_agent"] == "SurveyTool" for claim in report["claims"])
-    assert report["structured_content"]["survey"][0]["source_breakdown"]["public_review"] >= 1
+    assert survey["source_breakdown"]["public_review"] >= 1
 
     metrics_response = client.get(f"/api/reports/{task_id}/metrics")
     assert metrics_response.status_code == 200
     metrics = metrics_response.json()
     assert metrics["citation_coverage_rate"] == 1.0
     assert metrics["source_support_rate"] == 1.0
+    assert metrics["rerun_rate"] > 0
+    assert metrics["analysis_duration_seconds"] is not None
 
     timeline_response = client.get(f"/api/tasks/{run_id}/timeline")
     assert timeline_response.status_code == 200
@@ -63,6 +70,24 @@ def test_run_mock_workflow_and_report_contract() -> None:
         "QAAgent",
         "WriterAgent",
     }
+    survey_stages = {
+        "survey.stage1.designer",
+        "survey.stage2a.existing",
+        "survey.stage2b.voice",
+        "survey.stage3a.persona",
+        "survey.stage3b.distribute",
+        "survey.stage3c.collect",
+        "survey.stage4.aggregate",
+    }
+    assert survey_stages.issubset({trace["node_name"] for trace in timeline})
+    collector_traces = [trace for trace in timeline if trace["agent_name"] == "CollectorAgent"]
+    assert len(collector_traces) >= 2
+    recovered_sources = [
+        source
+        for source in report["sources"]
+        if source["provider"] == "feedback_recovery"
+    ]
+    assert recovered_sources
 
 
 def test_p1_contract_placeholders() -> None:

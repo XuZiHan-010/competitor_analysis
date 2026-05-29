@@ -21,6 +21,7 @@ class GraphState(TypedDict, total=False):
     structured_profiles: dict[str, Any]
     extension_findings: list[dict[str, Any]]
     survey_results: dict[str, Any]
+    uploaded_survey_evidence: list[dict[str, Any]]
     cross_analysis: dict[str, Any] | None
     report: dict[str, Any] | None
     qa_result: dict[str, Any] | None
@@ -61,11 +62,19 @@ async def _qa_node(state: GraphState, config: RunnableConfig) -> dict[str, Any]:
     ws = WorkflowState.model_validate(state)
     qa_result = await QAAgent().run(ws, trace_context=_trace_ctx(config))
     retry_counts = dict(state.get("retry_counts") or {})
+    feedback_signals = dict(state.get("feedback_signals") or {})
     if qa_result and not qa_result.passed:
         retry_counts["collector"] = retry_counts.get("collector", 0) + 1
+        blocker_issues = [issue for issue in qa_result.issues if issue.severity == "blocker"]
+        feedback_signals["correction_detected"] = {
+            "target_agent": "CollectorAgent",
+            "retry_count": retry_counts["collector"],
+            "issues": [issue.model_dump(mode="json") for issue in blocker_issues],
+        }
     return {
         "qa_result": qa_result.model_dump(mode="json") if qa_result else None,
         "retry_counts": retry_counts,
+        "feedback_signals": feedback_signals,
     }
 
 
@@ -101,8 +110,13 @@ def create_workflow_graph(checkpointer: Any = None) -> Any:
     return graph.compile(checkpointer=checkpointer or MemorySaver())
 
 
-async def run_workflow(state: WorkflowState, *, trace_context: object) -> WorkflowState:
-    graph = create_workflow_graph()
+async def run_workflow(
+    state: WorkflowState,
+    *,
+    trace_context: object,
+    checkpointer: Any = None,
+) -> WorkflowState:
+    graph = create_workflow_graph(checkpointer=checkpointer)
     initial: dict[str, Any] = state.model_dump(mode="json")
     config: RunnableConfig = {
         "configurable": {

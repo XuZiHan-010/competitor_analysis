@@ -1,84 +1,465 @@
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
+from inspect import isawaitable
+from time import perf_counter
+from typing import Any, Literal, TypeVar, cast
 
 from graph.state import RawCollectionResult, WorkflowState
-from schemas.survey import SurveyEvidence, SurveyInsight, SurveyResult
+from schemas.survey import (
+    DistributionHandle,
+    Questionnaire,
+    SurveyEvidence,
+    SurveyInsight,
+    SurveyResponse,
+    SurveyResult,
+    TargetPersona,
+)
+from schemas.traces import AgentTrace
+from services.agents.decorators import _estimate_tokens
+from services.llm import LLMClient
+from services.survey.distributors import SimulatedDistributor, SurveyDistributor
+from services.survey.existing_survey_finder import ExistingSurveyFinder, ExistingSurveyFindResult
+from services.survey.persona_inferrer import PersonaInferrer
+from services.survey.questionnaire_designer import QuestionnaireDesigner
+
+T = TypeVar("T")
+_MISSING = object()
 
 
 class SurveyTool:
-    def run(self, state: WorkflowState) -> dict[str, SurveyResult]:
+    def __init__(
+        self,
+        *,
+        designer: QuestionnaireDesigner | None = None,
+        existing_survey_finder: ExistingSurveyFinder | None = None,
+        persona_inferrer: PersonaInferrer | None = None,
+        distributor: SurveyDistributor | None = None,
+        llm_client: LLMClient | None = None,
+    ) -> None:
+        self._designer = designer or QuestionnaireDesigner()
+        self._existing_survey_finder = existing_survey_finder or ExistingSurveyFinder()
+        self._persona_inferrer = persona_inferrer or PersonaInferrer()
+        self._distributor = distributor or SimulatedDistributor()
+        self._llm_client = llm_client
+
+    async def run(
+        self,
+        state: WorkflowState,
+        *,
+        trace_context: Any | None = None,
+    ) -> dict[str, SurveyResult]:
         if not state.scope_contract.user_research_plan.enabled:
             return {}
-        questions = state.scope_contract.user_research_plan.questionnaire
-        return {
-            name: self._run_competitor(result, questions)
-            for name, result in state.raw_collections.items()
-        }
+        results: dict[str, SurveyResult] = {}
+        for name, result in state.raw_collections.items():
+            results[name] = await self._run_competitor(
+                state,
+                result,
+                trace_context=trace_context,
+            )
+        return results
 
-    def _run_competitor(
+    async def _run_competitor(
         self,
+        state: WorkflowState,
         result: RawCollectionResult,
-        questions: Sequence[object],
+        *,
+        trace_context: Any | None,
     ) -> SurveyResult:
-        evidence = self._collect_public_voice(result)
+        async def design_call() -> Questionnaire:
+            return await self._designer.design(
+                competitor=result.competitor_name,
+                dimensions=state.scope_contract.dimensions,
+                existing_questionnaire=state.scope_contract.user_research_plan.questionnaire,
+            )
+
+        questionnaire: Questionnaire = await self._run_stage(
+            trace_context=trace_context,
+            stage="survey.stage1.designer",
+            competitor=result.competitor_name,
+            input_payload={
+                "dimensions": [dimension.id for dimension in state.scope_contract.dimensions],
+                "has_existing_questionnaire": (
+                    state.scope_contract.user_research_plan.questionnaire is not None
+                ),
+            },
+            provider_impl=self._designer.__class__.__name__,
+            call=design_call,
+        )
+
+        async def existing_call() -> ExistingSurveyFindResult:
+            return await self._existing_survey_finder.find(
+                competitor=result.competitor_name,
+                questionnaire=questionnaire,
+            )
+
+        empty_existing = ExistingSurveyFindResult(evidence=[], sources=[])
+        existing_result: ExistingSurveyFindResult = await self._run_stage(
+            trace_context=trace_context,
+            stage="survey.stage2a.existing",
+            competitor=result.competitor_name,
+            input_payload={"questionnaire_id": questionnaire.id},
+            provider_impl=self._existing_survey_finder.__class__.__name__,
+            call=existing_call,
+            fallback=empty_existing,
+        )
+        existing_source_ids = {source.id for source in result.sources}
+        result.sources.extend(
+            source for source in existing_result.sources if source.id not in existing_source_ids
+        )
+        uploaded_evidence = self._uploaded_evidence(state, questionnaire)
+
+        def public_voice_call() -> list[SurveyEvidence]:
+            return self._collect_public_voice(result, questionnaire)
+
+        public_voice: list[SurveyEvidence] = await self._run_stage(
+            trace_context=trace_context,
+            stage="survey.stage2b.voice",
+            competitor=result.competitor_name,
+            input_payload={"source_count": len(result.sources)},
+            provider_impl="RawCollectionResult",
+            call=public_voice_call,
+        )
+        evidence = [*uploaded_evidence, *existing_result.evidence, *public_voice]
+
+        def persona_call() -> list[TargetPersona]:
+            return self._persona_inferrer.infer(result)
+
+        target_personas: list[TargetPersona] = await self._run_stage(
+            trace_context=trace_context,
+            stage="survey.stage3a.persona",
+            competitor=result.competitor_name,
+            input_payload={"source_count": len(result.sources)},
+            provider_impl=self._persona_inferrer.__class__.__name__,
+            call=persona_call,
+        )
+
+        def distribute_call() -> DistributionHandle:
+            return self._distributor.distribute(
+                questionnaire=questionnaire,
+                target_personas=target_personas,
+                sample_size=max(len(target_personas), 1),
+            )
+
+        distribution: DistributionHandle = await self._run_stage(
+            trace_context=trace_context,
+            stage="survey.stage3b.distribute",
+            competitor=result.competitor_name,
+            input_payload={
+                "questionnaire_id": questionnaire.id,
+                "target_persona_count": len(target_personas),
+            },
+            provider_impl=self._distributor.__class__.__name__,
+            call=distribute_call,
+        )
+
+        def collect_call() -> list[SurveyResponse]:
+            return self._distributor.collect_responses(distribution)
+
+        responses: list[SurveyResponse] = await self._run_stage(
+            trace_context=trace_context,
+            stage="survey.stage3c.collect",
+            competitor=result.competitor_name,
+            input_payload={"distribution_id": distribution.id},
+            provider_impl=self._distributor.__class__.__name__,
+            call=collect_call,
+        )
         if not evidence:
-            evidence = self._simulate_evidence(result.competitor_name, questions)
-        insights = self._aggregate_insights(result.competitor_name, evidence)
+            evidence = self._simulate_evidence(questionnaire, responses)
+
+        async def aggregate_call() -> list[SurveyInsight]:
+            return await self._aggregate_insights(evidence, questionnaire, result.competitor_name)
+
+        insights: list[SurveyInsight] = await self._run_stage(
+            trace_context=trace_context,
+            stage="survey.stage4.aggregate",
+            competitor=result.competitor_name,
+            input_payload={"evidence_count": len(evidence)},
+            provider_impl=self.__class__.__name__,
+            call=aggregate_call,
+        )
         return SurveyResult(
-            competitor_name=result.competitor_name,
+            competitor=result.competitor_name,
+            dimension_intent=questionnaire.dimension_intent,
+            questionnaire=questionnaire,
+            target_personas=target_personas,
+            distribution=distribution,
+            responses=responses,
             evidence=evidence,
             insights=insights,
+            coverage_note=self._coverage_note(evidence),
             source_breakdown=dict(Counter(item.source_type for item in evidence)),
         )
 
-    def _collect_public_voice(self, result: RawCollectionResult) -> list[SurveyEvidence]:
+    def _collect_public_voice(
+        self,
+        result: RawCollectionResult,
+        questionnaire: Questionnaire,
+    ) -> list[SurveyEvidence]:
         evidence: list[SurveyEvidence] = []
-        for source in result.sources:
-            if source.category != "user_feedback" and source.type not in {
-                "app_review",
-                "public_review",
-            }:
-                continue
+        questions = questionnaire.questions
+        feedback_sources = [
+            s
+            for s in result.sources
+            if s.category == "user_feedback" or s.type in {"app_review", "public_review"}
+        ]
+        for idx, source in enumerate(feedback_sources):
             evidence.append(
                 SurveyEvidence(
+                    question_id=questions[idx % len(questions)].id,
                     source_type="public_review",
                     source_id=source.id,
-                    content=source.snippet,
-                    redacted=True,
+                    raw_quote=source.snippet,
+                    persona_inferred="公开评论用户",
                 )
             )
         return evidence
 
-    def _simulate_evidence(
+    def _uploaded_evidence(
         self,
-        competitor_name: str,
-        questions: Sequence[object],
+        state: WorkflowState,
+        questionnaire: Questionnaire,
     ) -> list[SurveyEvidence]:
-        question_count = max(len(questions), 1)
+        if not state.uploaded_survey_evidence:
+            return []
+        questions = questionnaire.questions
         return [
-            SurveyEvidence(
-                source_type="ai_simulated",
-                source_id=None,
-                content=(
-                    f"AI simulated respondent signal for {competitor_name}; "
-                    f"covers {question_count} planned research questions."
-                ),
-                redacted=True,
-            )
+            item.model_copy(update={"question_id": questions[i % len(questions)].id})
+            for i, item in enumerate(state.uploaded_survey_evidence)
         ]
 
-    def _aggregate_insights(
+    def _simulate_evidence(
         self,
-        competitor_name: str,
-        evidence: list[SurveyEvidence],
-    ) -> list[SurveyInsight]:
-        evidence_ids = [str(item.id) for item in evidence]
-        simulated_count = sum(1 for item in evidence if item.source_type == "ai_simulated")
-        support = "weak" if simulated_count == len(evidence) else "supported"
+        questionnaire: Questionnaire,
+        responses: list[SurveyResponse],
+    ) -> list[SurveyEvidence]:
+        if not responses:
+            return []
+        response = responses[0]
         return [
-            SurveyInsight(
-                summary=f"{competitor_name} user voice signals are available for report synthesis.",
-                evidence_ids=evidence_ids,
-                source_support=support,
+            SurveyEvidence(
+                question_id=question.id,
+                source_type="ai_simulated",
+                source_id=f"ai_simulated:{response.id}:{question.id}",
+                raw_quote=response.answers.get(question.id, ""),
+                persona_inferred=response.persona.label,
             )
+            for question in questionnaire.questions
         ]
+
+    async def _aggregate_insights(
+        self,
+        evidence: list[SurveyEvidence],
+        questionnaire: Questionnaire,
+        competitor: str,
+    ) -> list[SurveyInsight]:
+        if self._llm_client and self._llm_client.enabled:
+            try:
+                return await self._aggregate_insights_llm(evidence, questionnaire, competitor)
+            except Exception:
+                pass
+        return self._aggregate_insights_fallback(evidence, questionnaire)
+
+    async def _aggregate_insights_llm(
+        self,
+        evidence: list[SurveyEvidence],
+        questionnaire: Questionnaire,
+        competitor: str,
+    ) -> list[SurveyInsight]:
+        from settings import get_settings
+
+        settings = get_settings()
+        evidence_payload = [
+            {
+                "question_id": e.question_id,
+                "source_type": e.source_type,
+                "raw_quote": e.raw_quote,
+                "persona_inferred": e.persona_inferred,
+                "id": e.id,
+            }
+            for e in evidence
+        ]
+        questions_payload = [
+            {"id": q.id, "text": q.text, "intent": q.intent}
+            for q in questionnaire.questions
+        ]
+        payload = await self._llm_client.complete_json(  # type: ignore[union-attr]
+            provider="openai",
+            model=settings.qa_model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a user research analyst. Synthesize survey evidence into "
+                        "actionable insights. Return JSON: "
+                        "{insights: [{question_id, point, frequency, representative_quotes, "
+                        "evidence_ids, confidence}]}. "
+                        "confidence must be 'high'/'medium'/'low' based on evidence quality. "
+                        "Every insight must include evidence_ids from the provided evidence."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Competitor: {competitor}\n"
+                        f"Questions: {questions_payload}\n"
+                        f"Evidence ({len(evidence)} items): {evidence_payload}"
+                    ),
+                },
+            ],
+        )
+        evidence_by_id = {e.id: e for e in evidence}
+        insights: list[SurveyInsight] = []
+        for item in payload.get("insights", []):
+            evidence_ids = [
+                eid for eid in item.get("evidence_ids", []) if eid in evidence_by_id
+            ]
+            if not evidence_ids:
+                # Assign evidence for matching question as fallback
+                qid = str(item.get("question_id", ""))
+                evidence_ids = [e.id for e in evidence if e.question_id == qid]
+            insights.append(
+                SurveyInsight(
+                    question_id=str(item.get("question_id", "")),
+                    point=str(item.get("point", "")),
+                    frequency=int(item.get("frequency", len(evidence_ids))),
+                    representative_quotes=item.get("representative_quotes", [])[:3],
+                    evidence_ids=evidence_ids,
+                    confidence=str(item.get("confidence", "low")),
+                )
+            )
+        return insights if insights else self._aggregate_insights_fallback(evidence, questionnaire)
+
+    def _aggregate_insights_fallback(
+        self,
+        evidence: list[SurveyEvidence],
+        questionnaire: Questionnaire,
+    ) -> list[SurveyInsight]:
+        insights: list[SurveyInsight] = []
+        for question in questionnaire.questions:
+            question_evidence = [item for item in evidence if item.question_id == question.id]
+            if not question_evidence:
+                continue
+            real_count = sum(1 for item in question_evidence if item.source_type != "ai_simulated")
+            real_ratio = real_count / len(question_evidence)
+            confidence = "high" if real_ratio >= 0.7 else "medium" if real_ratio >= 0.3 else "low"
+            insights.append(
+                SurveyInsight(
+                    question_id=question.id,
+                    point=(
+                        f"{question.intent}：基于 {len(question_evidence)} 条"
+                        f"{'真实' if real_count else 'AI模拟'}用户声音信号进行分析。"
+                    ),
+                    frequency=len(question_evidence),
+                    representative_quotes=[item.raw_quote for item in question_evidence[:3]],
+                    evidence_ids=[item.id for item in question_evidence],
+                    confidence=confidence,
+                )
+            )
+        return insights
+
+    def _coverage_note(self, evidence: list[SurveyEvidence]) -> str:
+        if any(item.source_type != "ai_simulated" for item in evidence):
+            return "包含公开用户反馈，可用于报告洞察；无上传一手数据时可信度仍需人工复核。"
+        return "未找到公开用户反馈，当前为 AI 模拟兜底，报告页必须显示警示。"
+
+    async def _run_stage(
+        self,
+        *,
+        trace_context: Any | None,
+        stage: str,
+        competitor: str,
+        input_payload: dict[str, Any],
+        provider_impl: str,
+        call: Callable[[], T | Awaitable[T]],
+        fallback: T | object = _MISSING,
+    ) -> T:
+        started_at = datetime.now(UTC)
+        start = perf_counter()
+        try:
+            maybe_output = call()
+            output = await maybe_output if isawaitable(maybe_output) else maybe_output
+        except Exception as exc:
+            self._record_stage_trace(
+                trace_context=trace_context,
+                stage=stage,
+                competitor=competitor,
+                status="failed",
+                input_payload=input_payload,
+                output_payload={"error": exc.__class__.__name__},
+                provider_impl=provider_impl,
+                latency_ms=int((perf_counter() - start) * 1000),
+                started_at=started_at,
+                failure_reason=str(exc),
+            )
+            if fallback is not _MISSING:
+                return cast(T, fallback)
+            raise
+        output_payload = _summarize_output(output)
+        self._record_stage_trace(
+            trace_context=trace_context,
+            stage=stage,
+            competitor=competitor,
+            status="succeeded",
+            input_payload=input_payload,
+            output_payload=output_payload,
+            provider_impl=provider_impl,
+            latency_ms=int((perf_counter() - start) * 1000),
+            started_at=started_at,
+        )
+        return output
+
+    def _record_stage_trace(
+        self,
+        *,
+        trace_context: Any | None,
+        stage: str,
+        competitor: str,
+        status: str,
+        input_payload: dict[str, Any],
+        output_payload: dict[str, Any],
+        provider_impl: str,
+        latency_ms: int,
+        started_at: datetime,
+        failure_reason: str | None = None,
+    ) -> None:
+        if trace_context is None:
+            return
+        trace_context.record_trace(
+            AgentTrace(
+                task_run_id=trace_context.run_id,
+                sequence_no=trace_context.next_sequence(),
+                agent_name="SurveyTool",
+                node_name=stage,
+                status=cast(
+                    Literal["started", "succeeded", "failed", "skipped", "retried"],
+                    status,
+                ),
+                prompt=stage,
+                input_payload={"competitor": competitor, **input_payload},
+                output_payload=output_payload,
+                tokens_in=_estimate_tokens(input_payload),
+                tokens_out=_estimate_tokens(output_payload),
+                latency_ms=latency_ms,
+                decision_meta={
+                    "provider_impl": provider_impl,
+                    "failure_reason": failure_reason,
+                },
+                started_at=started_at,
+                completed_at=datetime.now(UTC),
+            )
+        )
+
+
+def _summarize_output(value: Any) -> dict[str, Any]:
+    if isinstance(value, list):
+        return {"type": "list", "count": len(value)}
+    if hasattr(value, "model_dump"):
+        payload = value.model_dump(mode="json")
+        return {"type": value.__class__.__name__, "summary": payload}
+    if isinstance(value, dict):
+        return {"type": "dict", "keys": list(value.keys())}
+    return {"type": value.__class__.__name__, "value": repr(value)}
+
+

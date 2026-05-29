@@ -51,10 +51,7 @@ class QAAgent:
                 },
                 {
                     "role": "user",
-                    "content": (
-                        f"Profiles: {profiles_payload}\n"
-                        f"Sources: {sources_payload}"
-                    ),
+                    "content": (f"Profiles: {profiles_payload}\n" f"Sources: {sources_payload}"),
                 },
             ],
         )
@@ -132,7 +129,8 @@ class QAAgent:
 
                 # Source staleness: fetched_at > 2 years ago → warning
                 stale = [
-                    s for s in raw.sources
+                    s
+                    for s in raw.sources
                     if (now - s.fetched_at).days > _SOURCE_STALENESS_YEARS * 365
                 ]
                 if stale:
@@ -176,10 +174,39 @@ class QAAgent:
                     )
                 )
                 continue
+            evidence_by_id = {item.id: item for item in survey.evidence}
+            for insight in survey.insights:
+                if not insight.evidence_ids:
+                    issues.append(
+                        QAIssue(
+                            severity="blocker",
+                            target_agent="SurveyTool",
+                            target_competitor=name,
+                            failed_field=f"survey.insights[{insight.question_id}].evidence_ids",
+                            message="Survey insight has no evidence ids.",
+                        )
+                    )
+                    continue
+                real_evidence = [
+                    evidence_by_id[evidence_id]
+                    for evidence_id in insight.evidence_ids
+                    if evidence_id in evidence_by_id
+                    and evidence_by_id[evidence_id].source_type
+                    in {"user_uploaded_primary", "published_survey", "public_review"}
+                ]
+                if not real_evidence:
+                    issues.append(
+                        QAIssue(
+                            severity="warning",
+                            target_agent="SurveyTool",
+                            target_competitor=name,
+                            failed_field=f"survey.insights[{insight.question_id}].evidence_ids",
+                            message="Survey insight backed only by AI simulated evidence.",
+                            retryable=False,
+                        )
+                    )
             evidence_count = len(survey.evidence)
-            simulated_count = sum(
-                1 for e in survey.evidence if e.source_type == "ai_simulated"
-            )
+            simulated_count = sum(1 for e in survey.evidence if e.source_type == "ai_simulated")
             if simulated_count / evidence_count > 0.6:
                 issues.append(
                     QAIssue(

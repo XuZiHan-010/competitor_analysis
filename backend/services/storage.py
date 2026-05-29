@@ -3,6 +3,7 @@ from uuid import UUID
 
 from schemas.report import Report
 from schemas.scope import ScopingDraft, TaskScopeContract
+from schemas.survey import SurveyEvidence
 from schemas.traces import AgentTrace
 
 
@@ -11,6 +12,7 @@ class InMemoryStore:
         self.scoping_drafts: dict[UUID, ScopingDraft] = {}
         self.task_scopes: dict[UUID, TaskScopeContract] = {}
         self.task_reports: dict[UUID, Report] = {}
+        self.survey_uploads: dict[UUID, list[SurveyEvidence]] = defaultdict(list)
         self.traces_by_run: dict[UUID, list[AgentTrace]] = defaultdict(list)
 
     def add_trace(self, trace: AgentTrace) -> None:

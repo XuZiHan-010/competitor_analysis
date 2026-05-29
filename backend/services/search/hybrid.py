@@ -11,6 +11,8 @@ class SearchUnavailableError(RuntimeError):
 
 
 class HybridSearch:
+    name = "hybrid_search"
+
     def __init__(self, providers: list[SearchProvider]) -> None:
         self._providers = providers
 

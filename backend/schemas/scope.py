@@ -4,6 +4,8 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, model_validator
 
+from schemas.survey import Questionnaire
+
 
 class CompetitorCandidate(BaseModel):
     name: str
@@ -25,17 +27,9 @@ class ScopeDimension(BaseModel):
     schema_ref: str | None = None
 
 
-class SurveyQuestion(BaseModel):
-    id: str
-    text: str
-    question_type: Literal["single_choice", "multi_choice", "scale", "free_text"]
-    options: list[str] = Field(default_factory=list)
-
-
 class UserResearchPlan(BaseModel):
     enabled: bool = False
-    questionnaire: list[SurveyQuestion] = Field(default_factory=list)
-    interview_outline: list[str] = Field(default_factory=list)
+    questionnaire: Questionnaire | None = None
     # UI hint: whether user intends to upload real survey data
     prefer_upload: bool = False
 

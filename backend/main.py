@@ -8,6 +8,7 @@ from api.routes.scoping import router as scoping_router
 from api.routes.stream import router as stream_router
 from api.routes.survey import router as survey_router
 from api.routes.tasks import router as tasks_router
+from api.routes.validation import router as validation_router
 from settings import get_settings
 
 
@@ -28,6 +29,7 @@ def create_app() -> FastAPI:
     app.include_router(tasks_router)
     app.include_router(stream_router)
     app.include_router(reports_router)
+    app.include_router(validation_router)
     return app
 
 

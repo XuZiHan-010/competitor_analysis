@@ -10,13 +10,13 @@ def parse_uploaded_survey(
     kind: Literal["questionnaire_result", "interview_record"],
 ) -> list[SurveyEvidence]:
     lines = [line.strip() for line in content.splitlines() if line.strip()]
-    if not lines and content.strip():
-        lines = [content.strip()]
     return [
         SurveyEvidence(
+            question_id=f"upload_{index}",
             source_type="user_uploaded_primary",
-            content=redact_sensitive_text(line),
-            redacted=True,
+            source_id=f"user_uploaded:{kind}:{index}",
+            raw_quote=redact_sensitive_text(line),
+            persona_inferred=None,
         )
-        for line in lines
+        for index, line in enumerate(lines, start=1)
     ]
