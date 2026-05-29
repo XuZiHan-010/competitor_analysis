@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from schemas.report import Report
 from schemas.scope import TaskScopeContract
 from schemas.source import SourceCitation
-from schemas.survey import SurveyResult
+from schemas.survey import SurveyEvidence, SurveyResult
 
 
 class RawCollectionResult(BaseModel):
@@ -65,6 +65,7 @@ class WorkflowState(BaseModel):
     structured_profiles: dict[str, StructuredCompetitorProfile] = Field(default_factory=dict)
     extension_findings: list[ExtensionFinding] = Field(default_factory=list)
     survey_results: dict[str, SurveyResult] = Field(default_factory=dict)
+    uploaded_survey_evidence: list[SurveyEvidence] = Field(default_factory=list)
     cross_analysis: CrossCompetitorAnalysis | None = None
     report: Report | None = None
     qa_result: QAResult | None = None

@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from api.dependencies import run_manager
 from schemas.survey import SurveyUploadResponse
 from services.survey import parse_uploaded_survey
 
@@ -18,6 +19,7 @@ class SurveyUploadRequest(BaseModel):
 @router.post("/{task_id}/survey/upload", response_model=SurveyUploadResponse)
 async def upload_survey(task_id: UUID, request: SurveyUploadRequest) -> SurveyUploadResponse:
     evidence = parse_uploaded_survey(content=request.content, kind=request.kind)
+    run_manager.add_survey_upload(task_id, evidence)
     return SurveyUploadResponse(
         task_id=task_id,
         kind=request.kind,
