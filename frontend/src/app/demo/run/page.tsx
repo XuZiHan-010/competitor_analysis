@@ -2,53 +2,78 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Check, Loader2 } from "lucide-react";
 import { PageContainer } from "@/components/layout/page-container";
 import { DemoWatermark } from "@/components/demo/demo-watermark";
-import { demoTrace } from "@/lib/mocks/demo";
-import type { DemoAgent, DemoNodeStatus, DemoTraceEvent } from "@/lib/mocks/demo/types";
+import {
+  fallbackDemoReplayBundle,
+  fetchDemoReplayBundle,
+} from "@/lib/api/demo";
+import type { DemoTraceEvent } from "@/lib/mocks/demo/types";
+import { DagGraph } from "@/components/dag/dag-graph";
+import type { AgentNodeStatus, DagNodeView } from "@/components/dag/types";
 import { cn } from "@/lib/utils";
 
-const NODES: { agent: DemoAgent; label: string; role: string }[] = [
+const DEMO_PIPELINE = [
   { agent: "CollectorAgent", label: "Collector", role: "公开数据采集 + 溯源" },
   { agent: "AnalystAgent", label: "Analyst", role: "Schema 抽取 + 结构化" },
   { agent: "WriterAgent", label: "Writer", role: "章节渲染 + 摘要" },
   { agent: "QAAgent", label: "QA", role: "字段校验 + 反馈闭环" },
-];
+] as const;
 
 const COMPRESS_FACTOR_REDUCED = 0.2; // play at 5× when prefers-reduced-motion
 
-function computeNodeStatuses(
-  fired: DemoTraceEvent[],
-): Record<DemoAgent, DemoNodeStatus> {
-  const statuses: Record<DemoAgent, DemoNodeStatus> = {
-    ScopingAgent: "idle",
+/**
+ * Folds the replay event stream into the shared DAG view model. A QA `blocker`
+ * that has not yet been `resolved` puts QA in `warn` and Collector in `retrying`
+ * (mirroring the live page); each blocker counts as one Collector re-run.
+ */
+function computeDemoNodes(fired: DemoTraceEvent[]): DagNodeView[] {
+  const base: Record<string, "idle" | "running" | "done" | "warn"> = {
     CollectorAgent: "idle",
     AnalystAgent: "idle",
     WriterAgent: "idle",
     QAAgent: "idle",
   };
   for (const event of fired) {
-    if (event.event === "start") statuses[event.agent] = "running";
-    else if (event.event === "complete") statuses[event.agent] = "ok";
-    else if (event.event === "blocker") statuses[event.agent] = "warn";
-    else if (event.event === "resolved" && statuses[event.agent] !== "ok") {
-      statuses[event.agent] = "running";
+    if (!(event.agent in base)) continue;
+    if (event.event === "start") base[event.agent] = "running";
+    else if (event.event === "complete") base[event.agent] = "done";
+    else if (event.event === "blocker") base[event.agent] = "warn";
+    else if (event.event === "resolved" && base[event.agent] !== "done") {
+      base[event.agent] = "running";
     }
   }
-  return statuses;
+
+  const blockerCount = fired.filter((e) => e.event === "blocker").length;
+  const lastQa = [...fired].reverse().find((e) => e.agent === "QAAgent");
+  const blockerActive = blockerCount > 0 && lastQa?.event === "blocker";
+
+  return DEMO_PIPELINE.map((node) => {
+    let status: AgentNodeStatus = base[node.agent];
+    if (blockerActive && node.agent === "CollectorAgent") status = "retrying";
+    if (blockerActive && node.agent === "QAAgent") status = "warn";
+    return {
+      agent: node.agent,
+      label: node.label,
+      role: node.role,
+      status,
+      retryCount: node.agent === "CollectorAgent" ? blockerCount : 0,
+    };
+  });
 }
 
 export default function DemoRunPage() {
   const router = useRouter();
   const headingRef = useRef<HTMLHeadingElement>(null);
 
+  const [demoReplay, setDemoReplay] = useState(() => fallbackDemoReplayBundle());
   const [firedCount, setFiredCount] = useState(0);
   const [paused, setPaused] = useState(false);
   const startedAtRef = useRef<number | null>(null);
   const pausedAtRef = useRef<number | null>(null);
   const pausedAccumRef = useRef(0);
   const compressFactorRef = useRef(1);
+  const demoTrace = demoReplay.trace;
 
   const totalDurationMs = demoTrace[demoTrace.length - 1]?.ts_offset_ms ?? 0;
 
@@ -59,6 +84,25 @@ export default function DemoRunPage() {
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     compressFactorRef.current = reducedMotion ? COMPRESS_FACTOR_REDUCED : 1;
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    fetchDemoReplayBundle()
+      .then((bundle) => {
+        if (!mounted) return;
+        startedAtRef.current = null;
+        pausedAtRef.current = null;
+        pausedAccumRef.current = 0;
+        setFiredCount(0);
+        setDemoReplay(bundle);
+      })
+      .catch(() => {
+        // The local replay remains the offline-safe demo path.
+      });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   // Drive the playback.
@@ -107,18 +151,18 @@ export default function DemoRunPage() {
 
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [paused, router]);
+  }, [demoTrace, paused, router]);
 
   function handleSkip() {
     router.push("/demo/report");
   }
 
-  const firedEvents = useMemo(() => demoTrace.slice(0, firedCount), [firedCount]);
+  const firedEvents = useMemo(() => demoTrace.slice(0, firedCount), [demoTrace, firedCount]);
   const visibleTrace = useMemo(
     () => firedEvents.slice(-12).reverse(),
     [firedEvents],
   );
-  const statuses = useMemo(() => computeNodeStatuses(firedEvents), [firedEvents]);
+  const demoNodes = useMemo(() => computeDemoNodes(firedEvents), [firedEvents]);
 
   const overallPct = totalDurationMs
     ? Math.min(
@@ -169,65 +213,7 @@ export default function DemoRunPage() {
         <div className="grid gap-10 md:grid-cols-[1fr_360px]">
           {/* DAG nodes column */}
           <section aria-label="Agent 节点状态">
-            <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {NODES.map((node, idx) => {
-                const status = statuses[node.agent];
-                return (
-                  <li
-                    key={node.agent}
-                    aria-label={`${node.label} 状态：${
-                      status === "ok"
-                        ? "完成"
-                        : status === "running"
-                          ? "进行中"
-                          : status === "warn"
-                            ? "已打回"
-                            : "等待"
-                    }`}
-                    className={cn(
-                      "relative rounded-md border bg-card p-4",
-                      "transition-colors duration-300",
-                      status === "running" &&
-                        "border-[var(--color-accent-warm)]/60 shadow-[0_0_0_3px_oklch(0.72_0.13_65_/_0.08)]",
-                      status === "ok" && "border-primary/40",
-                      status === "warn" && "border-destructive/50",
-                      status === "idle" && "border-border/60 opacity-70",
-                    )}
-                  >
-                    <div className="flex items-center gap-2.5 mb-2.5">
-                      <NodeIcon status={status} />
-                      <span
-                        className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground tabular"
-                        style={{ fontFamily: "var(--font-mono)" }}
-                      >
-                        0{idx + 1}
-                      </span>
-                    </div>
-                    <p
-                      className="text-base text-foreground/95"
-                      style={{ fontFamily: "var(--font-display)" }}
-                    >
-                      {node.label}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground/90 mt-1 leading-snug">
-                      {node.role}
-                    </p>
-
-                    {/* Connector line - except after last node */}
-                    {idx < NODES.length - 1 && (
-                      <span
-                        aria-hidden="true"
-                        className={cn(
-                          "hidden lg:block absolute top-1/2 -right-3 h-px w-6",
-                          "bg-border",
-                          status === "ok" && "bg-primary/50",
-                        )}
-                      />
-                    )}
-                  </li>
-                );
-              })}
-            </ol>
+            <DagGraph nodes={demoNodes} />
 
             {/* Overall progress */}
             <div className="mt-8">
@@ -324,31 +310,3 @@ export default function DemoRunPage() {
   );
 }
 
-function NodeIcon({ status }: { status: DemoNodeStatus }) {
-  if (status === "ok") {
-    return (
-      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
-        <Check className="h-3 w-3" />
-      </span>
-    );
-  }
-  if (status === "running") {
-    return (
-      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--color-accent-warm)] text-background motion-safe:animate-[thinking-pulse_1.4s_ease-in-out_infinite]">
-        <Loader2 className="h-3 w-3 motion-safe:animate-spin" />
-      </span>
-    );
-  }
-  if (status === "warn") {
-    return (
-      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-destructive/15 text-destructive">
-        <AlertTriangle className="h-3 w-3" />
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-border/80 text-muted-foreground/60">
-      <span className="block h-1 w-1 rounded-full bg-current" />
-    </span>
-  );
-}
