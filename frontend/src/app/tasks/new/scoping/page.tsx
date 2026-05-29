@@ -3,22 +3,28 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowRight, Loader2, Sparkles } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { PageContainer } from "@/components/layout/page-container";
 import { useScopingStore } from "@/stores/scoping-store";
-import { simulateAIThinking } from "@/lib/mocks/delay";
 import { buildEmptyDraftContract } from "@/lib/mocks/scope-contract";
 import { CompetitorChips } from "@/components/scoping/competitor-chips";
 import { DimensionList } from "@/components/scoping/dimension-list";
 import { AddDimensionDialog } from "@/components/scoping/add-dimension-dialog";
 import { ReguideInput } from "@/components/scoping/reguide-input";
+import { CollapsibleSection } from "@/components/scoping/collapsible-section";
+import { UserResearchCard } from "@/components/scoping/user-research-card";
 import { useI18n } from "@/lib/i18n";
+import { createScopingDraft } from "@/lib/api/scoping";
+import { startTaskRun } from "@/lib/api/tasks";
 import { cn } from "@/lib/utils";
 
 export default function ScopingPage() {
+  const router = useRouter();
   const {
     userBrief,
+    manualCompetitors,
     draftContract,
     isGenerating,
     setDraftContract,
@@ -28,46 +34,74 @@ export default function ScopingPage() {
   const [confirming, setConfirming] = useState(false);
   const { lang, t } = useI18n();
 
-  // Real path (PRD §十一-quater 11Q.7): ScopingAgent backend not yet wired up,
-  // so we render an empty skeleton (4 core + 0 extensions + 0 competitors)
-  // built from whatever the user typed. NEVER fall back to a domain-bound mock
-  // — that would mean "type AI IDE, see skincare outline" on demo day.
   useEffect(() => {
     if (draftContract) return;
 
+    let mounted = true;
     setIsGenerating(true);
-    simulateAIThinking(900).then(() => {
-      setDraftContract(buildEmptyDraftContract(userBrief));
-      setIsGenerating(false);
-    });
-  }, [draftContract, userBrief, setDraftContract, setIsGenerating]);
+    createScopingDraft({
+      userBrief,
+      knownCompetitors: manualCompetitors,
+    })
+      .then(({ contract }) => {
+        if (mounted) setDraftContract(contract);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setDraftContract(buildEmptyDraftContract(userBrief));
+        toast.error("ScopingAgent 暂时不可用", {
+          description: "已切换为空白研究契约，可手动补齐竞品后继续。",
+        });
+      })
+      .finally(() => {
+        if (mounted) setIsGenerating(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [
+    draftContract,
+    manualCompetitors,
+    setDraftContract,
+    setIsGenerating,
+    userBrief,
+  ]);
 
   async function handleConfirm() {
     if (!draftContract) return;
     setConfirming(true);
-    await simulateAIThinking(700);
-    setDraftContract({
+    const frozenContract = {
       ...draftContract,
       frozen_at: new Date().toISOString(),
-    });
-    toast.success(t("taskCreated"), {
-      description: t("taskCreatedDescription"),
-    });
-    setConfirming(false);
-    // Stage 2 will route to /tasks/{id}. For now stay put.
+    };
+    setDraftContract(frozenContract);
+
+    try {
+      const run = await startTaskRun(frozenContract);
+      toast.success(t("taskCreated"), {
+        description: t("taskCreatedDescription"),
+      });
+      router.push(`/tasks/${run.id}`);
+    } catch {
+      toast.error("任务启动失败", {
+        description: "请确认至少保留 3 个竞品，并检查后端服务是否可用。",
+      });
+      setConfirming(false);
+    }
   }
 
   const enabledCount =
-    draftContract?.dimensions.filter((d) => d.enabled).length ?? 0;
+    draftContract?.dimensions.filter((dimension) => dimension.enabled).length ?? 0;
   const totalCount = draftContract?.dimensions.length ?? 0;
+  const competitorCount = draftContract?.competitors.length ?? 0;
 
   return (
     <PageContainer width="narrow" className="pb-32">
-      {/* Editorial header strip */}
-      <div className="flex items-baseline gap-3 mb-8 animate-[fade-in_0.4s_ease-out]">
+      <div className="mb-8 flex animate-[fade-in_0.4s_ease-out] items-baseline gap-3">
         <Link
           href="/tasks/new"
-          className="inline-flex items-center gap-1 text-xs uppercase tracking-[0.18em] text-muted-foreground hover:text-foreground transition-colors"
+          className="inline-flex items-center gap-1 text-xs uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground"
           style={{ fontFamily: "var(--font-mono)" }}
         >
           <ArrowLeft className="h-3 w-3" />
@@ -82,20 +116,16 @@ export default function ScopingPage() {
         </span>
       </div>
 
-      {/* sr-only h1 for screen reader semantics */}
       <h1 className="sr-only">{t("scopingTitle")}</h1>
 
-      {/* Loading state */}
       {isGenerating && !draftContract && (
-        <div className="flex flex-col items-center justify-center py-24 gap-4 animate-[fade-in_0.3s_ease-out]">
-          <div className="relative">
-            <Sparkles
-              className="h-8 w-8 text-primary animate-[thinking-pulse_2s_ease-in-out_infinite]"
-              strokeWidth={1.5}
-            />
-          </div>
+        <div className="flex animate-[fade-in_0.3s_ease-out] flex-col items-center justify-center gap-4 py-24">
+          <Sparkles
+            className="h-8 w-8 animate-[thinking-pulse_2s_ease-in-out_infinite] text-primary"
+            strokeWidth={1.5}
+          />
           <p
-            className="text-sm uppercase tracking-[0.22em] text-muted-foreground animate-[thinking-pulse_2s_ease-in-out_infinite]"
+            className="animate-[thinking-pulse_2s_ease-in-out_infinite] text-sm uppercase tracking-[0.22em] text-muted-foreground"
             style={{ fontFamily: "var(--font-mono)" }}
           >
             {t("scopingLoading")}
@@ -105,17 +135,16 @@ export default function ScopingPage() {
 
       {draftContract && (
         <>
-          {/* Intro paragraph + Subjects band */}
           <section className="mb-10 animate-[slide-up_0.5s_cubic-bezier(0.16,1,0.3,1)_0.05s_both]">
-            <p className="text-base text-muted-foreground leading-relaxed max-w-[52ch] mb-6">
+            <p className="mb-6 max-w-[52ch] text-base leading-relaxed text-muted-foreground">
               {lang === "zh" ? (
                 <>
                   {t("scopingIntroBefore")}
-                  <span className="tabular font-medium text-foreground mx-1">
+                  <span className="tabular mx-1 font-medium text-foreground">
                     4&nbsp;{t("scopingCore")}
                   </span>
                   {t("scopingMiddle")}
-                  <span className="tabular font-medium text-foreground mx-1">
+                  <span className="tabular mx-1 font-medium text-foreground">
                     {Math.max(0, totalCount - 4)}&nbsp;{t("scopingExtension")}
                   </span>
                   {t("scopingIntroAfter")}
@@ -137,49 +166,70 @@ export default function ScopingPage() {
             <CompetitorChips />
           </section>
 
-          {/* Outline section */}
-          <section className="mb-10 animate-[slide-up_0.5s_cubic-bezier(0.16,1,0.3,1)_0.15s_both]">
-            <div className="flex items-baseline justify-between mb-4">
-              <h2
-                className="text-xl text-foreground"
-                style={{
-                  fontVariationSettings: '"opsz" 36',
-                  fontWeight: 500,
-                }}
-              >
-                {t("outlineTitle")}
-              </h2>
-              <span
-                className="tabular text-xs text-muted-foreground"
-                style={{ fontFamily: "var(--font-mono)" }}
-              >
-                {enabledCount} / {totalCount} {t("enabled")}
-              </span>
-            </div>
-
-            <p className="text-xs text-muted-foreground mb-4 italic">
-              {t("outlineTip")}
-            </p>
-
-            <div
-              className={cn(
-                "transition-opacity",
-                isGenerating && "opacity-50 pointer-events-none",
-              )}
+          <div className="mb-10 space-y-4 animate-[slide-up_0.5s_cubic-bezier(0.16,1,0.3,1)_0.15s_both]">
+            <CollapsibleSection
+              title={t("outlineTitle")}
+              defaultOpen
+              badge={
+                <span
+                  className="tabular text-xs text-muted-foreground"
+                  style={{ fontFamily: "var(--font-mono)" }}
+                >
+                  {enabledCount} / {totalCount} {t("enabled")}
+                </span>
+              }
             >
-              <DimensionList dimensions={draftContract.dimensions} />
-            </div>
+              <p className="mb-4 text-xs italic text-muted-foreground">
+                {t("outlineTip")}
+              </p>
 
-            <div className="mt-3">
-              <AddDimensionDialog />
-            </div>
+              <div
+                className={cn(
+                  "transition-opacity",
+                  isGenerating && "pointer-events-none opacity-50",
+                )}
+              >
+                <DimensionList dimensions={draftContract.dimensions} />
+              </div>
 
-            <ReguideInput />
-          </section>
+              <div className="mt-3">
+                <AddDimensionDialog />
+              </div>
+
+              <ReguideInput />
+            </CollapsibleSection>
+
+            <CollapsibleSection
+              title="用户研究计划"
+              accent
+              defaultOpen={false}
+              badge={
+                <span
+                  className={cn(
+                    "rounded px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em]",
+                    draftContract.user_research_plan.enabled
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground/70",
+                  )}
+                  style={{ fontFamily: "var(--font-mono)" }}
+                >
+                  {draftContract.user_research_plan.enabled ? "已启用" : "未启用"}
+                </span>
+              }
+            >
+              <UserResearchCard
+                value={draftContract.user_research_plan}
+                onChange={(plan) =>
+                  setDraftContract({ ...draftContract, user_research_plan: plan })
+                }
+                contractId={draftContract.task_id}
+                competitors={draftContract.competitors}
+              />
+            </CollapsibleSection>
+          </div>
         </>
       )}
 
-      {/* Sticky action bar at bottom */}
       {draftContract && (
         <div
           className={cn(
@@ -188,13 +238,18 @@ export default function ScopingPage() {
             "supports-[backdrop-filter]:bg-background/85",
           )}
         >
-          <div className="mx-auto max-w-[720px] px-4 py-3 sm:px-8 sm:py-4 flex justify-end">
+          <div className="mx-auto flex max-w-[720px] justify-end px-4 py-3 sm:px-8 sm:py-4">
             <Button
               onClick={handleConfirm}
-              disabled={isGenerating || confirming || enabledCount === 0}
+              disabled={
+                isGenerating ||
+                confirming ||
+                enabledCount === 0 ||
+                competitorCount < 3
+              }
               size="lg"
               className={cn(
-                "group h-11 w-full sm:w-auto px-6 font-medium",
+                "group h-11 w-full px-6 font-medium sm:w-auto",
                 "bg-primary text-primary-foreground hover:bg-primary/90",
                 "shadow-[0_4px_14px_-4px_oklch(0.38_0.065_220_/_0.4)]",
               )}
