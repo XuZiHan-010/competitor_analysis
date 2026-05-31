@@ -9,19 +9,25 @@ def export_markdown(report: Report) -> bytes:
 
 
 def export_pdf(report: Report) -> bytes:
-    text = _pdf_text(report.markdown_content)
-    stream = f"BT /F1 12 Tf 72 760 Td 14 TL {text} ET".encode("latin-1", errors="replace")
+    stream = _pdf_text_stream(report.markdown_content)
     objects = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
         b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
         b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
         b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
-        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        b"<< /Type /Font /Subtype /Type0 /BaseFont /STSong-Light "
+        b"/Encoding /UniGB-UCS2-H /DescendantFonts [6 0 R] >>",
         b"<< /Length "
         + str(len(stream)).encode("ascii")
         + b" >>\nstream\n"
         + stream
         + b"\nendstream",
+        b"<< /Type /Font /Subtype /CIDFontType0 /BaseFont /STSong-Light "
+        b"/CIDSystemInfo << /Registry (Adobe) /Ordering (GB1) /Supplement 5 >> "
+        b"/FontDescriptor 7 0 R >>",
+        b"<< /Type /FontDescriptor /FontName /STSong-Light /Flags 4 "
+        b"/FontBBox [0 -120 1000 880] /ItalicAngle 0 /Ascent 880 "
+        b"/Descent -120 /CapHeight 880 /StemV 80 >>",
     ]
     body = BytesIO()
     body.write(b"%PDF-1.4\n")
@@ -58,13 +64,16 @@ def export_pptx(report: Report) -> bytes:
     return data.getvalue()
 
 
-def _pdf_text(markdown: str) -> str:
-    lines = [_escape_pdf_line(line.strip()) for line in markdown.splitlines() if line.strip()]
-    return " ".join(f"({line}) Tj T*" for line in lines[:35])
+def _pdf_text_stream(markdown: str) -> bytes:
+    lines = [_trim(line.strip(), 110) for line in markdown.splitlines() if line.strip()]
+    commands = ["BT /F1 12 Tf 72 760 Td 14 TL"]
+    commands.extend(f"<{_utf16be_hex(line)}> Tj T*" for line in lines[:35])
+    commands.append("ET")
+    return "\n".join(commands).encode("ascii")
 
 
-def _escape_pdf_line(line: str) -> str:
-    return _trim(line, 110).replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+def _utf16be_hex(value: str) -> str:
+    return (b"\xfe\xff" + value.encode("utf-16-be")).hex().upper()
 
 
 def _trim(value: str, limit: int) -> str:

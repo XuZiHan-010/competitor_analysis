@@ -16,6 +16,13 @@ class Settings(BaseSettings):
     deepseek_api_key: str | None = None
     tavily_api_key: str | None = None
     serpapi_api_key: str | None = None
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    smtp_use_ssl: bool = False
+    smtp_starttls: bool = True
     langchain_tracing_v2: bool = False
     langchain_api_key: str | None = None
     langchain_project: str = "competitor-analysis"
@@ -25,6 +32,7 @@ class Settings(BaseSettings):
     analyst_model: str = "deepseek-v4-pro"
     writer_model: str = "deepseek-v4-pro"
     qa_model: str = "gpt-4o-mini"
+    embedding_model: str = "text-embedding-3-small"
 
     model_config = SettingsConfigDict(
         env_file=("../.env", ".env"),

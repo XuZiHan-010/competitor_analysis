@@ -1,3 +1,5 @@
+import structlog
+
 from schemas.scope import (
     CompetitorCandidate,
     ScopeDimension,
@@ -10,6 +12,8 @@ from schemas.survey import Questionnaire, SurveyQuestion
 from services.agents.decorators import traced_node
 from services.llm import LLMClient
 from settings import get_settings
+
+logger = structlog.get_logger(__name__)
 
 
 class ScopingAgent:
@@ -30,7 +34,7 @@ class ScopingAgent:
             try:
                 return await self._run_llm(request, llm)
             except Exception:
-                pass
+                logger.warning("scoping_llm_failed_falling_back", exc_info=True)
         return self._run_fallback(request)
 
     async def _run_llm(self, request: ScopingRequest, llm: LLMClient) -> ScopingDraft:

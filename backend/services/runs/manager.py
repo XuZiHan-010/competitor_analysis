@@ -4,11 +4,12 @@ from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
 from uuid import UUID, uuid4
 
+import structlog
 from pydantic import BaseModel, Field
 
 from graph.state import WorkflowState
 from graph.workflow import run_workflow
-from schemas.report import Report
+from schemas.report import Report, ReportSearchBackendResult
 from schemas.scope import ScopingDraft, TaskScopeContract
 from schemas.survey import SurveyEvidence
 from schemas.traces import AgentTrace
@@ -17,10 +18,17 @@ from services.storage import InMemoryStore
 from services.streaming.bridge import StreamBridge
 from settings import get_settings
 
+logger = structlog.get_logger(__name__)
+
 
 @asynccontextmanager
 async def _checkpointer_ctx() -> AsyncIterator[Any]:
-    """Yield an AsyncPostgresSaver when DATABASE_URL is configured, else MemorySaver."""
+    """Yield an AsyncPostgresSaver when DATABASE_URL is configured, else MemorySaver.
+
+    A configured-but-unreachable Postgres is logged as a warning (the run still
+    proceeds on an in-memory checkpointer, but state will not survive a restart);
+    an unconfigured DATABASE_URL is the expected dev path and stays silent.
+    """
     settings = get_settings()
     if settings.database_url:
         try:
@@ -31,7 +39,7 @@ async def _checkpointer_ctx() -> AsyncIterator[Any]:
                 yield saver
                 return
         except Exception:
-            pass
+            logger.warning("postgres_checkpointer_unavailable_using_memory", exc_info=True)
     from langgraph.checkpoint.memory import MemorySaver
 
     yield MemorySaver()
@@ -60,23 +68,33 @@ class RunPersistence(Protocol):
 
     async def get_run(self, run_id: UUID) -> RunRecord | None: ...
 
+    async def list_runs(self, limit: int = 50) -> list[RunRecord]: ...
+
     async def get_timeline(self, run_id: UUID) -> list[AgentTrace]: ...
 
     async def get_report(self, task_id: UUID) -> Report | None: ...
 
-    async def search_reports(self, query: str, *, limit: int = 10) -> list[Report]: ...
+    async def search_reports(self, query: str, *, limit: int = 10) -> ReportSearchBackendResult: ...
 
 
 class RunTraceContext:
-    def __init__(self, run_id: UUID, store: InMemoryStore) -> None:
+    def __init__(self, run_id: UUID, store: InMemoryStore, bridge: StreamBridge) -> None:
         self.run_id = run_id
         self._store = store
+        self._bridge = bridge
 
     def next_sequence(self) -> int:
         return self._store.next_trace_sequence(self.run_id)
 
     def record_trace(self, trace: AgentTrace) -> None:
         self._store.add_trace(trace)
+
+    async def publish_trace(self, trace: AgentTrace) -> None:
+        await self._bridge.publish(
+            str(self.run_id),
+            "agent.trace",
+            trace.model_dump(mode="json"),
+        )
 
 
 class RunManager:
@@ -91,12 +109,7 @@ class RunManager:
         self._persistence = persistence
         self._runs: dict[UUID, RunRecord] = {}
 
-    async def start_run(
-        self,
-        scope_contract: TaskScopeContract,
-        *,
-        force_feedback_demo: bool = False,
-    ) -> RunRecord:
+    async def start_run(self, scope_contract: TaskScopeContract) -> RunRecord:
         task_id = scope_contract.id
         self._store.task_scopes[task_id] = scope_contract
         if self._persistence is not None:
@@ -133,6 +146,19 @@ class RunManager:
             return await self._persistence.get_run(run_id)
         return None
 
+    async def list_runs(self, limit: int = 50) -> list[RunRecord]:
+        _epoch = datetime.min.replace(tzinfo=UTC)
+        runs_by_id = dict(self._runs)
+        if self._persistence is not None:
+            for run in await self._persistence.list_runs(limit=limit):
+                runs_by_id.setdefault(run.id, run)
+        runs = sorted(
+            runs_by_id.values(),
+            key=lambda r: r.started_at if r.started_at is not None else _epoch,
+            reverse=True,
+        )
+        return list(runs[:limit])
+
     async def get_report(self, task_id: UUID) -> Report | None:
         if self._persistence is not None:
             report = await self._persistence.get_report(task_id)
@@ -156,14 +182,20 @@ class RunManager:
     def get_scoping_draft(self, task_id: UUID) -> ScopingDraft | None:
         return self._store.scoping_drafts.get(task_id)
 
-    async def search_reports(self, query: str, *, limit: int = 10) -> list[Report]:
+    def get_scope_contract(self, task_id: UUID) -> TaskScopeContract | None:
+        return self._store.task_scopes.get(task_id)
+
+    async def search_reports(self, query: str, *, limit: int = 10) -> ReportSearchBackendResult:
         if self._persistence is not None:
-            reports = await self._persistence.search_reports(query, limit=limit)
-            if reports:
-                for report in reports:
+            result = await self._persistence.search_reports(query, limit=limit)
+            if result.reports:
+                for report in result.reports:
                     self._store.update_report(report)
-                return reports
-        return self._store.search_reports(query, limit=limit)
+                return result
+        return ReportSearchBackendResult(
+            mode="in_memory_semantic_fallback",
+            reports=self._store.search_reports(query, limit=limit),
+        )
 
     async def get_timeline(self, run_id: UUID) -> list[AgentTrace]:
         traces = sorted(self._store.traces_by_run[run_id], key=lambda trace: trace.sequence_no)
@@ -200,7 +232,11 @@ class RunManager:
             async with _checkpointer_ctx() as checkpointer:
                 result = await run_workflow(
                     state,
-                    trace_context=RunTraceContext(run_id=run_id, store=self._store),
+                    trace_context=RunTraceContext(
+                        run_id=run_id,
+                        store=self._store,
+                        bridge=self._bridge,
+                    ),
                     checkpointer=checkpointer,
                 )
         except Exception as exc:

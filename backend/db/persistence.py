@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from db.repositories import RunRepository
-from schemas.report import Report
+from schemas.report import Report, ReportSearchBackendResult
 from schemas.scope import TaskScopeContract
 from schemas.traces import AgentTrace
 from services.runs.manager import RunRecord
@@ -32,13 +32,16 @@ class SqlRunPersistence:
     async def get_run(self, run_id: UUID) -> RunRecord | None:
         return await self._with_repo_result(lambda repo: repo.get_run(run_id))
 
+    async def list_runs(self, limit: int = 50) -> list[RunRecord]:
+        return await self._with_repo_result(lambda repo: repo.list_runs(limit=limit))
+
     async def get_timeline(self, run_id: UUID) -> list[AgentTrace]:
         return await self._with_repo_result(lambda repo: repo.get_timeline(run_id))
 
     async def get_report(self, task_id: UUID) -> Report | None:
         return await self._with_repo_result(lambda repo: repo.get_report_by_task(task_id))
 
-    async def search_reports(self, query: str, *, limit: int = 10) -> list[Report]:
+    async def search_reports(self, query: str, *, limit: int = 10) -> ReportSearchBackendResult:
         return await self._with_repo_result(lambda repo: repo.search_reports(query, limit=limit))
 
     async def save_report(self, report: Report, task_id: UUID) -> None:

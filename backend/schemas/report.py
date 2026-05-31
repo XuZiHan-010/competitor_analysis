@@ -78,6 +78,11 @@ class ReportSearchResponse(BaseModel):
     results: list[ReportSearchResult]
 
 
+class ReportSearchBackendResult(BaseModel):
+    mode: Literal["in_memory_semantic_fallback", "pgvector"]
+    reports: list[Report]
+
+
 class FieldCorrectionRequest(BaseModel):
     claim_id: UUID
     field_path: str

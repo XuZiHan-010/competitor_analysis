@@ -2,6 +2,8 @@ import asyncio
 from functools import partial
 from urllib.parse import quote_plus
 
+import structlog
+
 from graph.state import RawCollectionResult, WorkflowState
 from schemas.scope import ScopeDimension
 from schemas.source import SourceCitation
@@ -18,6 +20,8 @@ from services.survey.tool import SurveyTool
 from settings import get_settings
 
 _COLLECTOR_TIMEOUT_S = 60
+
+logger = structlog.get_logger(__name__)
 
 
 class CollectorAgent:
@@ -42,7 +46,7 @@ class CollectorAgent:
             if providers:
                 search = HybridSearch(providers)
                 llm = LLMClient(settings)
-                raw = await self._run_real_collection(state, search)
+                raw = await self._run_real_collection(state, search, llm=llm)
                 survey = await SurveyTool(
                     existing_survey_finder=ExistingSurveyFinder(search),
                     llm_client=llm,
@@ -119,12 +123,64 @@ class CollectorAgent:
             ))
         return base + extra
 
+    async def _rewrite_queries(
+        self,
+        competitor_name: str,
+        base_queries: list[tuple[str, str]],
+        llm: LLMClient | None,
+    ) -> list[tuple[str, str]]:
+        """Rewrite static search queries with Gemini (PRD §五.X / §284).
+
+        Falls back to the original queries on any failure or when Gemini is
+        unavailable, so collection degrades gracefully rather than aborting.
+        """
+        settings = get_settings()
+        if llm is None or not llm.enabled or not settings.gemini_api_key:
+            return base_queries
+        try:
+            payload = await llm.complete_json(
+                provider="gemini",
+                model=settings.collector_model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are CollectorAgent's search planner. Rewrite each query to "
+                            "maximize retrieval of high-signal public sources (official docs, "
+                            "pricing pages, credible reviews). Preserve every dimension_id "
+                            'exactly. Return JSON {"queries": [{"dimension_id": str, '
+                            '"query": str}]}.'
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Competitor: {competitor_name}\n"
+                            f"Queries: {[{'dimension_id': d, 'query': q} for d, q in base_queries]}"
+                        ),
+                    },
+                ],
+            )
+        except Exception:
+            logger.warning("collector_query_rewrite_failed", competitor=competitor_name)
+            return base_queries
+        rewritten = payload.get("queries")
+        if not isinstance(rewritten, list):
+            return base_queries
+        result = [
+            (str(item["dimension_id"]), str(item["query"]))
+            for item in rewritten
+            if isinstance(item, dict) and item.get("dimension_id") and item.get("query")
+        ]
+        return result or base_queries
+
     async def _run_real_collection(
         self,
         state: WorkflowState,
         search: HybridSearch,
         app_reviews: AppReviewProvider | None = None,
         fetcher: PageFetcher | None = None,
+        llm: LLMClient | None = None,
     ) -> dict[str, RawCollectionResult]:
         app_reviews = app_reviews or AppReviewProvider()
         fetcher = fetcher or PageFetcher()
@@ -146,6 +202,13 @@ class CollectorAgent:
                 )
             return self._build_dimension_queries(competitor_name, state.scope_contract.dimensions)
 
+        query_map: dict[str, list[tuple[str, str]]] = {}
+        for competitor in state.scope_contract.competitors:
+            base_queries = _queries(competitor.name)
+            query_map[competitor.name] = await self._rewrite_queries(
+                competitor.name, base_queries, llm
+            )
+
         tasks = {
             competitor.name: asyncio.wait_for(
                 self._collect_real_competitor(
@@ -153,7 +216,7 @@ class CollectorAgent:
                     search,
                     app_reviews,
                     fetcher,
-                    dimension_queries=_queries(competitor.name),
+                    dimension_queries=query_map[competitor.name],
                 ),
                 timeout=_COLLECTOR_TIMEOUT_S,
             )

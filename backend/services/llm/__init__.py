@@ -1,3 +1,3 @@
-from services.llm.client import LLMClient, LLMMessage
+from services.llm.client import LLMClient
 
-__all__ = ["LLMClient", "LLMMessage"]
+__all__ = ["LLMClient"]

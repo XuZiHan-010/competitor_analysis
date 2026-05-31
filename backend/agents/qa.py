@@ -1,5 +1,7 @@
 from datetime import UTC, datetime
 
+import structlog
+
 from graph.state import QAIssue, QAResult, WorkflowState
 from services.agents.decorators import traced_node
 from services.llm import LLMClient
@@ -7,6 +9,8 @@ from settings import get_settings
 
 _MIN_SOURCES_PER_COMPETITOR = 5
 _SOURCE_STALENESS_YEARS = 2
+
+logger = structlog.get_logger(__name__)
 
 
 class QAAgent:
@@ -27,7 +31,7 @@ class QAAgent:
             try:
                 return await self._run_llm(state, llm)
             except Exception:
-                pass
+                logger.warning("qa_llm_failed_falling_back", exc_info=True)
         return self._run_fallback(state)
 
     async def _run_llm(self, state: WorkflowState, llm: LLMClient) -> QAResult:

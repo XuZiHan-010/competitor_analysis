@@ -16,16 +16,18 @@ class RunRequest(BaseModel):
     force_feedback_demo: bool = False
 
 
+@router.get("", response_model=list[RunRecord])
+async def list_tasks(limit: int = 50) -> list[RunRecord]:
+    return await run_manager.list_runs(limit=limit)
+
+
 @router.post("/{task_id}/run", response_model=RunRecord)
 async def run_task(
     task_id: UUID, request: RunRequest, background_tasks: BackgroundTasks
 ) -> RunRecord:
     if request.scope_contract.id != task_id:
         raise HTTPException(status_code=400, detail="task_id does not match scope_contract.id")
-    record = await run_manager.start_run(
-        request.scope_contract,
-        force_feedback_demo=request.force_feedback_demo,
-    )
+    record = await run_manager.start_run(request.scope_contract)
     state = run_manager.build_initial_state(
         record,
         request.scope_contract,

@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes.auth import router as auth_router
+from api.routes.demo import router as demo_router
 from api.routes.health import router as health_router
 from api.routes.reports import router as reports_router
 from api.routes.scoping import router as scoping_router
@@ -24,6 +25,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(auth_router)
     app.include_router(health_router)
+    app.include_router(demo_router)
     app.include_router(scoping_router)
     app.include_router(survey_router)
     app.include_router(tasks_router)

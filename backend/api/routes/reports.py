@@ -1,3 +1,4 @@
+import json
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Response
@@ -13,17 +14,19 @@ from schemas.report import (
     ReportSearchResult,
 )
 from services.exporter import export_markdown, export_pdf, export_pptx
+from services.llm import LLMClient
+from settings import get_settings
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 
 @router.get("/search", response_model=ReportSearchResponse)
 async def search_reports(q: str, limit: int = 10) -> ReportSearchResponse:
-    reports = await run_manager.search_reports(q, limit=limit)
+    result = await run_manager.search_reports(q, limit=limit)
     return ReportSearchResponse(
         query=q,
-        mode="in_memory_semantic_fallback",
-        results=[_search_result(report, q) for report in reports],
+        mode=result.mode,
+        results=[_search_result(report, q) for report in result.reports],
     )
 
 
@@ -79,14 +82,20 @@ async def switch_report_language(task_id: UUID, request: LanguageRequest) -> Rep
         raise HTTPException(status_code=404, detail="report not found")
     if report.language == request.language:
         return report
+
+    settings = get_settings()
+    llm = LLMClient(settings)
+    new_sc, new_markdown = await _translate_report(
+        report=report,
+        target_lang=request.language,
+        llm=llm,
+        model=settings.qa_model,
+    )
     translated = report.model_copy(
         update={
             "language": request.language,
-            "structured_content": {
-                **report.structured_content,
-                "language": request.language,
-            },
-            "markdown_content": _localized_markdown(report.markdown_content, request.language),
+            "structured_content": new_sc,
+            "markdown_content": new_markdown,
         },
         deep=True,
     )
@@ -136,12 +145,66 @@ async def review_claim(
     return await run_manager.recompute_report_metrics(updated)
 
 
-@router.post("/{task_id}/dimensions/{dimension_id}/regenerate")
-async def regenerate_dimension(task_id: UUID, dimension_id: str) -> dict[str, str]:
+@router.post("/{task_id}/dimensions/{dimension_id}/regenerate", response_model=Report)
+async def regenerate_dimension(task_id: UUID, dimension_id: str) -> Report:
     report = await run_manager.get_report(task_id)
     if report is None:
         raise HTTPException(status_code=404, detail="report not found")
-    return {"task_id": str(task_id), "dimension_id": dimension_id, "status": "queued_mock"}
+
+    settings = get_settings()
+    llm = LLMClient(settings)
+    if not llm.enabled:
+        raise HTTPException(
+            status_code=501,
+            detail="LLM disabled; set MOCK_LLM=false with a valid API key to regenerate dimensions",
+        )
+
+    sc = dict(report.structured_content)
+    extensions: list[dict] = list(sc.get("extensions") or [])
+    ext_idx = next(
+        (i for i, e in enumerate(extensions) if e.get("dimension_id") == dimension_id),
+        None,
+    )
+    if ext_idx is None:
+        raise HTTPException(status_code=404, detail="dimension not found in report extensions")
+
+    ext = extensions[ext_idx]
+    competitors: list[str] = list(sc.get("competitors") or [])
+
+    result = await llm.complete_json(
+        provider="openai",
+        model=settings.qa_model,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are a competitive analysis expert. Regenerate the analysis section "
+                    "for the given dimension. Return JSON with keys: "
+                    "summary (string), bullets (array of {competitor: string, "
+                    "points: string[], source_ids: []})."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Dimension: {ext.get('title', dimension_id)} "
+                    f"(intent: {ext.get('intent', '')}). "
+                    f"Competitors: {', '.join(competitors)}. "
+                    "Regenerate with fresh, detailed analysis."
+                ),
+            },
+        ],
+    )
+
+    extensions[ext_idx] = {
+        **ext,
+        "summary": str(result.get("summary") or ext.get("summary") or ""),
+        "bullets": result.get("bullets") or ext.get("bullets") or [],
+    }
+    sc["extensions"] = extensions
+    updated = report.model_copy(update={"structured_content": sc}, deep=True)
+    updated.metrics.rerun_rate = max(updated.metrics.rerun_rate or 0.0, 1.0)
+    return await run_manager.recompute_report_metrics(updated)
 
 
 def _claim_index(report: Report, claim_id: UUID) -> int:
@@ -171,6 +234,96 @@ def _localized_markdown(markdown: str, language: str) -> str:
             "S0 mock report with traceable claims.",
             "Backend-generated report with traceable claims.",
         )
+    return markdown.replace("# Competitor Analysis Report", "# 竞品分析报告")
+
+
+async def _translate_report(
+    report: Report,
+    target_lang: str,
+    llm: LLMClient,
+    model: str,
+) -> tuple[dict, str]:
+    """Translate key display fields + markdown via LLM; falls back to header swap."""
+    sc = dict(report.structured_content)
+    sc["language"] = target_lang
+
+    if not llm.enabled:
+        return sc, _header_swap(report.markdown_content, target_lang)
+
+    lang_name = "English" if target_lang == "en" else "中文（简体）"
+
+    fields: dict[str, str] = {
+        "title": str(sc.get("title") or ""),
+        "subtitle": str(sc.get("subtitle") or ""),
+        "summary": str(sc.get("summary") or ""),
+        "feature_tree_intro": str((sc.get("feature_tree") or {}).get("intro") or ""),
+        "pricing_intro": str((sc.get("pricing") or {}).get("intro") or ""),
+        "personas_intro": str((sc.get("user_personas") or {}).get("intro") or ""),
+        "swot_intro": str((sc.get("swot") or {}).get("intro") or ""),
+        "cross_summary": str(
+            (sc.get("cross_analysis") or {}).get("differentiation_summary") or ""
+        ),
+    }
+    try:
+        t = await llm.complete_json(
+            provider="openai",
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        f"Translate every string value in the JSON to {lang_name}. "
+                        "Return JSON with the exact same keys. Do not add or remove keys."
+                    ),
+                },
+                {"role": "user", "content": json.dumps(fields, ensure_ascii=False)},
+            ],
+        )
+    except Exception:
+        t = fields
+
+    sc["title"] = str(t.get("title") or sc.get("title") or "")
+    sc["subtitle"] = str(t.get("subtitle") or sc.get("subtitle") or "")
+    sc["summary"] = str(t.get("summary") or sc.get("summary") or "")
+    if isinstance(sc.get("feature_tree"), dict):
+        sc["feature_tree"] = {**sc["feature_tree"], "intro": t.get("feature_tree_intro", "")}
+    if isinstance(sc.get("pricing"), dict):
+        sc["pricing"] = {**sc["pricing"], "intro": t.get("pricing_intro", "")}
+    if isinstance(sc.get("user_personas"), dict):
+        sc["user_personas"] = {**sc["user_personas"], "intro": t.get("personas_intro", "")}
+    if isinstance(sc.get("swot"), dict):
+        sc["swot"] = {**sc["swot"], "intro": t.get("swot_intro", "")}
+    if isinstance(sc.get("cross_analysis"), dict):
+        sc["cross_analysis"] = {
+            **sc["cross_analysis"],
+            "differentiation_summary": t.get("cross_summary", ""),
+        }
+
+    try:
+        new_markdown = await llm.complete_text(
+            provider="openai",
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        f"Translate the following Markdown document to {lang_name}. "
+                        "Preserve all Markdown syntax, headings, tables, and bullet points. "
+                        "Output only the translated Markdown, no preamble."
+                    ),
+                },
+                {"role": "user", "content": report.markdown_content[:6000]},
+            ],
+        )
+    except Exception:
+        new_markdown = _header_swap(report.markdown_content, target_lang)
+
+    return sc, new_markdown
+
+
+def _header_swap(markdown: str, language: str) -> str:
+    if language == "en":
+        return markdown.replace("# 竞品分析报告", "# Competitor Analysis Report")
     return markdown.replace("# Competitor Analysis Report", "# 竞品分析报告")
 
 

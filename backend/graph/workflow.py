@@ -1,4 +1,4 @@
-from typing import Any, TypedDict
+from typing import Any
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import MemorySaver
@@ -13,30 +13,16 @@ from graph.state import WorkflowState
 MAX_COLLECTOR_RETRIES = 3
 
 
-class GraphState(TypedDict, total=False):
-    task_id: str
-    run_id: str
-    scope_contract: dict[str, Any]
-    raw_collections: dict[str, Any]
-    structured_profiles: dict[str, Any]
-    extension_findings: list[dict[str, Any]]
-    survey_results: dict[str, Any]
-    uploaded_survey_evidence: list[dict[str, Any]]
-    cross_analysis: dict[str, Any] | None
-    report: dict[str, Any] | None
-    qa_result: dict[str, Any] | None
-    feedback_signals: dict[str, Any]
-    retry_counts: dict[str, int]
-
-
 def _trace_ctx(config: RunnableConfig) -> Any:
     return (config.get("configurable") or {}).get("trace_context")
 
 
-async def _collector_node(state: GraphState, config: RunnableConfig) -> dict[str, Any]:
-    ws = WorkflowState.model_validate(state)
+# Nodes receive a validated WorkflowState (LangGraph builds it from the channels)
+# but must return JSON-serializable updates: the checkpointer serializes channel
+# writes via msgpack, which cannot encode raw Pydantic model instances.
+async def _collector_node(state: WorkflowState, config: RunnableConfig) -> dict[str, Any]:
     raw_collections, survey_results = await CollectorAgent().run(
-        ws, trace_context=_trace_ctx(config)
+        state, trace_context=_trace_ctx(config)
     )
     return {
         "raw_collections": {k: v.model_dump(mode="json") for k, v in raw_collections.items()},
@@ -44,10 +30,9 @@ async def _collector_node(state: GraphState, config: RunnableConfig) -> dict[str
     }
 
 
-async def _analyst_node(state: GraphState, config: RunnableConfig) -> dict[str, Any]:
-    ws = WorkflowState.model_validate(state)
+async def _analyst_node(state: WorkflowState, config: RunnableConfig) -> dict[str, Any]:
     structured_profiles, extension_findings, cross_analysis = await AnalystAgent().run(
-        ws, trace_context=_trace_ctx(config)
+        state, trace_context=_trace_ctx(config)
     )
     return {
         "structured_profiles": {
@@ -58,11 +43,10 @@ async def _analyst_node(state: GraphState, config: RunnableConfig) -> dict[str, 
     }
 
 
-async def _qa_node(state: GraphState, config: RunnableConfig) -> dict[str, Any]:
-    ws = WorkflowState.model_validate(state)
-    qa_result = await QAAgent().run(ws, trace_context=_trace_ctx(config))
-    retry_counts = dict(state.get("retry_counts") or {})
-    feedback_signals = dict(state.get("feedback_signals") or {})
+async def _qa_node(state: WorkflowState, config: RunnableConfig) -> dict[str, Any]:
+    qa_result = await QAAgent().run(state, trace_context=_trace_ctx(config))
+    retry_counts = dict(state.retry_counts)
+    feedback_signals = dict(state.feedback_signals)
     if qa_result and not qa_result.passed:
         retry_counts["collector"] = retry_counts.get("collector", 0) + 1
         blocker_issues = [issue for issue in qa_result.issues if issue.severity == "blocker"]
@@ -78,22 +62,20 @@ async def _qa_node(state: GraphState, config: RunnableConfig) -> dict[str, Any]:
     }
 
 
-async def _writer_node(state: GraphState, config: RunnableConfig) -> dict[str, Any]:
-    ws = WorkflowState.model_validate(state)
-    report = await WriterAgent().run(ws, trace_context=_trace_ctx(config))
+async def _writer_node(state: WorkflowState, config: RunnableConfig) -> dict[str, Any]:
+    report = await WriterAgent().run(state, trace_context=_trace_ctx(config))
     return {"report": report.model_dump(mode="json") if report else None}
 
 
-def _route_after_qa(state: GraphState) -> str:
-    qa = state.get("qa_result") or {}
-    retries = (state.get("retry_counts") or {}).get("collector", 0)
-    if not qa.get("passed", True) and retries < MAX_COLLECTOR_RETRIES:
+def _route_after_qa(state: WorkflowState) -> str:
+    retries = state.retry_counts.get("collector", 0)
+    if state.qa_result and not state.qa_result.passed and retries < MAX_COLLECTOR_RETRIES:
         return "collect"
     return "write"
 
 
 def create_workflow_graph(checkpointer: Any = None) -> Any:
-    graph: StateGraph = StateGraph(GraphState)
+    graph: StateGraph = StateGraph(WorkflowState)
     graph.add_node("collect", _collector_node)
     graph.add_node("analyze", _analyst_node)
     graph.add_node("qa_check", _qa_node)
@@ -117,12 +99,13 @@ async def run_workflow(
     checkpointer: Any = None,
 ) -> WorkflowState:
     graph = create_workflow_graph(checkpointer=checkpointer)
-    initial: dict[str, Any] = state.model_dump(mode="json")
     config: RunnableConfig = {
         "configurable": {
             "thread_id": str(state.run_id),
             "trace_context": trace_context,
         }
     }
-    result: dict[str, Any] = await graph.ainvoke(initial, config=config)
+    result: Any = await graph.ainvoke(state, config=config)
+    if isinstance(result, WorkflowState):
+        return result
     return WorkflowState.model_validate(result)
