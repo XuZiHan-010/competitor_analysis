@@ -4,6 +4,7 @@ import { ThemeProvider } from "next-themes";
 import { TopNav } from "@/components/layout/top-nav";
 import { LanguageDocumentSync } from "@/components/layout/language-document-sync";
 import { Toaster } from "@/components/ui/sonner";
+import { AuthRouteGuard } from "@/components/auth/auth-route-guard";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -56,6 +57,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-paper-grain">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <LanguageDocumentSync />
+          <AuthRouteGuard />
           <TopNav />
           <main className="flex-1 flex flex-col">{children}</main>
           <Toaster

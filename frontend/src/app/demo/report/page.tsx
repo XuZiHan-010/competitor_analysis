@@ -1,14 +1,18 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { Download, ExternalLink, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/page-container";
 import { DemoWatermark } from "@/components/demo/demo-watermark";
-import { demoReport, demoSources, getSourceById } from "@/lib/mocks/demo";
+import {
+  fallbackDemoReplayBundle,
+  fetchDemoReplayBundle,
+} from "@/lib/api/demo";
 import type {
   DemoFeatureRow,
   DemoPersona,
+  DemoSource,
   DemoSwotBlock,
 } from "@/lib/mocks/demo/types";
 import { Button } from "@/components/ui/button";
@@ -21,11 +25,28 @@ const SUPPORT_GLYPH: Record<string, { label: string; tone: string }> = {
   unknown: { label: "?", tone: "text-muted-foreground/40" },
 };
 
+const DemoSourcesContext = createContext<DemoSource[]>([]);
+
 export default function DemoReportPage() {
   const titleRef = useRef<HTMLHeadingElement>(null);
+  const [demoReplay, setDemoReplay] = useState(() => fallbackDemoReplayBundle());
+  const demoReport = demoReplay.report;
+  const demoSources = demoReplay.sources;
 
   useEffect(() => {
     titleRef.current?.focus();
+    let mounted = true;
+    fetchDemoReplayBundle()
+      .then((bundle) => {
+        if (!mounted) return;
+        setDemoReplay(bundle);
+      })
+      .catch(() => {
+        // Keep the pre-recorded local fixture available without backend.
+      });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   function handleExport(kind: "pdf" | "pptx") {
@@ -35,7 +56,7 @@ export default function DemoReportPage() {
   }
 
   return (
-    <>
+    <DemoSourcesContext.Provider value={demoSources}>
       <DemoWatermark step={3} />
 
       <PageContainer width="wide" className="max-w-[1024px]">
@@ -286,7 +307,7 @@ export default function DemoReportPage() {
           </ol>
         </section>
       </PageContainer>
-    </>
+    </DemoSourcesContext.Provider>
   );
 }
 
@@ -532,11 +553,12 @@ function PositioningCard({
 }
 
 function CitationChips({ ids }: { ids: string[] }) {
+  const sources = useContext(DemoSourcesContext);
   if (!ids?.length) return null;
   return (
     <span className="ml-1 inline-flex flex-wrap gap-1 align-baseline">
       {ids.map((id) => {
-        const src = getSourceById(id);
+        const src = sources.find((source) => source.id === id);
         if (!src) return null;
         return (
           <a

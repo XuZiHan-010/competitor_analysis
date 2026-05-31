@@ -14,7 +14,7 @@
 | 操作 | 命令 | 何时跑 |
 |---|---|---|
 | Lint | `npm run lint` | 改完代码、commit 前、push 前 |
-| 类型检查 | `npx tsc --noEmit` | 改了 type/interface 或跨文件 import 后 |
+| 类型检查 | `npm run typecheck` | 改了 type/interface 或跨文件 import 后 |
 | dev server | `npm run dev` | 验证 UI 行为时 |
 | 生产构建 | `npm run build` | 大改前后；CI 会跑（一次完整构建 ~30-60s） |
 

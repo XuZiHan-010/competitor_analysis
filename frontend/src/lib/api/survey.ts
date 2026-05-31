@@ -1,5 +1,4 @@
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+import { apiFetch } from "@/lib/api/client";
 
 export type SurveyUploadKind = "questionnaire_result" | "interview_record";
 
@@ -20,11 +19,10 @@ export async function uploadSurveyEvidence(
   kind: SurveyUploadKind,
   content: string,
 ): Promise<SurveyUploadResult> {
-  const res = await fetch(
-    `${API_BASE_URL}/api/tasks/${contractId}/survey/upload`,
+  const res = await apiFetch(
+    `/api/tasks/${contractId}/survey/upload`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ kind, content }),
     },
   );

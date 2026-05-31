@@ -4,10 +4,8 @@ import type {
   TaskScopeContract,
   UserResearchPlan,
 } from "@/lib/mocks/types";
+import { apiFetch } from "@/lib/api/client";
 import { emptyUserResearchPlan } from "@/lib/mocks/types";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
 interface BackendCompetitorCandidate {
   name: string;
@@ -54,9 +52,8 @@ export async function createScopingDraft(input: {
   userBrief: string;
   knownCompetitors?: string[];
 }): Promise<ScopingDraftResult> {
-  const response = await fetch(`${API_BASE_URL}/api/tasks/scoping`, {
+  const response = await apiFetch("/api/tasks/scoping", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       user_brief: input.userBrief,
       known_competitors: input.knownCompetitors ?? [],

@@ -15,6 +15,7 @@ import { PersonaCard } from "@/components/report/persona-card";
 import { PositioningCard } from "@/components/report/positioning-card";
 import { PricingTable } from "@/components/report/pricing-table";
 import { QualityPanel } from "@/components/report/quality-panel";
+import { ReportLanguageToggle } from "@/components/report/report-language-toggle";
 import { SourceList } from "@/components/report/source-list";
 import { SurveySection } from "@/components/report/survey-section";
 import { SwotBlock } from "@/components/report/swot-block";
@@ -212,6 +213,13 @@ export default function ReportPage() {
                     {icon} {label}
                   </button>
                 ))}
+
+                <span className="mx-1 h-4 w-px bg-border/70" aria-hidden="true" />
+                <ReportLanguageToggle
+                  taskId={taskId}
+                  value={report.language}
+                  onSwitched={setReport}
+                />
               </div>
 
               <div className="rule-fade mt-8" aria-hidden="true" />
