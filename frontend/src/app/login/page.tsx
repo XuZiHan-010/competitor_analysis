@@ -1,7 +1,6 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, CheckCircle2, KeyRound, Loader2, Mail } from "lucide-react";
 import { toast } from "sonner";
@@ -125,7 +124,7 @@ export default function LoginPage() {
                   onChange={(event) => setEmail(event.target.value)}
                 />
               </div>
-              <Button className="w-full justify-between" disabled={!canSend || submitting}>
+              <Button type="submit" className="w-full justify-between" disabled={!canSend || submitting}>
                 {submitting ? "发送中" : "发送验证码"}
                 {submitting ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -156,7 +155,7 @@ export default function LoginPage() {
                   开发环境验证码：{devCode}
                 </div>
               )}
-              <Button className="w-full justify-between" disabled={!canVerify || submitting}>
+              <Button type="submit" className="w-full justify-between" disabled={!canVerify || submitting}>
                 {submitting ? "验证中" : "进入工作台"}
                 {submitting ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -183,12 +182,6 @@ export default function LoginPage() {
             </p>
           )}
 
-          <div className="mt-6 flex items-center justify-between border-t border-border/60 pt-4 text-xs text-muted-foreground">
-            <span>演示路线保持公开</span>
-            <Link href="/demo/scoping" className="hover:text-foreground">
-              进入 demo
-            </Link>
-          </div>
         </div>
       </section>
     </PageContainer>
