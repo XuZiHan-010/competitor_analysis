@@ -6,7 +6,10 @@ import { Lock, Sparkles } from "lucide-react";
 import { PageContainer } from "@/components/layout/page-container";
 import { DemoWatermark } from "@/components/demo/demo-watermark";
 import { useScopingStore } from "@/stores/scoping-store";
-import { demoScope } from "@/lib/mocks/demo";
+import {
+  fallbackDemoReplayBundle,
+  fetchDemoReplayBundle,
+} from "@/lib/api/demo";
 import { cn } from "@/lib/utils";
 
 const DEFAULT_HOLD_MS = 3000;
@@ -17,13 +20,28 @@ export default function DemoScopingPage() {
   const enterDemoMode = useScopingStore((s) => s.enterDemoMode);
 
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const [demoReplay, setDemoReplay] = useState(() => fallbackDemoReplayBundle());
   const [paused, setPaused] = useState(false);
   const [progress, setProgress] = useState(0);
+  const demoScope = demoReplay.scope;
 
   // Bootstrap demo store + focus the main heading for screen readers.
   useEffect(() => {
-    enterDemoMode(demoScope);
+    let mounted = true;
+    enterDemoMode(fallbackDemoReplayBundle().scope);
     headingRef.current?.focus();
+    fetchDemoReplayBundle()
+      .then((bundle) => {
+        if (!mounted) return;
+        setDemoReplay(bundle);
+        enterDemoMode(bundle.scope);
+      })
+      .catch(() => {
+        // Local fixture keeps /demo reliable when the backend is offline.
+      });
+    return () => {
+      mounted = false;
+    };
   }, [enterDemoMode]);
 
   // Drive the progress ring + auto-advance.

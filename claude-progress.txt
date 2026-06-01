@@ -1,7 +1,19 @@
 # 竞品分析系统 - 全局进度日志
 
-**最后更新**: 2026-05-29
-**系统状态**: 后端 S1-S3 代码收口完成（前端仍停在 Stage 1，前后端未联调）
+**最后更新**: 2026-05-31
+**系统状态**: 代码层面后端 ~100% / 前端 ~95% 落地（含真实 LLM 路径 + fallback），但全部在 mock 模式下验证；真实 API key 端到端跑通 = 0 次；SSE 流式联调待完成；2 个前端小尾巴（reguide 回后端 / clarifying questions UI）待确认；答辩文档部分已建（README 102 行已入库，architecture.md 129 行待提交），agent-protocol.md / deployment.md 缺
+
+---
+
+## ✅ 已解决缺口（本轮修复完成）
+
+### 缺口 A：WriterAgent 未组装富结构报告内容 → **已修复**
+
+`analyst.py`（+88 行）收紧 fallback 路径对齐 LLM 路径；`writer.py`（+114 行）现在从 `state.structured_profiles` pivot 出跨竞品 feature_tree / pricing / swot，并组装 extensions / cross_analysis / cross_analysis_chart。前端报告页可全量渲染。
+
+### 缺口 B：无 `GET /api/tasks` 列表端点 → **已修复**
+
+`tasks.py` 新增 `GET /api/tasks`，`RunManager.list_runs()` 返回按 started_at 倒序的 RunRecord 列表。前端任务列表页已接入。
 
 ---
 
@@ -14,9 +26,9 @@
 | 后端骨架（S0） | ✅ 完成 | 100% | FastAPI + 7 路由 + Pydantic schema + SSE StreamBridge + 内存 RunRecord/Trace；pytest 通过 |
 | 后端 Agent 单体（S1-S2） | ✅ 完成 | 100% | 4 Agent 真 LLM 路径 + fallback；LangGraph DAG 真接（含 QA→collect Evaluator-Optimizer 闭环，retry≤3）；QA blocker 会写入 `feedback_signals.correction_detected`，Collector 重跑会补充 recovery sources 并改善；HybridSearch(Tavily→SerpApi)/AppReview/robots/并行采集；ScopingDraft 生成后可持久化查询；报告 metrics 含耗时/覆盖率/引用/人工修正/复核/重跑；真实 3 竞品端到端验证归入 S4 |
 | SurveyTool（S3） | ✅ 完成 | 100% | 代码层面完成 4-stage SurveyTool：一手上传 `user_uploaded_primary` 优先进入 workflow；Stage 1 真 LLM 问卷设计 + fallback；Stage 2a HybridSearch 公开调研 finder + 质量过滤 + sources 并回报告；Stage 2b 公开评论；Stage 3 persona + SimulatedDistributor；Stage 4 insight；QA blocker/warning、claims、timeline trace 和后端 E2E smoke 均覆盖。真实 API key 下 3 竞品跑批归入 S4/验收 |
-| 前端 Stage 2 | ⏸ 待开始 | 0% | DAG 页 / 报告页 / Survey 区块均未做 |
-| 联调 + 真后端切换（S4 / 前端 S2.7） | ⏸ 待开始 | 0% | 前端对后端零 fetch，完全未对接（M1 的「→前端」半步因此卡住） |
-| 答辩准备（S5） | ⏸ 待开始 | 0% | architecture.md / agent-protocol.md / 根 README 均未建 |
+| 前端 Stage 2 | 🔄 进行中 | 95% | S2.0~S2.5 全部组件代码落地（DAG / 报告 / Survey / Scoping 折叠 / 用户研究卡）；2 个小尾巴待确认：① reguide 是否真调后端重跑 ② clarifying questions UI 是否真接 ScopingDraft；RAG 占位按范围决策**可砍** |
+| 联调 + 真后端切换（S4 / 前端 S2.7） | 🔄 进行中 | 30% | 前端已接真后端 API（reports/tasks/scoping/demo 4 个 client）；SSE 流式联调代码在，未与真后端事件流对过；**真实 key 端到端跑通 = 0 次（最大缺口）** |
+| 答辩准备（S5） | 🔄 进行中 | 25% | README.md 102 行已入库 ✅；architecture.md 129 行已写但 untracked ⚠️；agent-protocol.md ❌；deployment.md ❌（部署后写） |
 
 ---
 
@@ -105,9 +117,9 @@
 
 - [x] **M0**: 前端 Stage 1 上线（对话式立项页 + Demo 路由）(2026-05-25)
 - [x] **M0.5**: 三份开发计划落地（后端 5 阶段 / 前端 Stage 2 / Survey schema 修复）(2026-05-27)
-- [ ] **M1**: 后端骨架跑通（mock LLM 全链路 SSE → 前端 + Postgres checkpointer 落库）(Week 0.5 末)
-- [ ] **M1.5**: ScopingAgent + CollectorAgent 主线接真 LLM，前端 DAG 页 mock SSE 可演示 (Week 1 上)
-- [ ] **M2**: DAG 完整 + QA 反馈闭环可现场触发 + 前端报告页 mock 数据渲染 (Week 1 下)
+- [x] **M1**: 后端骨架跑通（mock LLM 全链路 SSE → 前端 + Postgres checkpointer 落库）(2026-05-28)
+- [x] **M1.5**: ScopingAgent + CollectorAgent 主线接真 LLM + 前端报告页完整渲染（含真后端 API 客户端）(2026-05-29)
+- [ ] **M2**: DAG 完整 + QA 反馈闭环可现场触发 + 前端 Survey 区块渲染 (Week 1 下)
 - [ ] **M2.5**: SurveyTool 4-Stage 跑通 + Survey 报告区块前端完成 (Week 2 上)
 - [ ] **M3**: 端到端真后端：3 个真实竞品完整报告 + PDF/PPTX 导出可用 (Week 2 下)
 - [ ] **M4**: 演示环境就绪 + P1 增强项收口（扩展指标 / 时间轴 / 历史报告检索 / 应用商店评论 / 多语言）+ README + 答辩材料完成 (Week 2.5)
@@ -146,10 +158,23 @@
 | 2026-05-28 | 后端 SurveyTool 4-stage 最小链路接入 LangGraph：Collector 后生成用户研究 evidence/insight/source_breakdown，公开评论优先、无证据时 AI simulated 兜底；Writer 输出 survey 区块和 SurveyTool claims；QA 支持 Survey evidence blocker / 模拟占比 warning；pytest 10 passed + compileall passed | Codex + Eric |
 | 2026-05-28 | 后端生产化继续：RunManager 报告/Timeline/搜索改为 DB-first 读取，内存仅 fallback；RedisStreamBridge 基于 Redis Streams 支持跨进程 SSE replay；补齐 `redis` 依赖并成功安装后端 dev 依赖；ruff、mypy、pytest 全通过；Alembic 使用 psycopg async 并修复 Windows SelectorEventLoop，真实数据库迁移至 `0001 (head)` | Codex + Eric |
 | 2026-05-28 | 进度对账（读代码盘点）：系统级进度表此前停在「S0 待开始 0%」已严重过期，按实际代码刷新为 S0 完成 / S1-S2 ~80% / S3 ~45% / 前端 Stage 2 + S4 联调 + S5 文档均 0%。确认 LangGraph DAG 与 QA→collect 反馈闭环为真实现；定位两处 PRD↔代码偏离待修：① 问卷由 `_default_survey_plan()` 写死 2 题、非 LLM 生成（违 PRD §332 Stage 1 questionnaire_designer）；② backend survey Schema 偏离 PRD §7.8（缺 Questionnaire/intent/design_rationale）。前端对后端零 fetch，S4 联调未启动 | Claude + Eric |
+| 2026-05-30 | Phase 2 登录鉴权打通：后端 `/api/auth/verify` 设置 `strata_session` httpOnly cookie，`/api/auth/me` 支持 cookie/Bearer 双路径，新增 logout；前端替换登录占位页，新增 auth API/store、全局 `/tasks` `/reports` 路由守卫、顶栏用户态，并统一 API client 带 `credentials: include`。验证：`pytest tests/test_auth.py` 3 passed；前端 `npm run lint` + `npx tsc --noEmit` 通过 | Codex + Eric |
+| 2026-05-30 | 后端 P1 历史报告检索补齐：新增 `0003_add_pgvector_embeddings` 迁移，为 reports/report_claims/source_citations 补 `embedding vector(1536)`；保存报告时写入 report/claim/source embeddings；`/api/reports/search` 优先走 pgvector 相似度查询，失败或无结果时保留关键词 fallback；新增本地 hash embedding 兜底，避免 mock/无 key 环境触网。验证：`ruff check`、`mypy .`、`pytest` 23 passed | Codex + Eric |
+| 2026-05-30 | 后端剩余收口实施：新增 `GET /api/validation/platform-readiness`，检查 DATABASE_URL/REDIS_URL、pgvector extension、embedding columns、alembic revision、embedding 写入计数与 Redis ping；`POST /api/validation/e2e-smoke` 增加 retry_count / feedback_loop_detected / recovery_source_count 字段，反馈闭环 smoke 可直接验收；新增 `POST /api/demo/replay/snapshot`，可从已完成 run 生成脱敏 demo replay bundle，并在显式 `write_to_fixture=true` 时写回前端 demo fixtures；`.env.example` 补 `EMBEDDING_MODEL`。验证：`ruff check`、`mypy .`、`pytest` 25 passed | Codex + Eric |
 | 2026-05-29 | 后端 S3 继续：`backend/schemas/survey.py` 对齐 PRD §7.8，新增 Questionnaire / TargetPersona / DistributionHandle / SurveyResponse / Evidence / Insight / SurveyResult 完整结构；SurveyTool 拆出 `QuestionnaireDesigner`、`PersonaInferrer`、`SimulatedDistributor`，Collector 输出的 Survey 区块保留公开评论优先与 ai_simulated 兜底；Writer/QA/上传端点同步新字段；ruff、mypy、pytest 10 passed | Codex + Eric |
 | 2026-05-29 | 后端 S3 继续收口：`QuestionnaireDesigner` 增加 OpenAI 真 LLM 问卷设计路径（CI/mock 自动 fallback）；新增 `ExistingSurveyFinder` 作为 Stage 2a，真实路径复用 `HybridSearch` 查询公开调研 / 用户满意度报告并映射为 `published_survey` evidence；SurveyTool 改为 async workflow，Collector 真路径注入 finder；补测试覆盖 designer fallback 与 finder evidence 映射；ruff、mypy、pytest 12 passed | Codex + Eric |
 | 2026-05-29 | 后端 S3 可观测补强：SurveyTool 7 个 stage（designer / existing / voice / persona / distribute / collect / aggregate）全部写入 `agent_traces`，`GET /api/tasks/{run_id}/timeline` 可回放 PRD 命名约定；Stage 2a finder 返回 evidence + SourceCitation，SurveyTool 将公开调研来源并回报告 sources 池，避免 evidence 有 source_id 但报告不可溯源；补 timeline 断言；ruff、mypy、pytest 12 passed | Codex + Eric |
 | 2026-05-29 | 后端验证支架补齐：新增 `services/validation/e2e_smoke.py` 和 `POST /api/validation/e2e-smoke`，同步跑 SaaS 协作工具、AI 助手、短视频平台 3 组样例，检查 report/claims/sources/survey/timeline/export/metrics；可在 mock/fallback 下稳定跑通，后续填真实 key 即可复用同一路径做真端到端验收；pytest 增至 13 passed，ruff/mypy 全通过 | Codex + Eric |
 | 2026-05-29 | 后端 S3 SurveyTool 代码收口：上传端点现在会把脱敏后的一手问卷/访谈 evidence 挂到 task，RunManager 启动 workflow 时注入 `WorkflowState.uploaded_survey_evidence`，SurveyTool 优先使用并映射到问卷题目；Stage 2a `ExistingSurveyFinder` 增加调研关键词 query 和质量过滤，拒绝普通营销页，返回 rejected_count；新增测试覆盖上传 evidence 进入报告、公开调研过滤；ruff、mypy、pytest 15 passed | Codex + Eric |
 | 2026-05-29 | 后端 S1-S3 缺口修复（6 项）：① CollectorAgent 真路径读 `correction_detected` 并生成 targeted recovery queries（P0，反馈闭环真实生效）；② RunManager 在 `DATABASE_URL` 可用时通过 `_checkpointer_ctx` 注入 `AsyncPostgresSaver`，回退 MemorySaver（P0，LangGraph checkpoint 持久化）；③ SurveyTool Stage 4 增加 LLM 驱动 insight 聚合路径（gpt-4o-mini，fallback 到规则统计，P0）；④ ScopingAgent 补加 `@traced_node` 装饰器，ScopingAgent 调用写入 agent_traces（P1）；⑤ WriterAgent fallback/llm 路径均对 ai_simulated 全量支撑的 insight 加 ⚠️ [AI模拟] 前缀（P1）；⑥ SimulatedDistributor `collect_responses` 按 `sample_size` 生成多条多样化 response，循环遍历 personas（P1）；ruff 0 error、mypy 0 error、pytest 15 passed | Claude + Eric |
-| 2026-05-29 | 后端 S1/S2 收口：`POST /api/tasks/scoping` 生成的 ScopingDraft 现在写入本地 store，并可通过 `GET /api/tasks/scoping/drafts/{task_id}` 查询；QA 节点将 blocker 转成 `feedback_signals.correction_detected`，Collector fallback 在重跑时补 recovery sources，使反馈闭环具备“打回后改善”的可验证行为；RunManager 成功结束时回填 `analysis_duration_seconds`；测试补 ScopingDraft 查询、Collector 重跑、recovery source 和耗时指标断言；ruff、mypy、pytest 15 passed | Codex + Eric |
+| 2026-05-29 | 后端 S1/S2 收口：`POST /api/tasks/scoping` 生成的 ScopingDraft 现在写入本地 store，并可通过 `GET /api/tasks/scoping/drafts/{task_id}` 查询；QA 节点将 blocker 转成 `feedback_signals.correction_detected`，Collector fallback 在重跑时补 recovery sources，使反馈闭环具备”打回后改善”的可验证行为；RunManager 成功结束时回填 `analysis_duration_seconds`；测试补 ScopingDraft 查询、Collector 重跑、recovery source 和耗时指标断言；ruff、mypy、pytest 15 passed | Codex + Eric |
+| 2026-05-29 | 前端 Stage 2 设计审核：读代码比对前后端契约，发现 WriterAgent 未将 AnalystAgent 已产出的 feature_tree/pricing/swot/extensions/cross_analysis 组装进 Report.structured_content（数据存在但被丢弃），导致前端报告页功能矩阵/SWOT 等区块无法渲染。同时发现 GET /api/tasks 列表端点缺失。两个缺口记入进度文件 ⚠️ 区域 + 后端开发计划 S2 重点补丁节。前端开发顺序确定：报告页（主线）→ 任务列表 → 登录；报告页策略 A（组件优先复用 demo 设计资产），后端契约修复优先于前端开发启动 | Claude + Eric |
+| 2026-05-29 | 后端 Auth P1 修复：邮箱验证码从”仅 development 返回 `dev_code`”升级为生产 SMTP 真发送路径；非 development 环境缺 `SMTP_HOST` / `SMTP_FROM_EMAIL` 时返回错误，不再假装 sent=true；新增 SMTP 配置项与 `.env.example` key 名；测试覆盖开发 dev_code、生产缺配置失败、生产 SMTP 发送成功；ruff、mypy、pytest 22 passed | Codex + Eric |
+| 2026-05-29 | 后端缺口 A+B 修复 + Demo 回放层：① `analyst.py` 收紧 fallback 路径输出形状，LLM/fallback 路径对齐；② `writer.py` 组装 `structured_content` 消费 `state.structured_profiles`，输出 feature_tree / pricing / user_personas / swot / extensions / cross_analysis / cross_analysis_chart（原来全部丢弃）；③ `tasks.py` 新增 `GET /api/tasks` 列表端点；④ `reports.py` 扩充（+169 行）；⑤ 新建 `api/routes/demo.py` + `schemas/demo.py` + `services/demo_replay.py`：`GET /api/demo/replay` 从前端 mock fixtures 加载 DemoReplayBundle，供演示模式使用；⑥ 新增 `test_app_reviews.py` / `test_demo_replay.py` / `test_exporter.py`；pytest 22 passed | Claude + Eric |
+| 2026-05-29 | 前端 Stage 2 核心页面上线（联调启动）：① 新建 `components/report/` 12 个组件：Chapter / ChapterEditor / CitationChips / CitationPanel / FeatureMatrix / MetricBadges / PersonaCard / PositioningCard / PricingTable / QualityPanel / SourceList / SwotBlock；② `app/reports/[id]/page.tsx` 完整重写（+534 行）：渲染 feature_tree / pricing / swot / personas / extensions / cross_analysis 全部结构化区块，支持 claim 复核（review mode）、章节人工修正（inline edit）、来源面板（citation panel）、PDF/PPTX 导出；③ `app/tasks/page.tsx` 完整重写（+227 行）：任务列表接真后端 `GET /api/tasks`，状态徽章 + 时间显示；④ `app/tasks/[id]/page.tsx`（+414 行）：任务运行详情页，SSE timeline 事件流可视化，支持轮询状态；⑤ `app/tasks/new/scoping/page.tsx` 更新（+118 行）；⑥ 新建 API 客户端：`lib/api/reports.ts`（+249 行，含 fetchReport / correctSection / reviewClaim / exportReport）、`lib/api/tasks.ts`（listTasks / getTask / runTask / getTimeline）、`lib/api/scoping.ts`、`lib/api/demo.ts`；⑦ 新建 `stores/citation-panel-store.ts`（Zustand）；前端现已全量接真后端 API | Claude + Eric |
+| 2026-05-30 | 前端 Stage 2 续作 plan + brainstorming（3 项设计决策经可视化确认）：DAG 反馈闭环=反向弧线+重跑徽章；Survey 来源分布=水平堆叠条+>60% warning；用户研究卡=完整版（开关+问卷编辑器+上传）。plan 落 `plans/2026-05-30-frontend-stage-2-continued.md`，并在 2026-05-27 plan 顶部加续作指针 | Claude + Eric |
+| 2026-05-30 | 前端 S2.3 DAG 反馈闭环可视化：抽取 `components/dag/`（agent-node / feedback-arc / dag-graph / trace-row / connection-icon + types），live 页与 demo 回放页共用同套 props-only 组件（守 Route Isolation）；新增 idle/running/done/failed/warn/retrying 状态色 + QA→Collector 反向虚线弧（blocker 脉冲、reduced-motion 静态可见）+ "重跑 ×N" 徽章；`tasks/[id]` 节点顺序修正为 Collector→Analyst→Writer→QA（对齐真实 DAG），派生 retryCount/qaBlockerCount；demo/run 视觉零回归。tsc 0 error + 改动文件 eslint 0 error | Claude + Eric |
+| 2026-05-30 | 前端 S2.5 Survey 报告区块：报告页用户研究区块从内联简版升级为专用组件——`survey-source-breakdown`（水平堆叠条纯 CSS 无图表库，4 类来源按信任度排序，ai_simulated 占比 >60% 顶部橙色 warning banner，默认展开）、`survey-insight-card`（洞察+置信度+证据来源徽章，含 ai_simulated 时 ⚠ 标注）、`survey-section`（多竞品 tab 切换，空数组不渲染）、`survey-source-meta`（4 类来源色板/标签单一事实源，ai_simulated 复用 --color-accent-warm）。tsc 0 error + 改动文件 eslint 0 error | Claude + Eric |
+| 2026-05-30 | 前端 S2.0 Scoping 折叠卡片 + 用户研究计划（方案 C）：`collapsible-section`（grid-rows 动画折叠外壳）包裹分析维度区（默认展开）；新增 `user-research-card`（启用开关 + 问卷题目增删改 + 一手数据上传 + prefer_upload 偏好，关闭置灰保留配置、freeze 写 enabled:false）默认收起；`upload-dropzone`（拖拽 CSV/TXT/MD → contract-keyed `POST /survey/upload`，标 user_uploaded_primary，无服务端 id 时禁用）；`lib/api/survey` 上传客户端。类型层：types.ts 新增 SurveyQuestion/Questionnaire/UserResearchPlan + emptyUserResearchPlan，TaskScopeContract 增 user_research_plan；scoping.ts 双向映射。tsc 0 error + 改动文件 eslint 0 error（注：本机 `npm run build`/全量 `npm run lint` 因 worker heap OOM 跑不完，与改动无关；compile ✓ 通过） | Claude + Eric |
+| 2026-05-30 | 前端收口验证（Phase 2+4 smoke）：① 修复 OOM——`package.json` lint 脚本改为 `node --max-old-space-size=4096 node_modules/eslint/bin/eslint.js src --cache`，新增 `typecheck` 脚本同样提高 heap；`npm run lint` + `npm run typecheck` 均 0 error；② Phase 2 auth 验收：dev server 起动 7.1s 无 error，`/login` `/tasks` `/demo/run` `/demo/report` `/demo/scoping` 全部 200，路由守卫代码审计确认 `PROTECTED_PREFIXES=["/tasks","/reports"]`、`/demo/*` 不设防、httpOnly cookie + `credentials:include` 链路完整；③ Phase 4 smoke checklist 全过：DAG FeedbackArc 在 DagGraph 内含（visible/active prop 传入 demo/run 和 tasks/[id]）、survey ai_simulated >60% 橙色 AlertTriangle banner 存在于 survey-source-breakdown.tsx、QualityPanel+MetricBadges 在 reports/[id]/page.tsx、timeline replay SSE + 1.5s 轮询兜底在 tasks/[id]；④ frontend/CLAUDE.md 更新 typecheck 命令行 | Claude + Eric |
+| 2026-05-31 | 全栈代码盘点（Explore agent 前后端全量读代码 + progress 对账）：后端代码层 ~100% 落地（9 路由 / 5 agent / 4-stage SurveyTool / DB+Alembic / LLM/Search/Streaming/Auth 全服务，ruff/mypy/pytest 25 passed），但全部在 MOCK_LLM=true 下验证，真实 key 端到端跑通 = 0 次，质量指标真实值全空；前端代码层 ~95%（50+ 组件 / 17 API endpoint / 4 Zustand store / 115+ i18n key），2 个小尾巴（reguide 回后端 / clarifying questions UI）待确认；S5 文档盘清：README.md 102 行已入库，architecture.md 129 行已写未提交，agent-protocol.md / deployment.md 缺；进度表 S5「0% 未建」已更正为「25% 部分已建」；最大剩余缺口：填真 key 跑 3 竞品端到端 + SSE 流式联调 + 补提交 architecture.md + 新建缺失文档 | Claude + Eric |

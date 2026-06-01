@@ -1,4 +1,5 @@
 from time import sleep
+from typing import Any
 
 from fastapi.testclient import TestClient
 
@@ -41,6 +42,14 @@ def test_run_mock_workflow_and_report_contract() -> None:
     report = report_response.json()
     assert report["claims"]
     assert all(claim["source_ids"] for claim in report["claims"])
+    structured = report["structured_content"]
+    assert structured["feature_tree"]["rows"]
+    assert structured["pricing"]["tiers"]
+    assert structured["user_personas"]["personas"]
+    assert structured["swot"]["blocks"]
+    assert structured["extensions"]
+    assert structured["cross_analysis"]["feature_matrix"]["rows"]
+    assert structured["cross_analysis"]["pricing_comparison"]
     assert report["structured_content"]["survey"]
     survey = report["structured_content"]["survey"][0]
     assert survey["questionnaire"]["design_rationale"]
@@ -89,8 +98,13 @@ def test_run_mock_workflow_and_report_contract() -> None:
     ]
     assert recovered_sources
 
+    tasks_response = client.get("/api/tasks")
+    assert tasks_response.status_code == 200
+    tasks = tasks_response.json()
+    assert any(task["id"] == run_id and task["status"] == "succeeded" for task in tasks)
 
-def test_p1_contract_placeholders() -> None:
+
+def test_p1_contract_placeholders(monkeypatch: Any) -> None:
     client = TestClient(app)
     scope_contract = _scope_contract(client)
     task_id = scope_contract["id"]
@@ -144,12 +158,48 @@ def test_p1_contract_placeholders() -> None:
     assert pdf_response.status_code == 200
     assert pdf_response.content.startswith(b"%PDF")
 
-    pptx_response = client.get(f"/api/reports/{task_id}/export", params={"format": "pptx"})
-    assert pptx_response.status_code == 200
-    assert pptx_response.content.startswith(b"PK")
-
     search_response = client.get("/api/reports/search", params={"q": "corrected"})
     assert search_response.status_code == 200
     data = search_response.json()
     assert data["mode"] == "in_memory_semantic_fallback"
     assert data["results"]
+
+    claim_search_response = client.get("/api/reports/search", params={"q": "collaboration"})
+    assert claim_search_response.status_code == 200
+    claim_search_results = claim_search_response.json()["results"]
+    assert claim_search_results
+    assert claim_search_results[0]["claim_ids"]
+    assert claim_search_results[0]["source_ids"]
+
+    class FakeLLMClient:
+        enabled = True
+
+        def __init__(self, settings: object) -> None:
+            self._settings = settings
+
+        async def complete_json(
+            self,
+            *,
+            provider: str,
+            model: str,
+            messages: list[dict[str, str]],
+        ) -> dict[str, object]:
+            return {
+                "summary": "Regenerated user voice",
+                "bullets": [
+                    {
+                        "competitor": "Notion",
+                        "points": ["Regenerated claim"],
+                        "source_ids": ["Notion_default"],
+                    }
+                ],
+            }
+
+    monkeypatch.setattr("api.routes.reports.LLMClient", FakeLLMClient)
+    regenerate_response = client.post(
+        f"/api/reports/{task_id}/dimensions/ext.user_voice/regenerate"
+    )
+    assert regenerate_response.status_code == 200
+    regenerated = regenerate_response.json()
+    assert regenerated["structured_content"]["extensions"][0]["summary"] == "Regenerated user voice"
+    assert regenerated["metrics"]["rerun_rate"] == 1.0

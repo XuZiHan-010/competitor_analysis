@@ -1,3 +1,5 @@
+import structlog
+
 from graph.state import (
     CrossCompetitorAnalysis,
     ExtensionFinding,
@@ -7,6 +9,8 @@ from graph.state import (
 from services.agents.decorators import traced_node
 from services.llm import LLMClient
 from settings import get_settings
+
+logger = structlog.get_logger(__name__)
 
 
 class AnalystAgent:
@@ -31,7 +35,7 @@ class AnalystAgent:
             try:
                 return await self._run_llm(state, llm)
             except Exception:
-                pass
+                logger.warning("analyst_llm_failed_falling_back", exc_info=True)
         return self._run_fallback(state)
 
     async def _run_llm(
@@ -146,14 +150,45 @@ class AnalystAgent:
             source_ids = [s.id for s in result.sources]
             structured_profiles[name] = StructuredCompetitorProfile(
                 competitor_name=name,
-                feature_tree={"core_features": ["workspace", "collaboration", "reporting"]},
-                pricing={"model": "subscription", "entry_price": "unconfirmed"},
-                user_personas=[{"name": "business user", "pain_points": ["manual research"]}],
+                feature_tree={
+                    "rows": [
+                        {
+                            "feature": "核心功能",
+                            "description": "基础工作流与协作能力",
+                            "cells": [
+                                {"competitor": name, "status": "supported", "note": "需验证"}
+                            ],
+                            "source_ids": source_ids[:1],
+                        }
+                    ]
+                },
+                pricing={
+                    "tiers": [
+                        {
+                            "competitor": name,
+                            "tier": "标准版",
+                            "price": "待确认",
+                            "highlights": ["订阅制"],
+                            "source_ids": source_ids[:1],
+                        }
+                    ]
+                },
+                user_personas=[
+                    {
+                        "competitor": name,
+                        "label": "核心用户",
+                        "size": "majority",
+                        "needs": ["高效分析"],
+                        "pain_points": ["人工研究耗时"],
+                        "evidence": "待补充",
+                        "source_ids": source_ids[:1],
+                    }
+                ],
                 swot={
-                    "strengths": ["structured workflow"],
-                    "weaknesses": ["pricing requires verification"],
-                    "opportunities": ["AI-assisted analysis"],
-                    "threats": ["fast-moving competitors"],
+                    "strengths": [{"text": "结构化工作流", "source_ids": source_ids[:1]}],
+                    "weaknesses": [{"text": "定价待验证", "source_ids": []}],
+                    "opportunities": [{"text": "AI 辅助分析", "source_ids": []}],
+                    "threats": [{"text": "竞品快速迭代", "source_ids": []}],
                 },
                 source_ids=source_ids,
             )
@@ -174,15 +209,48 @@ class AnalystAgent:
     def _build_cross_analysis(
         self, profiles: dict[str, StructuredCompetitorProfile]
     ) -> CrossCompetitorAnalysis:
-        feature_matrix: dict[str, list[str]] = {}
-        for name, profile in profiles.items():
-            cats = profile.feature_tree.get("core_features") or []
-            feature_matrix[name] = cats if isinstance(cats, list) else list(cats)
+        # Collect all unique feature names across profiles
+        feature_names: list[str] = []
+        seen: set[str] = set()
+        for profile in profiles.values():
+            for row in profile.feature_tree.get("rows") or []:
+                feat = str(row.get("feature", ""))
+                if feat and feat not in seen:
+                    feature_names.append(feat)
+                    seen.add(feat)
+
+        # Build cross-competitor feature matrix rows
+        matrix_rows: list[dict] = []
+        for feat in feature_names:
+            cells: list[dict] = []
+            source_ids: list[str] = []
+            for name, profile in profiles.items():
+                rows_list = profile.feature_tree.get("rows") or []
+                row = next(
+                    (r for r in rows_list if r.get("feature") == feat),
+                    None,
+                )
+                if row:
+                    competitor_cell = next(
+                        (c for c in (row.get("cells") or []) if c.get("competitor") == name),
+                        {"competitor": name, "status": "unknown", "note": ""},
+                    )
+                    cells.append(competitor_cell)
+                    source_ids.extend(row.get("source_ids") or [])
+                else:
+                    cells.append({"competitor": name, "status": "unknown", "note": ""})
+            matrix_rows.append({
+                "feature": feat,
+                "cells": cells,
+                "source_ids": list(dict.fromkeys(source_ids)),
+            })
+
         pricing_comparison = {
             name: profile.pricing for name, profile in profiles.items()
         }
+        competitors = list(profiles.keys())
         return CrossCompetitorAnalysis(
-            feature_matrix={"by_competitor": feature_matrix},
+            feature_matrix={"rows": matrix_rows, "competitors": competitors},
             pricing_comparison=pricing_comparison,
             differentiation_summary=(
                 f"Cross-analysis of {len(profiles)} competitors covering "

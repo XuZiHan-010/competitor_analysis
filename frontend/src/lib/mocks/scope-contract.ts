@@ -3,7 +3,7 @@ import type {
   DimensionSpec,
   TaskScopeContract,
 } from "./types";
-import { CORE_DIMENSION_IDS } from "./types";
+import { CORE_DIMENSION_IDS, emptyUserResearchPlan } from "./types";
 
 // ⚠️ PRD §十一-quater 11Q.7 路由职责边界：
 // 本文件中所有以 `Skincare` / `KNOWN_BRANDS` / `extractCompetitorsFromBrief`
@@ -156,6 +156,7 @@ export function buildSkincareMockContract(
     user_brief: userBrief,
     clarifications: buildClarifyingQuestions(),
     dimensions: [...buildCoreDimensions(), ...buildSkincareExtensions()],
+    user_research_plan: emptyUserResearchPlan(),
     frozen_at: null,
   };
 }
@@ -176,6 +177,7 @@ export function buildEmptyDraftContract(userBrief: string): TaskScopeContract {
     user_brief: userBrief,
     clarifications: [],
     dimensions: buildCoreDimensions(),
+    user_research_plan: emptyUserResearchPlan(),
     frozen_at: null,
   };
 }

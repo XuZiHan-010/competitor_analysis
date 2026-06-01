@@ -1,10 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { FileText, PlayCircle, User } from "lucide-react";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { ThemeToggle } from "./theme-toggle";
-import { LangToggle } from "./lang-toggle";
+import { FileText, Home, PlayCircle, Search } from "lucide-react";
+import { buttonVariants } from "@/components/ui/button";
+import { AccountMenu } from "./account-menu";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
@@ -13,7 +12,16 @@ export function TopNav() {
 
   return (
     <header className="border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">
-      <div className="mx-auto flex h-14 max-w-[1280px] items-center justify-end px-6">
+      <div className="mx-auto flex h-14 max-w-[1280px] items-center justify-between px-6">
+        <Link
+          href="/tasks/new"
+          className="inline-flex items-center gap-2 text-[13px] font-semibold tracking-[0.08em] uppercase text-foreground/80 hover:text-foreground transition-colors"
+          style={{ fontFamily: "var(--font-mono)" }}
+          title="返回主页"
+        >
+          <Home className="h-4 w-4" />
+          Strata
+        </Link>
         <nav className="flex items-center gap-1">
           <Link
             href="/tasks"
@@ -25,16 +33,16 @@ export function TopNav() {
             <FileText className="h-5 w-5" />
             <span className="hidden sm:inline">{t("navReports")}</span>
           </Link>
-          <LangToggle />
-          <ThemeToggle />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="rounded-full"
-            aria-label={t("navAccount")}
+          <Link
+            href="/reports"
+            className={cn(
+              buttonVariants({ variant: "ghost", size: "sm" }),
+              "text-sm font-medium text-muted-foreground hover:text-foreground",
+            )}
           >
-            <User className="h-4 w-4" />
-          </Button>
+            <Search className="h-5 w-5" />
+            <span className="hidden sm:inline">{t("navReportSearch")}</span>
+          </Link>
 
           <Link
             href="/demo/scoping"
@@ -47,6 +55,8 @@ export function TopNav() {
             <PlayCircle className="h-4 w-4 text-[var(--color-accent-warm)]" />
             {t("navDemo")}
           </Link>
+
+          <AccountMenu />
         </nav>
       </div>
     </header>

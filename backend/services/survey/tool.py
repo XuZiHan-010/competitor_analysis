@@ -5,6 +5,8 @@ from inspect import isawaitable
 from time import perf_counter
 from typing import Any, Literal, TypeVar, cast
 
+import structlog
+
 from graph.state import RawCollectionResult, WorkflowState
 from schemas.survey import (
     DistributionHandle,
@@ -25,6 +27,8 @@ from services.survey.questionnaire_designer import QuestionnaireDesigner
 
 T = TypeVar("T")
 _MISSING = object()
+
+logger = structlog.get_logger(__name__)
 
 
 class SurveyTool:
@@ -258,7 +262,11 @@ class SurveyTool:
             try:
                 return await self._aggregate_insights_llm(evidence, questionnaire, competitor)
             except Exception:
-                pass
+                logger.warning(
+                    "survey_aggregate_llm_failed_falling_back",
+                    competitor=competitor,
+                    exc_info=True,
+                )
         return self._aggregate_insights_fallback(evidence, questionnaire)
 
     async def _aggregate_insights_llm(

@@ -1,10 +1,14 @@
 from collections.abc import Sequence
 from typing import Any
 
+import structlog
+
 from schemas.scope import ScopeDimension
 from schemas.survey import Questionnaire, SurveyQuestion
 from services.llm import LLMClient
 from settings import get_settings
+
+logger = structlog.get_logger(__name__)
 
 
 class QuestionnaireDesigner:
@@ -33,7 +37,7 @@ class QuestionnaireDesigner:
                     llm=llm,
                 )
             except Exception:
-                pass
+                logger.warning("questionnaire_llm_failed_falling_back", exc_info=True)
         return self._design_fallback(competitor=competitor, dimension_intent=dimension_intent)
 
     async def _design_with_llm(

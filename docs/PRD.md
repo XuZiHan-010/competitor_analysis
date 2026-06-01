@@ -122,9 +122,10 @@
     ↓
 [4] 启动 Agent 协作（任务运行页 /tasks/{id}）：
     实时显示 DAG 进度（哪个 Agent 在跑、跑到哪一步、Trace 可点开）
-    采集 Agent → 分析 Agent → 撰写 Agent → 质检 Agent
-                                              ↓
-                            （质检不通过，打回上游 Agent 重做）
+    采集 Agent → 分析 Agent → 质检 Agent → 撰写 Agent
+                                  ↓
+                （质检不通过，打回采集 Agent 重采，最多 3 次；
+                 达标或重试上限后才进撰写 Agent）
     各 Agent 都按 TaskScopeContract 中的维度做事
     ↓
 [5] 报告产出（/reports/{id}）：
@@ -150,43 +151,7 @@
 
 ## 五、系统架构
 
-### 总体架构图（文字描述）
-
-```
-┌────────────────────────────────────────────────────────┐
-│  前端 (Next.js, Railway)                                │
-│  - 登录 / 任务创建 / DAG 可视化 / 报告交互 / 导出       │
-└──────────────────────────┬─────────────────────────────┘
-                           │ REST + SSE
-┌──────────────────────────▼─────────────────────────────┐
-│  后端 API (FastAPI, Railway)                            │
-│  - Auth / 任务调度 / SSE 推送 / 报告导出（PDF/PPTX）    │
-└────────┬──────────────────────────────┬─────────────────┘
-         │                              │
-┌────────▼────────────┐    ┌────────────▼────────────────┐
-│  LangGraph Engine   │    │  外部服务                    │
-│  - 4 Agent DAG      │    │  - OpenAI API (GPT-4o/4.1)  │
-│  - Checkpointer→PG  │    │  - Tavily / SerpApi (搜索)   │
-│  - 反馈闭环逻辑      │    │  - Playwright (网页抓取)     │
-└─────────┬───────────┘    └─────────────────────────────┘
-          │
-┌─────────▼──────────────────────────────────────────────┐
-│  数据层                                                  │
-│  - Neon Postgres (3GB free): 业务数据+pgvector+Trace   │
-│  - Upstash Redis (free): 任务队列+SSE+Agent中间状态     │
-└────────────────────────────────────────────────────────┘
-```
-
-### 部署拓扑
-
-| 服务 | 平台 | 计费 |
-|---|---|---|
-| Frontend (Next.js) | Railway | Hobby ~$3/月 |
-| Backend (FastAPI) | Railway | Hobby ~$3-5/月 |
-| Postgres + pgvector | Neon | Free Forever (3GB) |
-| Redis | Upstash | Free (10K commands/天) |
-| LLM | Gemini 2.5 Flash + DeepSeek V4 Pro + gpt-4o-mini（按 Agent 分配，见 §五.X） | 演示周约 $3 |
-| Search API | Tavily Free / SerpApi Free | 免费额度 |
+> **系统架构图（分层架构 + 多 Agent DAG 流转）、分层说明、技术栈与部署拓扑，已抽到独立的 [docs/architecture.md](architecture.md)**——便于按需阅读、也作为比赛交付的架构文档。本节只保留两份被全文交叉引用的事实源表格：§五.Y 运行时约束、§五.X 模型选型。
 
 ### 五.Y 运行时可靠性保障
 
@@ -241,7 +206,9 @@
 
 > **架构**：系统总共 5 个 Agent，分两层——
 > - **ScopingAgent**（5.0）：在主 DAG 启动**之前**跑，对话式立项的主语，同步 LLM 调用
-> - **DAG 内 4 Agent**（5.1-5.4）：Collector / Analyst / Writer / QA，通过 LangGraph 编排，State 驱动 + 反馈闭环
+> - **DAG 内 4 Agent**（5.1-5.4）：Collector / Analyst / QA / Writer，通过 LangGraph 编排，State 驱动 + 反馈闭环
+>
+> **DAG 执行顺序**（见 §五图 B）：`collect → analyze → qa_check → write`。**QA 在 Writer 之前**——QA 先校验分析数据是否充分，出现 blocker 则打回 Collector 重采（最多 3 次），达标或重试上限后才进 Writer，避免在数据不足时白白消耗 Writer 的 token。下文小节号（5.1-5.4）按 Agent 编号排列，非执行顺序。
 
 ### Agent 5.0: 立项 Agent (`ScopingAgent`)
 

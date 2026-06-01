@@ -54,6 +54,34 @@ export interface ClarifyingQuestion {
   answer: string | null;
 }
 
+/** Mirrors backend `SurveyQuestion` (schemas/survey.py). */
+export interface SurveyQuestion {
+  id: string;
+  text: string;
+  type: "open" | "multiple_choice" | "scale";
+  options?: string[];
+  /** Why this question exists — steers the SurveyTool. */
+  intent: string;
+}
+
+/** Mirrors backend `Questionnaire` (schemas/survey.py). */
+export interface Questionnaire {
+  id: string;
+  competitor: string;
+  dimension_intent: string;
+  questions: SurveyQuestion[];
+  design_rationale: string;
+}
+
+/** Mirrors backend `UserResearchPlan` (schemas/scope.py) — 方案 C. */
+export interface UserResearchPlan {
+  /** When false, the SurveyTool branch is skipped entirely. */
+  enabled: boolean;
+  questionnaire: Questionnaire | null;
+  /** UI hint: the user intends to upload first-party survey/interview data. */
+  prefer_upload: boolean;
+}
+
 export interface TaskScopeContract {
   task_id: string;
   /** User's own product name (optional). */
@@ -66,8 +94,15 @@ export interface TaskScopeContract {
   clarifications: ClarifyingQuestion[];
   /** The outline. Core 4 + N extensions, in user-chosen order. */
   dimensions: DimensionSpec[];
+  /** 方案 C user-research plan. Disabled by default. */
+  user_research_plan: UserResearchPlan;
   /** ISO timestamp once the user confirms "Begin analysis". null until frozen. */
   frozen_at: string | null;
+}
+
+/** A fresh, disabled research plan — the default for every new contract. */
+export function emptyUserResearchPlan(): UserResearchPlan {
+  return { enabled: false, questionnaire: null, prefer_upload: false };
 }
 
 /** Stable IDs for the 4 mandatory core dimensions, matching PRD §七 7.1-7.4. */

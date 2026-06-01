@@ -10,6 +10,10 @@
 
 # Claude Code local state
 .claude/
+.superpowers/
+
+# Editor caches
+.eslintcache
 
 # API keys and secrets
 **/api_key*

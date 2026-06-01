@@ -10,7 +10,7 @@ from schemas.scope import (
     TaskScopeContract,
     UserResearchPlan,
 )
-from services.exporter import export_markdown, export_pdf, export_pptx
+from services.exporter import export_markdown, export_pdf
 from services.runs.manager import RunManager
 
 
@@ -26,6 +26,9 @@ class SmokeCaseResult(BaseModel):
     survey_result_count: int
     timeline_event_count: int
     survey_stage_count: int
+    retry_count: int = 0
+    feedback_loop_detected: bool = False
+    recovery_source_count: int = 0
     metrics: ReportMetrics | None = None
     export_checks: dict[str, int] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
@@ -67,10 +70,7 @@ async def _run_case(
     force_feedback_demo: bool,
 ) -> SmokeCaseResult:
     started = perf_counter()
-    record = await run_manager.start_run(
-        scope_contract,
-        force_feedback_demo=force_feedback_demo,
-    )
+    record = await run_manager.start_run(scope_contract)
     state = run_manager.build_initial_state(
         record,
         scope_contract,
@@ -86,6 +86,7 @@ async def _run_case(
     claim_count = 0
     source_count = 0
     survey_result_count = 0
+    recovery_source_count = 0
 
     if report is None:
         warnings.append("report_not_ready")
@@ -93,6 +94,9 @@ async def _run_case(
         metrics = report.metrics
         claim_count = len(report.claims)
         source_count = len(report.sources)
+        recovery_source_count = sum(
+            1 for source in report.sources if source.provider == "feedback_recovery"
+        )
         survey_result_count = len(report.structured_content.get("survey") or [])
         if not report.claims:
             warnings.append("no_claims")
@@ -103,14 +107,16 @@ async def _run_case(
         export_checks = {
             "markdown_bytes": len(export_markdown(report)),
             "pdf_bytes": len(export_pdf(report)),
-            "pptx_bytes": len(export_pptx(report)),
         }
-        if export_checks["pdf_bytes"] == 0 or export_checks["pptx_bytes"] == 0:
+        if export_checks["pdf_bytes"] == 0:
             warnings.append("empty_export")
 
     survey_stage_count = sum(1 for trace in timeline if trace.agent_name == "SurveyTool")
     if survey_stage_count < 7:
         warnings.append("missing_survey_stage_traces")
+    feedback_loop_detected = record.retry_count > 0 and recovery_source_count > 0
+    if force_feedback_demo and not feedback_loop_detected:
+        warnings.append("feedback_loop_not_detected")
 
     return SmokeCaseResult(
         case_id=_case_id(scope_contract),
@@ -124,6 +130,9 @@ async def _run_case(
         survey_result_count=survey_result_count,
         timeline_event_count=len(timeline),
         survey_stage_count=survey_stage_count,
+        retry_count=record.retry_count,
+        feedback_loop_detected=feedback_loop_detected,
+        recovery_source_count=recovery_source_count,
         metrics=metrics,
         export_checks=export_checks,
         warnings=warnings,

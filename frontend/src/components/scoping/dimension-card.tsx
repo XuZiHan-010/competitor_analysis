@@ -53,15 +53,6 @@ export function DimensionCard({ dimension, index }: DimensionCardProps) {
     if (editingIntent) intentRef.current?.focus();
   }, [editingIntent]);
 
-  // Keep draft in sync with the active language when not in edit mode
-  useEffect(() => {
-    if (!editingTitle) setTitleDraft(displayTitle);
-  }, [displayTitle, editingTitle]);
-
-  useEffect(() => {
-    if (!editingIntent) setIntentDraft(displayIntent);
-  }, [displayIntent, editingIntent]);
-
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -220,7 +211,10 @@ export function DimensionCard({ dimension, index }: DimensionCardProps) {
           ) : (
             <button
               type="button"
-              onClick={() => setEditingTitle(true)}
+              onClick={() => {
+                setTitleDraft(displayTitle);
+                setEditingTitle(true);
+              }}
               aria-label={t("editTitleWithName", { title: displayTitle })}
               className={cn(
                 "flex-1 min-w-0 text-left text-[15px] font-semibold leading-tight",
@@ -271,7 +265,10 @@ export function DimensionCard({ dimension, index }: DimensionCardProps) {
         ) : (
           <button
             type="button"
-            onClick={() => setEditingIntent(true)}
+            onClick={() => {
+              setIntentDraft(displayIntent);
+              setEditingIntent(true);
+            }}
             aria-label={t("editIntent")}
             className={cn(
               "block w-full text-left",
