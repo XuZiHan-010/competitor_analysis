@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { AlertTriangle, Download, FileDown, FileText } from "lucide-react";
+import { AlertTriangle, Download, FileDown } from "lucide-react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/page-container";
 import { Chapter } from "@/components/report/chapter";
@@ -124,7 +124,7 @@ export default function ReportPage() {
     }
   }
 
-  async function handleExport(format: "pdf" | "pptx" | "markdown") {
+  async function handleExport(format: "pdf" | "markdown") {
     try {
       const blob = await exportReport(taskId, format);
       const url = URL.createObjectURL(blob);
@@ -200,7 +200,6 @@ export default function ReportPage() {
                 {(
                   [
                     { format: "pdf", icon: <Download className="h-3.5 w-3.5" />, label: "PDF" },
-                    { format: "pptx", icon: <FileText className="h-3.5 w-3.5" />, label: "PPTX" },
                     { format: "markdown", icon: <FileDown className="h-3.5 w-3.5" />, label: "MD" },
                   ] as const
                 ).map(({ format, icon, label }) => (

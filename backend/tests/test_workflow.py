@@ -158,10 +158,6 @@ def test_p1_contract_placeholders(monkeypatch: Any) -> None:
     assert pdf_response.status_code == 200
     assert pdf_response.content.startswith(b"%PDF")
 
-    pptx_response = client.get(f"/api/reports/{task_id}/export", params={"format": "pptx"})
-    assert pptx_response.status_code == 200
-    assert pptx_response.content.startswith(b"PK")
-
     search_response = client.get("/api/reports/search", params={"q": "corrected"})
     assert search_response.status_code == 200
     data = search_response.json()

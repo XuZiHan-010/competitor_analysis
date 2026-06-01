@@ -12,7 +12,7 @@ class DemoReplayBundle(BaseModel):
     trace: list[dict[str, Any]]
     report: dict[str, Any]
     sources: list[dict[str, Any]]
-    export_formats: list[str] = Field(default_factory=lambda: ["markdown", "pdf", "pptx"])
+    export_formats: list[str] = Field(default_factory=lambda: ["markdown", "pdf"])
 
 
 class DemoReplaySnapshotResponse(BaseModel):

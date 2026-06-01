@@ -26,7 +26,7 @@ def test_demo_replay_returns_static_bundle() -> None:
     assert data["scope"]["task_id"] == data["report"]["task_id"]
     assert data["trace"]
     assert data["sources"]
-    assert data["export_formats"] == ["markdown", "pdf", "pptx"]
+    assert data["export_formats"] == ["markdown", "pdf"]
 
 
 def test_demo_replay_does_not_seed_production_reports() -> None:

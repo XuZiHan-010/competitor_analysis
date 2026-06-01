@@ -10,7 +10,7 @@ from schemas.scope import (
     TaskScopeContract,
     UserResearchPlan,
 )
-from services.exporter import export_markdown, export_pdf, export_pptx
+from services.exporter import export_markdown, export_pdf
 from services.runs.manager import RunManager
 
 
@@ -107,9 +107,8 @@ async def _run_case(
         export_checks = {
             "markdown_bytes": len(export_markdown(report)),
             "pdf_bytes": len(export_pdf(report)),
-            "pptx_bytes": len(export_pptx(report)),
         }
-        if export_checks["pdf_bytes"] == 0 or export_checks["pptx_bytes"] == 0:
+        if export_checks["pdf_bytes"] == 0:
             warnings.append("empty_export")
 
     survey_stage_count = sum(1 for trace in timeline if trace.agent_name == "SurveyTool")

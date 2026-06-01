@@ -13,7 +13,7 @@ from schemas.report import (
     ReportSearchResponse,
     ReportSearchResult,
 )
-from services.exporter import export_markdown, export_pdf, export_pptx
+from services.exporter import export_markdown, export_pdf
 from services.llm import LLMClient
 from settings import get_settings
 
@@ -58,11 +58,6 @@ async def export_report(task_id: UUID, format: str = "markdown") -> Response:
             "md",
         ),
         "pdf": (export_pdf, "application/pdf", "pdf"),
-        "pptx": (
-            export_pptx,
-            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            "pptx",
-        ),
     }
     if format not in exporters:
         raise HTTPException(status_code=400, detail="unsupported export format")

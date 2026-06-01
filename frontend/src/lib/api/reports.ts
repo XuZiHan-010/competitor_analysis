@@ -227,7 +227,7 @@ export async function reviewClaim(
 
 export async function exportReport(
   taskId: string,
-  format: "pdf" | "pptx" | "markdown",
+  format: "pdf" | "markdown",
 ): Promise<Blob> {
   const res = await apiFetch(
     `/api/reports/${taskId}/export?format=${format}`,

@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState } from "react";
-import { Download, ExternalLink, FileText } from "lucide-react";
+import { Download, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/page-container";
 import { DemoWatermark } from "@/components/demo/demo-watermark";
@@ -49,7 +49,7 @@ export default function DemoReportPage() {
     };
   }, []);
 
-  function handleExport(kind: "pdf" | "pptx") {
+  function handleExport(kind: "pdf") {
     toast("演示样例", {
       description: `${kind.toUpperCase()} 导出在真实任务中可用 · 当前路径为预录回放`,
     });
@@ -99,14 +99,6 @@ export default function DemoReportPage() {
               className="gap-2"
             >
               <Download className="h-3.5 w-3.5" /> PDF
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleExport("pptx")}
-              className="gap-2"
-            >
-              <FileText className="h-3.5 w-3.5" /> PPTX
             </Button>
             <span
               className="tabular text-[11px] text-muted-foreground/80 ml-auto"
