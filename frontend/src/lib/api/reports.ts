@@ -173,6 +173,19 @@ export interface Report {
   created_at: string;
 }
 
+// ---------- helpers ----------
+
+/** Extract FastAPI's `{ detail }` body for a failed response, falling back to a default. */
+async function errorDetail(res: Response, fallback: string): Promise<string> {
+  try {
+    const body = (await res.json()) as { detail?: unknown };
+    if (typeof body.detail === "string" && body.detail) return body.detail;
+  } catch {
+    // non-JSON body; use fallback
+  }
+  return fallback;
+}
+
 // ---------- API functions ----------
 
 export async function fetchReport(taskId: string): Promise<Report> {
@@ -231,8 +244,9 @@ export async function exportReport(
 ): Promise<Blob> {
   const res = await apiFetch(
     `/api/reports/${taskId}/export?format=${format}`,
+    { cache: "no-store" },
   );
-  if (!res.ok) throw new Error(`exportReport ${res.status}`);
+  if (!res.ok) throw new Error(await errorDetail(res, `exportReport ${res.status}`));
   return res.blob();
 }
 

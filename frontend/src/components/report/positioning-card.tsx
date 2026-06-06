@@ -1,10 +1,23 @@
+interface PositioningPoint {
+  id: string;
+  x: number;
+  y: number;
+  label: string;
+}
+
+interface RenderablePositioningPoint extends PositioningPoint {
+  key: string;
+}
+
 interface PositioningCardProps {
   xAxis: string;
   yAxis: string;
-  points: { id: string; x: number; y: number; label: string }[];
+  points: PositioningPoint[];
 }
 
 export function PositioningCard({ xAxis, yAxis, points }: PositioningCardProps) {
+  const renderablePoints = sanitizePositioningPoints(points);
+
   return (
     <aside aria-label="竞品定位图" className="rounded-md border border-border/60 bg-card/60 p-4">
       <p
@@ -16,9 +29,9 @@ export function PositioningCard({ xAxis, yAxis, points }: PositioningCardProps) 
       <div className="relative w-full aspect-square border border-border/60 bg-background/50">
         <span aria-hidden="true" className="absolute left-0 right-0 top-1/2 h-px bg-border/60" />
         <span aria-hidden="true" className="absolute top-0 bottom-0 left-1/2 w-px bg-border/60" />
-        {points.map((p) => (
+        {renderablePoints.map((p) => (
           <span
-            key={p.id}
+            key={p.key}
             className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center"
             style={{ left: `${p.x}%`, top: `${100 - p.y}%` }}
           >
@@ -36,4 +49,19 @@ export function PositioningCard({ xAxis, yAxis, points }: PositioningCardProps) 
       </p>
     </aside>
   );
+}
+
+function sanitizePositioningPoints(points: PositioningPoint[]): RenderablePositioningPoint[] {
+  return (points ?? []).flatMap((point, index) => {
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return [];
+
+    const label = normalizeText(point.label) ?? `Point ${index + 1}`;
+    const safeId = normalizeText(point.id) ?? label;
+    return [{ ...point, key: `${safeId}-${index}`, label }];
+  });
+}
+
+function normalizeText(value: unknown): string | null {
+  const text = String(value ?? "").trim();
+  return text && text !== "NaN" ? text : null;
 }

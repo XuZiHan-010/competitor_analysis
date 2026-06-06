@@ -59,14 +59,20 @@ export default function NewTaskPage() {
   const router = useRouter();
   const { lang } = useLangStore();
   const { t } = useI18n();
-  const { userBrief, setUserBrief } = useScopingStore();
+  const { userBrief, setUserBrief, setDraftContract } = useScopingStore();
 
   const canSubmit = userBrief.trim().length > 0;
   const isDirect = canSubmit && classifyIntent(userBrief) === "direct";
 
   function handleSubmit() {
     if (!canSubmit) return;
-    router.push(isDirect ? "/demo/scoping" : "/tasks/new/scoping");
+    // Clear any prior draft so the scoping page always regenerates against the
+    // current brief — soft navigation otherwise reuses a stale in-memory draft.
+    setDraftContract(null);
+    // Real user input always goes through the real pipeline. The /demo/* replay
+    // is reachable only from the explicit nav demo entry, never from here —
+    // otherwise a "direct" brief would silently land in a mock with no run/trace.
+    router.push("/tasks/new/scoping");
   }
 
   function handleExampleClick(text: string) {

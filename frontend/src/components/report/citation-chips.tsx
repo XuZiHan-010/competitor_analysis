@@ -16,12 +16,12 @@ export function CitationChips({ ids, sources }: CitationChipsProps) {
 
   return (
     <span className="ml-1 inline-flex flex-wrap gap-1 align-baseline">
-      {ids.map((id) => {
+      {ids.map((id, index) => {
         const src = sources.find((s) => s.id === id);
         if (!src) return null;
         return (
           <button
-            key={id}
+            key={`${id}-${index}`}
             type="button"
             onClick={() => open(id)}
             title={src.title}

@@ -20,7 +20,7 @@ const DEBOUNCE_MS = 300;
 export default function ReportSearchPage() {
   const { t } = useI18n();
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<Status>("idle");
+  const [status, setStatus] = useState<Status>("loading");
   const [results, setResults] = useState<ReportSearchResultItem[]>([]);
   const [mode, setMode] = useState<ReportSearchMode | null>(null);
   const seq = useRef(0);
@@ -29,7 +29,6 @@ export default function ReportSearchPage() {
   // synchronous transitions (idle reset / loading) live in the change handler.
   useEffect(() => {
     const term = query.trim();
-    if (!term) return;
     const requestId = seq.current;
     const timer = window.setTimeout(() => {
       searchReports(term)
@@ -50,13 +49,7 @@ export default function ReportSearchPage() {
   function handleChange(value: string) {
     seq.current += 1; // invalidate any in-flight request
     setQuery(value);
-    if (value.trim()) {
-      setStatus("loading");
-    } else {
-      setStatus("idle");
-      setResults([]);
-      setMode(null);
-    }
+    setStatus("loading");
   }
 
   return (
@@ -95,7 +88,6 @@ export default function ReportSearchPage() {
             onChange={(e) => handleChange(e.target.value)}
             placeholder={t("searchPlaceholder")}
             aria-label={t("searchTitle")}
-            autoFocus
             className="h-11 rounded-lg pl-9 text-base"
           />
         </div>

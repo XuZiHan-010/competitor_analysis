@@ -40,7 +40,7 @@ export function CompetitorChips() {
         className="tabular text-xs uppercase tracking-[0.18em] text-muted-foreground mr-1"
         style={{ fontFamily: "var(--font-mono)" }}
       >
-        {t("recommendedCompetitors")}
+        {t("analysisCompetitors")}
       </span>
       {competitors.map((name) => (
         <span

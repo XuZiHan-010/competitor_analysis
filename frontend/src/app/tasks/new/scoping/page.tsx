@@ -35,10 +35,11 @@ export default function ScopingPage() {
   const { lang, t } = useI18n();
 
   useEffect(() => {
-    if (draftContract) return;
+    if (draftContract && draftContract.user_brief === userBrief) return;
 
     let mounted = true;
     setIsGenerating(true);
+    setDraftContract(null);
     createScopingDraft({
       userBrief,
       knownCompetitors: manualCompetitors,
@@ -60,13 +61,8 @@ export default function ScopingPage() {
     return () => {
       mounted = false;
     };
-  }, [
-    draftContract,
-    manualCompetitors,
-    setDraftContract,
-    setIsGenerating,
-    userBrief,
-  ]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userBrief]);
 
   async function handleConfirm() {
     if (!draftContract) return;
@@ -245,7 +241,7 @@ export default function ScopingPage() {
                 isGenerating ||
                 confirming ||
                 enabledCount === 0 ||
-                competitorCount < 3
+                competitorCount < 1
               }
               size="lg"
               className={cn(
