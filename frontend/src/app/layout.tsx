@@ -1,31 +1,12 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono, Fraunces } from "next/font/google";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import { ThemeProvider } from "next-themes";
 import { TopNav } from "@/components/layout/top-nav";
 import { LanguageDocumentSync } from "@/components/layout/language-document-sync";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthRouteGuard } from "@/components/auth/auth-route-guard";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-  display: "swap",
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-  display: "swap",
-});
-
-// Variable serif for headlines / brand. opsz axis: 9–144.
-const fraunces = Fraunces({
-  variable: "--font-fraunces",
-  subsets: ["latin"],
-  display: "swap",
-  axes: ["opsz", "SOFT", "WONK"],
-});
 
 export const metadata: Metadata = {
   title: "Strata — 竞品分析情报系统",
@@ -51,9 +32,19 @@ export default function RootLayout({
   return (
     <html
       lang="zh-CN"
-      className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} h-full antialiased`}
+      className={`${GeistSans.variable} ${GeistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        {/* Fraunces variable font — loaded at runtime, build-time blocked networks fall back to serif stack */}
+        <link
+          href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&display=swap"
+          rel="stylesheet"
+        />
+        <style>{`:root { --font-fraunces: 'Fraunces', 'Noto Serif SC', 'PingFang SC', Georgia, serif; }`}</style>
+      </head>
       <body className="min-h-full flex flex-col bg-paper-grain">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <LanguageDocumentSync />
