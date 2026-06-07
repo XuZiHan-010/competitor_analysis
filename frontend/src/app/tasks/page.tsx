@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Plus } from "lucide-react";
+import { ArrowRight, Plus, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/page-container";
-import { listTasks, type RunRecord } from "@/lib/api/tasks";
+import { deleteTask, listTasks, type RunRecord } from "@/lib/api/tasks";
 import { cn } from "@/lib/utils";
 
 const STATUS_CONFIG: Record<
@@ -43,6 +44,18 @@ export default function TasksPage() {
       .then((data) => { setRuns(data); setLoading(false); })
       .catch(() => { setError("任务列表加载失败"); setLoading(false); });
   }, []);
+
+  const handleDelete = useCallback(async (runId: string) => {
+    const previous = runs;
+    setRuns((prev) => prev.filter((r) => r.id !== runId)); // optimistic
+    try {
+      await deleteTask(runId);
+      toast.success("任务已删除");
+    } catch {
+      setRuns(previous); // rollback
+      toast.error("删除失败，请重试");
+    }
+  }, [runs]);
 
   return (
     <PageContainer>
@@ -85,10 +98,10 @@ export default function TasksPage() {
       {/* Column headers */}
       {!loading && !error && runs.length > 0 && (
         <div
-          className="grid grid-cols-[80px_90px_140px_1fr] gap-4 px-5 pb-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/60"
+          className="grid grid-cols-[minmax(0,1fr)_76px_104px_auto] gap-3 px-4 pb-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/60 sm:grid-cols-[minmax(180px,1fr)_90px_140px_minmax(180px,auto)] sm:gap-4 sm:px-5"
           style={{ fontFamily: "var(--font-mono)" }}
         >
-          <span>Task ID</span>
+          <span>Competitors</span>
           <span>状态</span>
           <span>开始时间</span>
           <span className="text-right">操作</span>
@@ -104,7 +117,7 @@ export default function TasksPage() {
       ) : (
         <ol className="space-y-1.5" aria-label="任务列表">
           {runs.map((run) => (
-            <TaskRow key={run.id} run={run} />
+            <TaskRow key={run.id} run={run} onDelete={handleDelete} />
           ))}
         </ol>
       )}
@@ -112,8 +125,17 @@ export default function TasksPage() {
   );
 }
 
-function TaskRow({ run }: { run: RunRecord }) {
+function TaskRow({
+  run,
+  onDelete,
+}: {
+  run: RunRecord;
+  onDelete: (runId: string) => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
   const cfg = STATUS_CONFIG[run.status];
+  const competitors = run.competitors.filter((name) => name.trim());
+  const competitorLabel = competitors.length > 0 ? competitors.join(" / ") : run.task_id.slice(0, 8);
   const dateStr = run.started_at
     ? new Date(run.started_at).toLocaleString("zh-CN", {
         dateStyle: "short",
@@ -123,15 +145,24 @@ function TaskRow({ run }: { run: RunRecord }) {
 
   return (
     <li className="rounded-md border border-border/60 bg-card/40 hover:bg-card/70 transition-colors">
-      <div className="grid grid-cols-[80px_90px_140px_1fr] items-center gap-4 px-5 py-3.5">
-        {/* Task ID */}
-        <span
-          className="tabular text-[12px] text-muted-foreground/70 truncate"
-          style={{ fontFamily: "var(--font-mono)" }}
-          title={run.task_id}
-        >
-          {run.task_id.slice(0, 8)}
-        </span>
+      <div className="grid grid-cols-[minmax(0,1fr)_76px_104px_auto] items-center gap-3 px-4 py-3.5 sm:grid-cols-[minmax(180px,1fr)_90px_140px_minmax(180px,auto)] sm:gap-4 sm:px-5">
+        {/* Competitors */}
+        <div className="min-w-0">
+          <p
+            className="truncate text-[13px] leading-tight text-foreground"
+            title={competitorLabel}
+            translate="no"
+          >
+            {competitorLabel}
+          </p>
+          <span
+            className="tabular text-[10px] text-muted-foreground/50"
+            style={{ fontFamily: "var(--font-mono)" }}
+            title={run.task_id}
+          >
+            {run.task_id.slice(0, 8)}
+          </span>
+        </div>
 
         {/* Status badge */}
         <span
@@ -177,6 +208,56 @@ function TaskRow({ run }: { run: RunRecord }) {
             >
               报告 <ArrowRight className="h-3 w-3" />
             </Link>
+          )}
+
+          {confirming ? (
+            <div
+              role="group"
+              aria-label="确认删除任务"
+              className="flex items-center gap-2.5 text-[11px] uppercase tracking-[0.12em]"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              <span className="text-muted-foreground/70">确认删除?</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirming(false);
+                  onDelete(run.id);
+                }}
+                className={cn(
+                  "rounded px-1 text-destructive hover:text-destructive/80 transition-colors",
+                  "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-destructive/50",
+                  "[touch-action:manipulation]",
+                )}
+              >
+                删除
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirming(false)}
+                className={cn(
+                  "rounded px-1 text-muted-foreground hover:text-foreground transition-colors",
+                  "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-border",
+                  "[touch-action:manipulation]",
+                )}
+              >
+                取消
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirming(true)}
+              aria-label="删除任务"
+              className={cn(
+                "inline-flex items-center justify-center rounded p-1",
+                "text-muted-foreground/40 hover:text-destructive transition-colors",
+                "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-destructive/50",
+                "[touch-action:manipulation]",
+              )}
+            >
+              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
           )}
         </div>
       </div>

@@ -501,6 +501,8 @@ function PositioningCard({
   yAxis: string;
   points: { id: string; x: number; y: number; label: string }[];
 }) {
+  const renderablePoints = sanitizePositioningPoints(points);
+
   return (
     <aside
       aria-label="竞品定位图"
@@ -522,9 +524,9 @@ function PositioningCard({
           aria-hidden="true"
           className="absolute top-0 bottom-0 left-1/2 w-px bg-border/60"
         />
-        {points.map((p) => (
+        {renderablePoints.map((p) => (
           <span
-            key={p.id}
+            key={p.key}
             className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center"
             style={{ left: `${p.x}%`, top: `${100 - p.y}%` }}
           >
@@ -542,6 +544,23 @@ function PositioningCard({
       </p>
     </aside>
   );
+}
+
+function sanitizePositioningPoints(
+  points: { id: string; x: number; y: number; label: string }[],
+) {
+  return (points ?? []).flatMap((point, index) => {
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return [];
+
+    const label = normalizeText(point.label) ?? `Point ${index + 1}`;
+    const safeId = normalizeText(point.id) ?? label;
+    return [{ ...point, key: `${safeId}-${index}`, label }];
+  });
+}
+
+function normalizeText(value: unknown): string | null {
+  const text = String(value ?? "").trim();
+  return text && text !== "NaN" ? text : null;
 }
 
 function CitationChips({ ids }: { ids: string[] }) {

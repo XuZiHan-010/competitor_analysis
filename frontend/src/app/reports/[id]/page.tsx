@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { AlertTriangle, Download, FileDown } from "lucide-react";
+import { AlertTriangle, Download, ExternalLink, FileDown } from "lucide-react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/page-container";
 import { Chapter } from "@/components/report/chapter";
@@ -17,6 +17,7 @@ import { PricingTable } from "@/components/report/pricing-table";
 import { QualityPanel } from "@/components/report/quality-panel";
 import { ReportLanguageToggle } from "@/components/report/report-language-toggle";
 import { SourceList } from "@/components/report/source-list";
+import { langsmithProjectUrl } from "@/lib/langsmith";
 import { SurveySection } from "@/components/report/survey-section";
 import { SwotBlock } from "@/components/report/swot-block";
 import {
@@ -133,8 +134,11 @@ export default function ReportPage() {
       a.download = `report-${taskId.slice(0, 8)}.${format === "markdown" ? "md" : format}`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch {
-      toast.error(`${format.toUpperCase()} 导出失败`);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : "";
+      toast.error(`${format.toUpperCase()} 导出失败`, {
+        description: detail || undefined,
+      });
     }
   }
 
@@ -219,6 +223,18 @@ export default function ReportPage() {
                   value={report.language}
                   onSwitched={setReport}
                 />
+
+                <span className="mx-1 h-4 w-px bg-border/70" aria-hidden="true" />
+                <a
+                  href={langsmithProjectUrl()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="在 LangSmith 查看本次分析的 Agent trace（新标签页打开）"
+                  className="inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded border border-border/70 text-foreground/70 hover:text-foreground hover:border-border transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/50 [touch-action:manipulation]"
+                  style={{ fontFamily: "var(--font-mono)" }}
+                >
+                  <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" /> LangSmith
+                </a>
               </div>
 
               <div className="rule-fade mt-8" aria-hidden="true" />
@@ -373,7 +389,7 @@ export default function ReportPage() {
                     <PositioningCard
                       xAxis={positioningMap.x_axis}
                       yAxis={positioningMap.y_axis}
-                      points={positioningMap.competitors}
+                      points={positioningMap.competitors ?? []}
                     />
                   )}
                 </div>
@@ -390,6 +406,8 @@ export default function ReportPage() {
           <QualityPanel
             metrics={metrics}
             claims={claims}
+            qaStatus={report.qa_status}
+            qaIssues={report.qa_issues}
             reviewMode={reviewMode}
             onToggleReviewMode={() => setReviewMode((v) => !v)}
             onReviewClaim={handleReviewClaim}

@@ -26,9 +26,9 @@ export function SourceList({ sources }: SourceListProps) {
         溯源
       </h2>
       <ol className="space-y-2.5">
-        {sources.map((s) => (
+        {sources.map((s, index) => (
           <li
-            key={s.id}
+            key={`${s.id}-${index}`}
             className="flex items-baseline gap-3 text-[12.5px] leading-relaxed"
           >
             <span

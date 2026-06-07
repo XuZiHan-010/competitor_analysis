@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { FileText, Home, PlayCircle, Search } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { AccountMenu } from "./account-menu";
@@ -9,6 +10,37 @@ import { cn } from "@/lib/utils";
 
 export function TopNav() {
   const { t } = useI18n();
+  const pathname = usePathname();
+  const isLogin = pathname === "/login";
+
+  const demoLink = (
+    <Link
+      href="/demo/scoping"
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5",
+        "text-base font-medium text-foreground/90 hover:text-foreground",
+        "hover:bg-secondary/70 transition-colors",
+      )}
+    >
+      <PlayCircle className="h-4 w-4 text-[var(--color-accent-warm)]" />
+      {t("navDemo")}
+    </Link>
+  );
+
+  // Logged-out login screen: minimal chrome — brand wordmark + demo entry +
+  // theme/language switch only. App routes (reports/search) stay hidden.
+  if (isLogin) {
+    return (
+      <header className="border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">
+        <div className="mx-auto flex h-14 max-w-[1280px] items-center justify-end px-6">
+          <nav className="flex items-center gap-1">
+            {demoLink}
+            <AccountMenu />
+          </nav>
+        </div>
+      </header>
+    );
+  }
 
   return (
     <header className="border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">
@@ -44,17 +76,7 @@ export function TopNav() {
             <span className="hidden sm:inline">{t("navReportSearch")}</span>
           </Link>
 
-          <Link
-            href="/demo/scoping"
-            className={cn(
-              "ml-2 inline-flex items-center gap-1.5 rounded-md px-3 py-1.5",
-              "text-base font-medium text-foreground/90 hover:text-foreground",
-              "hover:bg-secondary/70 transition-colors",
-            )}
-          >
-            <PlayCircle className="h-4 w-4 text-[var(--color-accent-warm)]" />
-            {t("navDemo")}
-          </Link>
+          <span className="ml-2">{demoLink}</span>
 
           <AccountMenu />
         </nav>

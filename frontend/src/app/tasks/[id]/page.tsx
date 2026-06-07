@@ -14,6 +14,7 @@ import {
 import type { AgentNodeStatus, DagNodeView } from "@/components/dag/types";
 import {
   fetchTaskTimeline,
+  fetchRunRecord,
   taskEventSource,
   type AgentTrace,
   type StreamEvent,
@@ -56,10 +57,20 @@ export default function TaskRunPage() {
 
     async function refreshTimeline() {
       try {
-        const next = await fetchTaskTimeline(runId);
-        if (mounted) setTraces(next);
+        const [next, run] = await Promise.all([
+          fetchTaskTimeline(runId),
+          fetchRunRecord(runId),
+        ]);
+        if (!mounted) return;
+        setTraces(next);
+        if (run.status === "succeeded" && run.task_id) {
+          setReportTaskId(run.task_id);
+        }
+        if (run.status === "failed") {
+          setError("任务运行失败，请查看后端日志或重试。");
+        }
       } catch {
-        if (mounted) setError("Timeline 暂时不可用，等待后端写入 trace。");
+        // silently ignore — the empty-state "等待第一条 trace 写入..." handles this
       }
     }
 
@@ -71,6 +82,9 @@ export default function TaskRunPage() {
       if (event.event === "run.succeeded") {
         const taskId = event.data.task_id;
         if (typeof taskId === "string" && taskId) setReportTaskId(taskId);
+        void refreshTimeline();
+      }
+      if (event.event === "node.succeeded" || event.event === "node.failed") {
         void refreshTimeline();
       }
       if (event.event === "run.failed") {
@@ -232,8 +246,8 @@ export default function TaskRunPage() {
             {latestEvents.length === 0 ? (
               <li className="py-3 text-xs text-muted-foreground">等待事件...</li>
             ) : (
-              latestEvents.map((event) => (
-                <li key={`${event.id}-${event.event}`} className="py-3">
+              latestEvents.map((event, index) => (
+                <li key={`${event.id}-${event.event}-${index}`} className="py-3">
                   <div className="mb-1 flex items-baseline gap-2">
                     <span
                       className="tabular text-[10px] text-muted-foreground"
@@ -329,7 +343,21 @@ function summarizeEventData(data: Record<string, unknown>): string {
   const reportId = data.report_id;
   const message = data.message;
   const issues = data.issues;
+  const outputPayload = data.output_payload;
+  const outputSummary =
+    outputPayload &&
+    typeof outputPayload === "object" &&
+    "output_summary" in outputPayload
+      ? (outputPayload as Record<string, unknown>).output_summary
+      : null;
+  const agentName = data.agent_name;
+  const nodeName = data.node_name;
+  const status = data.status;
   if (typeof message === "string") return message;
+  if (typeof outputSummary === "string" && outputSummary) return outputSummary;
+  if (typeof agentName === "string" && typeof nodeName === "string") {
+    return `${agentName} / ${nodeName}${typeof status === "string" ? ` / ${status}` : ""}`;
+  }
   if (typeof reportId === "string" && reportId) return `report ${reportId}`;
   if (typeof taskId === "string" && taskId) return `task ${taskId}`;
   if (Array.isArray(issues)) return `${issues.length} QA issue(s)`;

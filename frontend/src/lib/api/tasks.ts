@@ -10,6 +10,7 @@ export interface RunRecord {
   error_summary: Record<string, unknown> | null;
   started_at: string | null;
   completed_at: string | null;
+  competitors: string[];
 }
 
 export interface AgentTrace {
@@ -57,6 +58,12 @@ export async function startTaskRun(contract: TaskScopeContract): Promise<RunReco
   return (await response.json()) as RunRecord;
 }
 
+export async function fetchRunRecord(runId: string): Promise<RunRecord> {
+  const response = await apiFetch(`/api/tasks/${runId}`, { cache: "no-store" });
+  if (!response.ok) throw new Error(`Failed to fetch run record: ${response.status}`);
+  return (await response.json()) as RunRecord;
+}
+
 export async function fetchTaskTimeline(runId: string): Promise<AgentTrace[]> {
   const response = await apiFetch(`/api/tasks/${runId}/timeline`, {
     cache: "no-store",
@@ -81,4 +88,9 @@ export async function listTasks(limit = 50): Promise<RunRecord[]> {
   });
   if (!res.ok) throw new Error(`listTasks ${res.status}`);
   return res.json() as Promise<RunRecord[]>;
+}
+
+export async function deleteTask(runId: string): Promise<void> {
+  const res = await apiFetch(`/api/tasks/${runId}`, { method: "DELETE" });
+  if (!res.ok && res.status !== 204) throw new Error(`deleteTask ${res.status}`);
 }
