@@ -69,7 +69,7 @@
 2. **采集的网页内容**：尊重目标站点的 robots.txt 与服务条款
 3. **如果未来接入真实用户访谈数据**：必须脱敏（去掉姓名 / 手机 / 邮箱）后再入库
 4. **日志中的敏感字段**：API key / JWT / 密码必须打码（如 `sk-***`）
-5. **LangSmith trace 上报**（[PRD §五.Y 约束 6](PRD.md#L188)）：竞品公开网页数据可全量上报；但 **SurveyTool 涉敏节点（访谈 / 用户声音 / persona）必须用 `hide_inputs`/`hide_outputs` 或 anonymizer 脱敏后再上报**。`LANGCHAIN_API_KEY` 走 env 不入库；CI 默认关闭 trace 上报，仅本地 debug / 答辩演示时开启
+5. **LangSmith trace 上报**（[PRD §五.Y 约束 6](PRD.md#L188)，已接通）：竞品公开网页数据可全量上报；但 **SurveyTool 涉敏节点（访谈 / 用户声音 / persona）必须用 `hide_inputs`/`hide_outputs` 或 anonymizer 脱敏后再上报**。当前实现通过带脱敏 hook 的 LangSmith Client 上报，`LANGCHAIN_API_KEY` 走 env 不入库；CI 默认关闭 trace 上报，仅本地 debug / 答辩演示时开启
 
 ---
 

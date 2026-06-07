@@ -1,11 +1,23 @@
 # 竞品分析系统 - 全局进度日志
 
-**最后更新**: 2026-05-31
-**系统状态**: 代码层面后端 ~100% / 前端 ~95% 落地（含真实 LLM 路径 + fallback），但全部在 mock 模式下验证；真实 API key 端到端跑通 = 0 次；SSE 流式联调待完成；2 个前端小尾巴（reguide 回后端 / clarifying questions UI）待确认；答辩文档部分已建（README 102 行已入库，architecture.md 129 行待提交），agent-protocol.md / deployment.md 缺
+**最后更新**: 2026-06-07
+**系统状态**: 代码层面后端 ~100% / 前端 ~95% 落地；`feature/collector-reliability` 分支新增 Collector 可靠性（source ID 全局去重重整、survey source ID remapping）、LLM 自动重试（transient 503 指数退避）、Agent 解析容错（_coerce_mapping/_coerce_personas/degradation 记录）、HTML 报告导出、报告完整性检测（placeholder/claim/source 校验）、流式事件测试、账号隔离测试、deployment.md 初稿，测试文件新增 8 个；账号隔离（user_id 全链路隔离）+ 报告搜索优化 + 任务竞品名标识已完成并验证；LangSmith trace 接线已完成；真实 API key 端到端跑通：ScopingAgent 单点已验证（真 gpt-4o-mini），全链路 3 竞品跑批仍为 0 次
+
+## 2026-06-05 本轮修复：报告搜索 label 优先 + 任务竞品名标识
+
+按计划完成 `/reports` 搜索体验与 `/tasks` 可读标识修复：后端新增共享 `report_search` helper，内存与 DB keyword fallback 均支持空查询列出当前用户全部报告，并按竞品名 / 标题 / summary 高权重、正文弱权重排序；搜索结果标题改为竞品名拼接；`RunRecord` 新增 `competitors` 字段并在内存与 DB run 列表中填充。前端任务列表第一列改为竞品名主标识，报告搜索页初次进入与清空输入均会请求空查询。验证：backend `ruff check .` / `mypy .` / 目标 pytest 通过，frontend `npm run lint` / `npm run typecheck` 通过。
+
+## ✅ 2026-06-03 本轮修复：LangSmith trace 接线 + Timeline 摘要
+
+Agent/Survey trace 成功分支现在统一写入 `output_payload.output_summary`，前端 Timeline 可直接显示人话摘要，不再 fallback 到截断 JSON。LangSmith 通过 `LANGCHAIN_TRACING_V2=true` + `LANGCHAIN_API_KEY` 开关启用：FastAPI 启动时导出 env，OpenAI/DeepSeek client 通过 `wrap_openai` 纳入 trace，Gemini 路径通过 `traceable` 纳入 trace，产品内 `agent_traces.langsmith_run_id` 会回填当前 run id。新增 `services/observability.py` 统一创建带 `hide_inputs` / `hide_outputs` 脱敏 hook 的 LangSmith Client，保持 CI / 默认本地关闭。目标测试 `pytest tests/test_workflow.py tests/test_survey.py`、`ruff check .`、`mypy .` 已通过。
 
 ---
 
 ## ✅ 已解决缺口（本轮修复完成）
+
+### 缺口 C：登录没有真实账号隔离 → **已修复**
+
+`auth.py` / `auth_deps.py` 新增邮箱确定性 `user_id` 派生与公共鉴权依赖；登录成功后 DB 模式 best-effort upsert `users`。`RunManager`、内存 store、SQL repository、tasks/reports/scoping/survey/stream 路由均接入 owner 写入与校验：`GET /api/tasks`、报告读取/编辑/export/search、timeline、SSE 均仅允许当前账号访问；非本人 task/report 返回 404，非本人 stream 返回 403。新增 `test_account_isolation.py` 覆盖 A/B 账号隔离、无 token 401、同邮箱稳定 user_id；后端 `ruff check .`、`mypy .`、`pytest` 全通过。
 
 ### 缺口 A：WriterAgent 未组装富结构报告内容 → **已修复**
 
@@ -27,8 +39,8 @@
 | 后端 Agent 单体（S1-S2） | ✅ 完成 | 100% | 4 Agent 真 LLM 路径 + fallback；LangGraph DAG 真接（含 QA→collect Evaluator-Optimizer 闭环，retry≤3）；QA blocker 会写入 `feedback_signals.correction_detected`，Collector 重跑会补充 recovery sources 并改善；HybridSearch(Tavily→SerpApi)/AppReview/robots/并行采集；ScopingDraft 生成后可持久化查询；报告 metrics 含耗时/覆盖率/引用/人工修正/复核/重跑；真实 3 竞品端到端验证归入 S4 |
 | SurveyTool（S3） | ✅ 完成 | 100% | 代码层面完成 4-stage SurveyTool：一手上传 `user_uploaded_primary` 优先进入 workflow；Stage 1 真 LLM 问卷设计 + fallback；Stage 2a HybridSearch 公开调研 finder + 质量过滤 + sources 并回报告；Stage 2b 公开评论；Stage 3 persona + SimulatedDistributor；Stage 4 insight；QA blocker/warning、claims、timeline trace 和后端 E2E smoke 均覆盖。真实 API key 下 3 竞品跑批归入 S4/验收 |
 | 前端 Stage 2 | 🔄 进行中 | 95% | S2.0~S2.5 全部组件代码落地（DAG / 报告 / Survey / Scoping 折叠 / 用户研究卡）；2 个小尾巴待确认：① reguide 是否真调后端重跑 ② clarifying questions UI 是否真接 ScopingDraft；RAG 占位按范围决策**可砍** |
-| 联调 + 真后端切换（S4 / 前端 S2.7） | 🔄 进行中 | 30% | 前端已接真后端 API（reports/tasks/scoping/demo 4 个 client）；SSE 流式联调代码在，未与真后端事件流对过；**真实 key 端到端跑通 = 0 次（最大缺口）** |
-| 答辩准备（S5） | 🔄 进行中 | 25% | README.md 102 行已入库 ✅；architecture.md 129 行已写但 untracked ⚠️；agent-protocol.md ❌；deployment.md ❌（部署后写） |
+| 联调 + 真后端切换（S4 / 前端 S2.7） | 🔄 进行中 | 35% | 前端已接真后端 API（reports/tasks/scoping/demo 4 个 client）；账号隔离全链路打通；SSE 流式事件测试新增；**真实 key 全链路 3 竞品跑批 = 0 次（最大缺口）** |
+| 答辩准备（S5） | 🔄 进行中 | 35% | README.md 102 行已入库 ✅；architecture.md 129 行待提交 ⚠️；deployment.md 初稿新增 ✅；agent-protocol.md ❌ |
 
 ---
 
@@ -178,3 +190,7 @@
 | 2026-05-30 | 前端 S2.0 Scoping 折叠卡片 + 用户研究计划（方案 C）：`collapsible-section`（grid-rows 动画折叠外壳）包裹分析维度区（默认展开）；新增 `user-research-card`（启用开关 + 问卷题目增删改 + 一手数据上传 + prefer_upload 偏好，关闭置灰保留配置、freeze 写 enabled:false）默认收起；`upload-dropzone`（拖拽 CSV/TXT/MD → contract-keyed `POST /survey/upload`，标 user_uploaded_primary，无服务端 id 时禁用）；`lib/api/survey` 上传客户端。类型层：types.ts 新增 SurveyQuestion/Questionnaire/UserResearchPlan + emptyUserResearchPlan，TaskScopeContract 增 user_research_plan；scoping.ts 双向映射。tsc 0 error + 改动文件 eslint 0 error（注：本机 `npm run build`/全量 `npm run lint` 因 worker heap OOM 跑不完，与改动无关；compile ✓ 通过） | Claude + Eric |
 | 2026-05-30 | 前端收口验证（Phase 2+4 smoke）：① 修复 OOM——`package.json` lint 脚本改为 `node --max-old-space-size=4096 node_modules/eslint/bin/eslint.js src --cache`，新增 `typecheck` 脚本同样提高 heap；`npm run lint` + `npm run typecheck` 均 0 error；② Phase 2 auth 验收：dev server 起动 7.1s 无 error，`/login` `/tasks` `/demo/run` `/demo/report` `/demo/scoping` 全部 200，路由守卫代码审计确认 `PROTECTED_PREFIXES=["/tasks","/reports"]`、`/demo/*` 不设防、httpOnly cookie + `credentials:include` 链路完整；③ Phase 4 smoke checklist 全过：DAG FeedbackArc 在 DagGraph 内含（visible/active prop 传入 demo/run 和 tasks/[id]）、survey ai_simulated >60% 橙色 AlertTriangle banner 存在于 survey-source-breakdown.tsx、QualityPanel+MetricBadges 在 reports/[id]/page.tsx、timeline replay SSE + 1.5s 轮询兜底在 tasks/[id]；④ frontend/CLAUDE.md 更新 typecheck 命令行 | Claude + Eric |
 | 2026-05-31 | 全栈代码盘点（Explore agent 前后端全量读代码 + progress 对账）：后端代码层 ~100% 落地（9 路由 / 5 agent / 4-stage SurveyTool / DB+Alembic / LLM/Search/Streaming/Auth 全服务，ruff/mypy/pytest 25 passed），但全部在 MOCK_LLM=true 下验证，真实 key 端到端跑通 = 0 次，质量指标真实值全空；前端代码层 ~95%（50+ 组件 / 17 API endpoint / 4 Zustand store / 115+ i18n key），2 个小尾巴（reguide 回后端 / clarifying questions UI）待确认；S5 文档盘清：README.md 102 行已入库，architecture.md 129 行已写未提交，agent-protocol.md / deployment.md 缺；进度表 S5「0% 未建」已更正为「25% 部分已建」；最大剩余缺口：填真 key 跑 3 竞品端到端 + SSE 流式联调 + 补提交 architecture.md + 新建缺失文档 | Claude + Eric |
+| 2026-06-02 | ScopingAgent 修复「点名竞品被丢弃」bug（用户报「Trae·AI编程」预制需求返回 Tabnine/Kite/Codeium 等无关产品）：根因 = 真实 LLM 路径下 gpt-4o-mini 被 brief 里的「研究意图」措辞（重点关注…定价）骗进 intent 模式自行编造竞品 + 无任何确定性兜网 + `_run_llm` 完全忽略 `known_competitors`（违 PRD §六 5.0「重新生成不丢用户竞品」）。修复 4 项：① **重写 system prompt（主力）**——三步顺序（先抽实体→再分类→再选竞品）+ 明确「研究意图措辞不取消已点名竞品」+ 强化中文顿号实体识别 + 2 个 few-shot（含 Trae 失败案例正解）；② **新增 `_anchor_named_competitors` 确定性兜网（安全带）**——brief 里 verbatim 命中的产品名 + `known_competitors` 强制保留为 `nl_extracted`，过滤模型幻觉名，并纠正 intent_mode；③ chips 文案「AI 推荐竞品」→中性「本次竞品」（i18n key 改 `analysisCompetitors`）；④ `scoping_model` 保持 gpt-4o-mini（兜网在 mini 上实测够用，符 §五.X「不追求最强」；.env 本就锁 mini）。验证：ruff/mypy/pytest（+2 兜网单测，scoping 4 passed；全量 31 passed）；**真实 key 端到端验证**（禁用兜网只跑 prompt，真 gpt-4o-mini）：list✓（Trae/Cursor/GitHub Copilot 全 nl_extracted）、intent✓（5 ai_recommended），mixed 漏掉「Notion」→ 恰好证明兜网安全带必要性。合规结论：零文档漂移、零 Schema 改动（named_in_brief 仅 LLM 单次响应内部字段），是把代码拉回 PRD §六 5.0。⏳ 未提交 | Claude + Eric |
+| 2026-06-03 | LangSmith trace 接线 + Timeline 摘要：Agent/Survey trace 成功分支统一写入 `output_payload.output_summary`，前端 Timeline 直接显示人话摘要，不再 fallback 到截断 JSON；LangSmith 通过 `LANGCHAIN_TRACING_V2=true` + `LANGCHAIN_API_KEY` 开关启用，FastAPI 启动导出 env，OpenAI/DeepSeek 通过 `wrap_openai` 纳入 trace，Gemini 通过 `traceable` 纳入 trace，`agent_traces.langsmith_run_id` 回填当前 run id；新增 `services/observability.py` 统一创建带脱敏 hook 的 LangSmith Client，默认 CI / 本地关闭。pytest tests/test_workflow.py + test_survey.py + ruff + mypy 通过 | Claude + Eric |
+| 2026-06-05 | 报告搜索 label 优先 + 任务竞品名标识：后端新增共享 `report_search` helper，内存与 DB keyword fallback 均支持空查询列出当前用户全部报告，按竞品名/标题/summary 高权重、正文弱权重排序；搜索结果标题改竞品名拼接；`RunRecord` 新增 `competitors` 字段并在内存与 DB run 列表中填充；前端任务列表第一列改为竞品名主标识，报告搜索页初次进入与清空均请求空查询。ruff/mypy/目标 pytest 通过，frontend lint/typecheck 通过 | Claude + Eric |
+| 2026-06-07 | `feature/collector-reliability` 分支：① **Collector source ID 正规化**——多竞品并行采集后 source ID 全局去重重整（`_normalize_raw_source_ids`），避免跨竞品 ID 碰撞；survey evidence source ID 随之 remap（`_remap_survey_source_ids`）；② **LLM 自动重试**——`LLMClient._call_with_retries` 对 transient 错误（503/429/NetworkError）指数退避 ≤ 3 次，permanent 错误（4xx）立即抛出；`_is_transient` 判断逻辑单测覆盖；③ **Agent 解析容错**——analyst `_coerce_mapping`/`_coerce_personas` 吸收 LLM 返回形状偏差（dict vs list[dict]、嵌套 list）；`services/llm/usage.py` 新增 `record_degradation`/`collected_degradations`/`start_capture`/`reset_capture` 降级追踪；survey `_safe_int` 类型容错；④ **HTML 报告导出**——`services/report_html.py` 从 structured_content 生成纯 HTML 报告（masthead / feature matrix / pricing / SWOT / personas / extension sections）；⑤ **报告完整性检测**——`services/report_integrity.py` 检测 placeholder 占位符（needs verification / TBD / S0 mock 等）、孤立 claim（无 source）、孤立 source（无 claim 引用）；⑥ 新增测试文件 8 个：test_collector_reliability / test_llm_retry / test_agent_parsing_resilience / test_streaming_events / test_real_llm_failure_visibility / test_report_search / test_account_isolation / test_task_delete / test_writer；⑦ `docs/deployment.md` 初稿新增；`backend/api/auth_deps.py` 提取共享鉴权依赖。分支尚未合并 main | Claude + Eric |

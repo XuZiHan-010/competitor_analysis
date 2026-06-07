@@ -89,6 +89,7 @@ competitor_analysis/
 | 写 Agent / 修改 DAG / 触碰 Schema | [docs/constraints.md](docs/constraints.md) + PRD §六, §七 |
 | **写 Python / TypeScript 代码（每次）** | **[docs/code-style.md](docs/code-style.md)** — 拿满代码风格分必读 |
 | 提交代码 / 创建 PR / 管理分支 | [docs/git-workflow.md](docs/git-workflow.md) — Conventional Commits |
+| 部署 / 配 LangSmith 等生产环境变量 | [docs/deployment.md](docs/deployment.md)（骨架，随部署补全） |
 | 写测试 | [docs/testing.md](docs/testing.md) |
 | 准备访谈 / 找演示案例 | [docs/collaboration-hankel.md](docs/collaboration-hankel.md) |
 | 准备答辩 / 整理 AI 协作证据 | [docs/ai-collaboration.md](docs/ai-collaboration.md) |
@@ -113,7 +114,7 @@ competitor_analysis/
 | 评分子项 | 对应规则 / 文档 | 触发时机 / 验收 |
 |---|---|---|
 | **① 代码风格、模块化、注释、可读性** | [docs/code-style.md](docs/code-style.md) | 提交前必须：前端 `npm run lint` 0 error；后端 `ruff check` + `mypy` 全通过。**注释默认不写**，只写"为什么"非显然时（隐藏约束 / 性能权衡 / 外部 bug 绕过）。模块化按 PRD §十五 路径约定 |
-| **② 项目文档齐全（README / 架构图 / Agent 协议 / 部署说明）** | `README.md`（项目根 ⚠️ **待写**）+ [docs/architecture.md](docs/architecture.md)（架构图，已抽出）+ PRD §六（Agent 协议）+ `docs/deployment.md`（Week 2 部署后写） | 每个 P0 模块上线同步更新对应文档；改架构 → 更 PRD §五；改 Agent → 更 PRD §六 |
+| **② 项目文档齐全（README / 架构图 / Agent 协议 / 部署说明）** | `README.md`（项目根 ⚠️ **待写**）+ [docs/architecture.md](docs/architecture.md)（架构图，已抽出）+ PRD §六（Agent 协议）+ [docs/deployment.md](docs/deployment.md)（骨架已建，随部署补全） | 每个 P0 模块上线同步更新对应文档；改架构 → 更 PRD §五；改 Agent → 更 PRD §六 |
 | **③ Git 提交规范、分支管理清晰** | [docs/git-workflow.md](docs/git-workflow.md) — Conventional Commits | 每条 commit message 符合 `<type>: <subject>` 规范（`feat:` / `fix:` / `docs:` …）；不直接 push main，过 PR；分支名 `feature/<topic>` |
 | **④ AI 编程工具使用痕迹清晰** | 每条 AI 协作的 commit 末尾必须带 `Co-Authored-By: <Tool> <noreply@…>` 标注；PR 描述写明 AI 辅助的具体环节 | 答辩前用 `git log --grep="Co-Authored-By"` 一键导出所有 AI 协作记录作为佐证 |
 
