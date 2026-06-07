@@ -6,9 +6,9 @@ from settings import get_settings
 
 def _build_stream_bridge() -> StreamBridge:
     settings = get_settings()
-    if settings.redis_url:
+    if settings.redis_dsn:
         try:
-            return RedisStreamBridge(settings.redis_url)
+            return RedisStreamBridge(settings.redis_dsn)
         except (ImportError, ValueError):
             return InMemoryStreamBridge()
     return InMemoryStreamBridge()

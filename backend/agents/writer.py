@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from uuid import UUID
 
 import structlog
@@ -6,7 +7,12 @@ from graph.state import WorkflowState
 from schemas.report import Report, ReportClaim
 from services.agents.decorators import traced_node
 from services.llm import LLMClient
+from services.llm.usage import record_degradation
 from services.metrics import calculate_report_metrics
+from services.report_integrity import (
+    assert_report_sources_resolvable,
+    placeholder_issues,
+)
 from settings import get_settings
 
 logger = structlog.get_logger(__name__)
@@ -27,12 +33,16 @@ class WriterAgent:
     ) -> Report:
         settings = get_settings()
         llm = LLMClient(settings)
-        if llm.enabled and settings.deepseek_api_key:
-            try:
-                return await self._run_llm(state, llm, language=language)
-            except Exception:
-                logger.warning("writer_llm_failed_falling_back", exc_info=True)
-        return self._run_fallback(state, language=language)
+        if settings.mock_llm:
+            return self._run_fallback(state, language=language)
+        if not settings.deepseek_api_key:
+            raise RuntimeError("DEEPSEEK_API_KEY is required for WriterAgent in real mode")
+        try:
+            return await self._run_llm(state, llm, language=language)
+        except Exception as exc:
+            logger.warning("writer_llm_failed", exc_info=True)
+            record_degradation(f"writer: {type(exc).__name__}: {exc}")
+            raise RuntimeError(f"WriterAgent LLM failed: {type(exc).__name__}: {exc}") from exc
 
     async def _run_llm(self, state: WorkflowState, llm: LLMClient, *, language: str) -> Report:
         settings = get_settings()
@@ -100,6 +110,7 @@ class WriterAgent:
             for survey in state.survey_results.values()
             for e in survey.evidence
         }
+        report_source_ids = {source.id for source in sources}
         for index, (_, survey) in enumerate(state.survey_results.items(), start=1):
             for insight_index, insight in enumerate(survey.insights, start=1):
                 source_support = "supported" if insight.confidence != "low" else "weak"
@@ -117,7 +128,11 @@ class WriterAgent:
                         claim_text=claim_text,
                         layer="survey",
                         field_type="free_text",
-                        source_ids=insight.evidence_ids,
+                        source_ids=_survey_insight_source_ids(
+                            evidence_index,
+                            insight.evidence_ids,
+                            report_source_ids,
+                        ),
                         generating_agent="SurveyTool",
                         source_support=source_support,
                         validity="valid",
@@ -136,12 +151,15 @@ class WriterAgent:
         for index, item in enumerate(payload.get("claims", []), start=1):
             competitor_name = str(item.get("competitor_name") or item.get("competitor", ""))
             source_ids = item.get("source_ids") or fallback_source_ids.get(competitor_name, [])
+            layer = item.get("layer", "core")
+            field_type = item.get("field_type", "free_text")
             claims.append(
                 ReportClaim(
                     claim_path=str(item.get("claim_path", f"claims[{index}]")),
                     claim_text=str(item.get("claim_text", "")),
-                    layer=item.get("layer", "core"),
-                    field_type=item.get("field_type", "free_text"),
+                    layer=layer if layer in ("core", "extension", "survey") else "core",
+                    field_type=field_type if field_type in ("structured", "free_text")
+                    else "free_text",
                     source_ids=source_ids,
                     generating_agent="WriterAgent",
                     source_support="supported" if source_ids else "unchecked",
@@ -270,13 +288,34 @@ class WriterAgent:
         sources: list,
         language: str,
     ) -> Report:
+        integrity_issues = placeholder_issues(
+            structured_content=structured_content,
+            markdown_content=markdown,
+        )
+        assert_report_sources_resolvable(
+            sources=sources,
+            claims=claims,
+            structured_content=structured_content,
+        )
         metrics = calculate_report_metrics(
             claims=claims,
             sources=sources,
             rerun_count=sum(state.retry_counts.values()),
             module_count=max(len(state.scope_contract.dimensions), 1),
-            ai_self_assessment={"confidence": "needs_review", "needs_human_review": True},
+            ai_self_assessment={
+                "confidence": "needs_review",
+                "needs_human_review": bool(integrity_issues) or bool(
+                    state.qa_result and not state.qa_result.passed
+                ),
+                "integrity_issues": integrity_issues,
+            },
         )
+        qa_issues = (
+            [issue.model_dump(mode="json") for issue in state.qa_result.issues]
+            if state.qa_result
+            else []
+        )
+        qa_issues.extend(integrity_issues)
         return Report(
             task_id=UUID(str(state.task_id)),
             language="zh" if language not in {"zh", "en"} else language,
@@ -285,12 +324,12 @@ class WriterAgent:
             sources=sources,
             claims=claims,
             metrics=metrics,
-            qa_status="issues" if state.qa_result and not state.qa_result.passed else "passed",
-            qa_issues=(
-                [issue.model_dump(mode="json") for issue in state.qa_result.issues]
-                if state.qa_result
-                else []
+            qa_status=(
+                "issues"
+                if integrity_issues or (state.qa_result and not state.qa_result.passed)
+                else "passed"
             ),
+            qa_issues=qa_issues,
         )
 
 
@@ -309,3 +348,17 @@ def _build_simulated_warnings(state: WorkflowState) -> list[dict]:
                 "note": "⚠️ mark required on insights from simulated evidence",
             })
     return warnings
+
+
+def _survey_insight_source_ids(
+    evidence_index: Mapping[str, object],
+    evidence_ids: list[str],
+    report_source_ids: set[str],
+) -> list[str]:
+    source_ids: list[str] = []
+    for evidence_id in evidence_ids:
+        evidence = evidence_index.get(evidence_id)
+        source_id = getattr(evidence, "source_id", None)
+        if isinstance(source_id, str) and source_id in report_source_ids:
+            source_ids.append(source_id)
+    return list(dict.fromkeys(source_ids))

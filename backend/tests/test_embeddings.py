@@ -8,7 +8,7 @@ from settings import Settings
 
 @pytest.mark.asyncio
 async def test_hash_embedding_fallback_is_pgvector_ready() -> None:
-    service = EmbeddingService(Settings(mock_llm=True))
+    service = EmbeddingService(Settings(openai_api_key=None))
 
     vector = await service.embed_text("pricing claims customer support")
 

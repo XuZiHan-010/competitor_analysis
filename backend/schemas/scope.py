@@ -49,8 +49,8 @@ class TaskScopeContract(BaseModel):
 
     @model_validator(mode="after")
     def validate_competitors_and_dimensions(self) -> "TaskScopeContract":
-        if len(self.competitors) < 3:
-            raise ValueError("task scope requires at least 3 competitors")
+        if len(self.competitors) < 1:
+            raise ValueError("task scope requires at least 1 competitor")
         ai_suggested = [
             d for d in self.dimensions if d.layer == "extension" and d.source == "ai_suggested"
         ]

@@ -20,6 +20,7 @@ from schemas.survey import (
 from schemas.traces import AgentTrace
 from services.agents.decorators import _estimate_tokens
 from services.llm import LLMClient
+from services.llm.usage import record_degradation
 from services.survey.distributors import SimulatedDistributor, SurveyDistributor
 from services.survey.existing_survey_finder import ExistingSurveyFinder, ExistingSurveyFindResult
 from services.survey.persona_inferrer import PersonaInferrer
@@ -27,6 +28,23 @@ from services.survey.questionnaire_designer import QuestionnaireDesigner
 
 T = TypeVar("T")
 _MISSING = object()
+
+
+def _safe_int(value: Any, default: int) -> int:
+    """LLM 偶尔把 ``frequency`` 返回成词（实测 'high'）；安全转换，
+    避免 ``int('high')`` 崩溃后整段 survey 降级。"""
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text.isdigit():
+            return int(text)
+        return {"high": 3, "medium": 2, "low": 1}.get(text, default)
+    return default
 
 logger = structlog.get_logger(__name__)
 
@@ -261,12 +279,13 @@ class SurveyTool:
         if self._llm_client and self._llm_client.enabled:
             try:
                 return await self._aggregate_insights_llm(evidence, questionnaire, competitor)
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     "survey_aggregate_llm_failed_falling_back",
                     competitor=competitor,
                     exc_info=True,
                 )
+                record_degradation(f"survey[{competitor}]: {type(exc).__name__}: {exc}")
         return self._aggregate_insights_fallback(evidence, questionnaire)
 
     async def _aggregate_insights_llm(
@@ -303,6 +322,7 @@ class SurveyTool:
                         "actionable insights. Return JSON: "
                         "{insights: [{question_id, point, frequency, representative_quotes, "
                         "evidence_ids, confidence}]}. "
+                        "frequency must be an integer count of supporting evidence items. "
                         "confidence must be 'high'/'medium'/'low' based on evidence quality. "
                         "Every insight must include evidence_ids from the provided evidence."
                     ),
@@ -331,7 +351,7 @@ class SurveyTool:
                 SurveyInsight(
                     question_id=str(item.get("question_id", "")),
                     point=str(item.get("point", "")),
-                    frequency=int(item.get("frequency", len(evidence_ids))),
+                    frequency=_safe_int(item.get("frequency"), len(evidence_ids)),
                     representative_quotes=item.get("representative_quotes", [])[:3],
                     evidence_ids=evidence_ids,
                     confidence=str(item.get("confidence", "low")),
@@ -462,12 +482,50 @@ class SurveyTool:
 
 def _summarize_output(value: Any) -> dict[str, Any]:
     if isinstance(value, list):
-        return {"type": "list", "count": len(value)}
+        return {
+            "type": "list",
+            "count": len(value),
+            "output_summary": f"{len(value)} 项",
+        }
     if hasattr(value, "model_dump"):
         payload = value.model_dump(mode="json")
-        return {"type": value.__class__.__name__, "summary": payload}
+        return {
+            "type": value.__class__.__name__,
+            "summary": payload,
+            "output_summary": _model_output_summary(value),
+        }
     if isinstance(value, dict):
-        return {"type": "dict", "keys": list(value.keys())}
-    return {"type": value.__class__.__name__, "value": repr(value)}
+        keys = list(value.keys())
+        return {
+            "type": "dict",
+            "keys": keys,
+            "output_summary": f"dict / keys: {', '.join(str(key) for key in keys[:5])}",
+        }
+    return {
+        "type": value.__class__.__name__,
+        "value": repr(value),
+        "output_summary": value.__class__.__name__,
+    }
+
+
+def _model_output_summary(value: Any) -> str:
+    if isinstance(value, Questionnaire):
+        return f"问卷 {value.id} / {len(value.questions)} 题"
+    if isinstance(value, ExistingSurveyFindResult):
+        return f"公开调研 {len(value.evidence)} 条证据 / {len(value.sources)} 条来源"
+    if isinstance(value, DistributionHandle):
+        return (
+            f"分发 {value.id} / {len(value.target_personas)} 类 persona / "
+            f"样本 {value.sample_size}"
+        )
+    if isinstance(value, SurveyResult):
+        return (
+            f"用户研究 {value.competitor} / {len(value.evidence)} 条证据 / "
+            f"{len(value.insights)} 条洞察"
+        )
+    if hasattr(value, "model_fields"):
+        fields = list(value.model_fields.keys())[:5]
+        return f"{value.__class__.__name__} / keys: {', '.join(fields)}"
+    return value.__class__.__name__
 
 

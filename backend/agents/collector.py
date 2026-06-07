@@ -1,16 +1,19 @@
 import asyncio
+import re
 from functools import partial
 from urllib.parse import quote_plus
+from uuid import UUID
 
 import structlog
 
 from graph.state import RawCollectionResult, WorkflowState
 from schemas.scope import ScopeDimension
 from schemas.source import SourceCitation
+from schemas.survey import SurveyResult
 from services.agents.decorators import traced_node
 from services.agents.wrappers import ToolError, run_tool_safely
 from services.llm import LLMClient
-from services.scraper import PageFetcher
+from services.scraper import FetchResult, PageFetcher
 from services.search import AppReviewProvider, HybridSearch
 from services.search.providers import SearchProvider
 from services.search.serpapi import SerpApiProvider
@@ -22,6 +25,69 @@ from settings import get_settings
 _COLLECTOR_TIMEOUT_S = 60
 
 logger = structlog.get_logger(__name__)
+
+
+def _normalize_raw_source_ids(
+    raw: dict[str, RawCollectionResult],
+    task_id: UUID,
+) -> dict[str, dict[str, str]]:
+    task_slug = task_id.hex[:8]
+    next_sequence = 1
+    emitted: set[str] = set()
+    source_id_maps: dict[str, dict[str, str]] = {}
+
+    for result in raw.values():
+        for source in result.sources:
+            sequence = _normalized_source_sequence(source.id, task_slug)
+            if sequence is not None:
+                next_sequence = max(next_sequence, sequence + 1)
+
+    for competitor_name, result in raw.items():
+        remapped_sources: list[SourceCitation] = []
+        source_id_map: dict[str, str] = {}
+        for source in result.sources:
+            original_id = source.id
+            if (
+                _normalized_source_sequence(original_id, task_slug) is not None
+                and original_id not in emitted
+            ):
+                source_id = original_id
+            else:
+                provider = _source_provider_slug(source.provider)
+                source_id = f"src_{provider}_{task_slug}_{next_sequence:03d}"
+                next_sequence += 1
+            emitted.add(source_id)
+            source_id_map.setdefault(original_id, source_id)
+            remapped_sources.append(source.model_copy(update={"id": source_id}))
+        result.sources = remapped_sources
+        source_id_maps[competitor_name] = source_id_map
+    return source_id_maps
+
+
+def _remap_survey_source_ids(
+    survey_results: dict[str, SurveyResult],
+    source_id_maps: dict[str, dict[str, str]],
+) -> None:
+    for competitor_name, survey in survey_results.items():
+        source_id_map = source_id_maps.get(competitor_name, {})
+        survey.evidence = [
+            evidence.model_copy(
+                update={"source_id": source_id_map.get(evidence.source_id, evidence.source_id)}
+            )
+            for evidence in survey.evidence
+        ]
+
+
+def _source_provider_slug(provider: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", provider.lower()).strip("_") or "source"
+
+
+def _normalized_source_sequence(source_id: str, task_slug: str) -> int | None:
+    marker = f"_{task_slug}_"
+    if not source_id.startswith("src_") or marker not in source_id:
+        return None
+    suffix = source_id.rsplit(marker, maxsplit=1)[-1]
+    return int(suffix) if suffix.isdigit() else None
 
 
 class CollectorAgent:
@@ -37,29 +103,34 @@ class CollectorAgent:
         trace_context: object | None = None,
     ) -> tuple[dict[str, RawCollectionResult], dict]:
         settings = get_settings()
-        if not settings.mock_llm:
-            providers: list[SearchProvider] = []
-            if settings.tavily_api_key:
-                providers.append(TavilyProvider(settings.tavily_api_key))
-            if settings.serpapi_api_key:
-                providers.append(SerpApiProvider(settings.serpapi_api_key))
-            if providers:
-                search = HybridSearch(providers)
-                llm = LLMClient(settings)
-                raw = await self._run_real_collection(state, search, llm=llm)
-                survey = await SurveyTool(
-                    existing_survey_finder=ExistingSurveyFinder(search),
-                    llm_client=llm,
-                ).run(
-                    state.model_copy(update={"raw_collections": raw}),
-                    trace_context=trace_context,
-                )
-                return raw, survey
+        providers: list[SearchProvider] = []
+        if not settings.mock_llm and settings.tavily_api_key:
+            providers.append(TavilyProvider(settings.tavily_api_key))
+        if not settings.mock_llm and settings.serpapi_api_key:
+            providers.append(SerpApiProvider(settings.serpapi_api_key))
+        if providers:
+            search = HybridSearch(providers)
+            llm = LLMClient(settings)
+            raw = await self._run_real_collection(state, search, llm=llm)
+            _normalize_raw_source_ids(raw, state.task_id)
+            survey = await SurveyTool(
+                existing_survey_finder=ExistingSurveyFinder(search),
+                llm_client=llm,
+            ).run(
+                state.model_copy(update={"raw_collections": raw}),
+                trace_context=trace_context,
+            )
+            source_id_maps = _normalize_raw_source_ids(raw, state.task_id)
+            _remap_survey_source_ids(survey, source_id_maps)
+            return raw, survey
         raw = await self._run_fallback_collection(state)
+        _normalize_raw_source_ids(raw, state.task_id)
         survey = await SurveyTool().run(
             state.model_copy(update={"raw_collections": raw}),
             trace_context=trace_context,
         )
+        source_id_maps = _normalize_raw_source_ids(raw, state.task_id)
+        _remap_survey_source_ids(survey, source_id_maps)
         return raw, survey
 
     def _build_dimension_queries(
@@ -161,8 +232,13 @@ class CollectorAgent:
                     },
                 ],
             )
-        except Exception:
-            logger.warning("collector_query_rewrite_failed", competitor=competitor_name)
+        except Exception as exc:
+            logger.warning(
+                "collector_query_rewrite_failed",
+                competitor=competitor_name,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
             return base_queries
         rewritten = payload.get("queries")
         if not isinstance(rewritten, list):
@@ -233,6 +309,7 @@ class CollectorAgent:
                 )
             else:
                 output[name] = result
+        _normalize_raw_source_ids(output, state.task_id)
         return output
 
     async def _collect_fallback_competitor(self, competitor_name: str) -> RawCollectionResult:
@@ -320,10 +397,17 @@ class CollectorAgent:
         errors: list[str] = []
         sources: list[SourceCitation] = []
 
-        for dimension_id, query in dimension_queries or []:
-            search_result = await run_tool_safely(
-                "web_search", partial(search.search, query, max_results=5)
+        # Run all dimension searches concurrently; a slow provider on one query no
+        # longer serializes behind the others.
+        search_results = await asyncio.gather(
+            *(
+                run_tool_safely("web_search", partial(search.search, query, max_results=5))
+                for _, query in dimension_queries or []
             )
+        )
+        for (dimension_id, query), search_result in zip(
+            dimension_queries or [], search_results, strict=True
+        ):
             if isinstance(search_result, ToolError):
                 errors.append(f"search({query}): {search_result.error_content}")
             else:
@@ -341,20 +425,30 @@ class CollectorAgent:
         else:
             sources.extend(review_result)
 
+        # Enrich every page in one batched, single-browser pass instead of
+        # launching a browser per URL. A skip/fetch failure keeps the original
+        # search citation (with its snippet) rather than dropping the source, so
+        # robots-blocked or flaky pages can't starve the QA ≥5-sources floor.
+        fetch_urls = [str(source.url) for source in sources if source.url]
+        fetched = await run_tool_safely("fetch_pages", partial(fetcher.fetch_pages, fetch_urls))
+        if isinstance(fetched, ToolError):
+            errors.append(f"fetch_pages: {fetched.error_content}")
+            results_by_url: dict[str, FetchResult] = {}
+        else:
+            results_by_url = {result.url: result for result in fetched}
+
         enriched_sources: list[SourceCitation] = []
         for source in sources:
             if not source.url:
                 enriched_sources.append(source)
                 continue
-            fetch_result = await run_tool_safely(
-                "fetch_page", partial(fetcher.fetch_page, str(source.url))
-            )
-            if isinstance(fetch_result, ToolError):
-                errors.append(f"fetch_page {source.url}: {fetch_result.error_content}")
+            fetch_result = results_by_url.get(str(source.url))
+            if fetch_result is None or fetch_result.skipped:
+                if fetch_result is not None and fetch_result.skip_reason == "robots.txt":
+                    skipped_urls.append(str(source.url))
+                elif fetch_result is not None:
+                    errors.append(f"fetch_page {source.url}: {fetch_result.skip_reason}")
                 enriched_sources.append(source)
-                continue
-            if fetch_result.skipped:
-                skipped_urls.append(fetch_result.url)
                 continue
             enriched_sources.append(
                 source.model_copy(
@@ -390,4 +484,6 @@ class CollectorAgent:
             for competitor in state.scope_contract.competitors
         ]
         results = await asyncio.gather(*tasks)
-        return {r.competitor_name: r for r in results}
+        raw = {r.competitor_name: r for r in results}
+        _normalize_raw_source_ids(raw, state.task_id)
+        return raw

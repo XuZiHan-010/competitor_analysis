@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 from fastapi.testclient import TestClient
 
 from main import app
@@ -29,8 +31,10 @@ def test_demo_replay_returns_static_bundle() -> None:
     assert data["export_formats"] == ["markdown", "pdf"]
 
 
-def test_demo_replay_does_not_seed_production_reports() -> None:
-    client = TestClient(app)
+def test_demo_replay_does_not_seed_production_reports(
+    auth_client_factory: Callable[[str], TestClient],
+) -> None:
+    client = auth_client_factory("eric@example.com")
     replay_response = client.get("/api/demo/replay")
     assert replay_response.status_code == 200
 
@@ -42,8 +46,10 @@ def test_demo_replay_does_not_seed_production_reports() -> None:
     assert search_response.json()["results"] == []
 
 
-def test_demo_replay_snapshot_from_completed_run_without_writing() -> None:
-    client = TestClient(app)
+def test_demo_replay_snapshot_from_completed_run_without_writing(
+    auth_client_factory: Callable[[str], TestClient],
+) -> None:
+    client = auth_client_factory("eric@example.com")
     scope_contract = _scope_contract(client)
     task_id = scope_contract["id"]
     run_response = client.post(

@@ -17,11 +17,7 @@ class EmbeddingService:
 
     async def embed_texts(self, texts: list[str]) -> list[list[float]]:
         normalized = [_normalize_text(text) for text in texts]
-        if (
-            not self._settings.mock_llm
-            and self._settings.openai_api_key
-            and normalized
-        ):
+        if self._settings.openai_api_key and normalized:
             try:
                 client = AsyncOpenAI(api_key=self._settings.openai_api_key)
                 response = await client.embeddings.create(

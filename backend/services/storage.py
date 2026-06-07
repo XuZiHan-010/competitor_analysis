@@ -5,12 +5,14 @@ from schemas.report import Report
 from schemas.scope import ScopingDraft, TaskScopeContract
 from schemas.survey import SurveyEvidence
 from schemas.traces import AgentTrace
+from services.report_search import rank_reports_for_query
 
 
 class InMemoryStore:
     def __init__(self) -> None:
         self.scoping_drafts: dict[UUID, ScopingDraft] = {}
         self.task_scopes: dict[UUID, TaskScopeContract] = {}
+        self.task_owner: dict[UUID, UUID] = {}
         self.task_reports: dict[UUID, Report] = {}
         self.survey_uploads: dict[UUID, list[SurveyEvidence]] = defaultdict(list)
         self.traces_by_run: dict[UUID, list[AgentTrace]] = defaultdict(list)
@@ -24,29 +26,19 @@ class InMemoryStore:
     def update_report(self, report: Report) -> None:
         self.task_reports[report.task_id] = report
 
-    def search_reports(self, query: str, *, limit: int = 10) -> list[Report]:
-        terms = _tokenize(query)
-        if not terms:
-            return []
-        scored: list[tuple[int, Report]] = []
-        for report in self.task_reports.values():
-            haystack = " ".join(
-                [
-                    report.markdown_content,
-                    str(report.structured_content),
-                    " ".join(claim.claim_text for claim in report.claims),
-                    " ".join(f"{source.title} {source.snippet}" for source in report.sources),
-                ]
-            ).lower()
-            score = sum(haystack.count(term) for term in terms)
-            if score > 0:
-                scored.append((score, report))
-        scored.sort(key=lambda item: (item[0], item[1].created_at), reverse=True)
-        return [report for _, report in scored[:limit]]
-
-
-def _tokenize(query: str) -> list[str]:
-    return [term for term in query.lower().split() if term.strip()]
+    def search_reports(
+        self,
+        query: str,
+        *,
+        limit: int = 10,
+        user_id: UUID | None = None,
+    ) -> list[Report]:
+        reports = [
+            report
+            for report in self.task_reports.values()
+            if user_id is None or self.task_owner.get(report.task_id) == user_id
+        ]
+        return rank_reports_for_query(reports, query, limit=limit, require_match=True)
 
 
 store = InMemoryStore()
