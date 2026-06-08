@@ -3,7 +3,6 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   transpilePackages: ["@base-ui/react"],
   devIndicators: false,
-  serverExternalPackages: ["@base-ui/react"],
   async rewrites() {
     return [
       {
