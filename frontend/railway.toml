@@ -1,6 +1,6 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "NODE_ENV=production npm run build"
+buildCommand = "NODE_ENV=production npm run build && mkdir -p .next/standalone/.next && cp -r .next/static .next/standalone/.next/static && cp -r public .next/standalone/public"
 
 [deploy]
 startCommand = "HOSTNAME=0.0.0.0 node .next/standalone/server.js"
