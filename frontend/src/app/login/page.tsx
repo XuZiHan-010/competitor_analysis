@@ -1,61 +1,34 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
+import { ArrowRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/page-container";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuthStore } from "@/stores/auth-store";
 
-type LoginStep = "email" | "code";
+const DEMO_EMAIL = "example@email.com";
 
 export default function LoginPage() {
   const router = useRouter();
-  const requestCode = useAuthStore((state) => state.requestCode);
-  const verify = useAuthStore((state) => state.verify);
-  const devCode = useAuthStore((state) => state.devCode);
+  const login = useAuthStore((state) => state.login);
   const authError = useAuthStore((state) => state.error);
   const clearError = useAuthStore((state) => state.clearError);
 
-  const [step, setStep] = useState<LoginStep>("email");
-  const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const normalizedEmail = useMemo(() => email.trim().toLowerCase(), [email]);
-  const canSend = normalizedEmail.includes("@") && normalizedEmail.includes(".");
-  const canVerify = canSend && code.trim().length >= 4;
-
-  async function handleSendCode(event: FormEvent<HTMLFormElement>) {
+  async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!canSend) return;
     clearError();
     setSubmitting(true);
     try {
-      await requestCode(normalizedEmail);
-      setStep("code");
-      toast.success("验证码已发送");
-    } catch {
-      toast.error("验证码发送失败");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function handleVerify(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!canVerify) return;
-    clearError();
-    setSubmitting(true);
-    try {
-      await verify(normalizedEmail, code.trim());
+      await login(DEMO_EMAIL);
       toast.success("登录成功");
       router.replace(getSafeNextPath());
     } catch {
-      toast.error("验证码无效或已过期");
+      toast.error("登录失败");
     } finally {
       setSubmitting(false);
     }
@@ -84,93 +57,35 @@ export default function LoginPage() {
 
         <div className="rounded-xl border border-border/70 bg-card/70 p-6 shadow-sm motion-safe:animate-[slide-up_0.5s_cubic-bezier(0.16,1,0.3,1)] sm:p-8">
           <div className="mb-7">
-            <h2 className="text-xl font-medium text-foreground">
-              {step === "email" ? "接收验证码" : "输入验证码"}
-            </h2>
+            <h2 className="text-xl font-medium text-foreground">一键进入</h2>
             <p className="mt-1.5 text-sm text-muted-foreground">
-              {step === "email"
-                ? "输入邮箱，我们会发送一次性登录码。"
-                : "查收邮件，输入收到的验证码。"}
+              使用内置演示账号直接登录，无需验证码。
             </p>
           </div>
 
-          {step === "email" ? (
-            <form className="space-y-5" onSubmit={handleSendCode}>
-              <div className="space-y-2">
-                <Label htmlFor="email">邮箱</Label>
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  value={email}
-                  autoComplete="email"
-                  spellCheck={false}
-                  placeholder="eric@example.com"
-                  className="h-11 text-base"
-                  onChange={(event) => setEmail(event.target.value)}
-                />
-              </div>
-              <Button
-                type="submit"
-                className="h-11 w-full justify-between text-base hover:bg-primary/90"
-                disabled={!canSend || submitting}
+          <form className="space-y-5" onSubmit={handleLogin}>
+            <div className="space-y-2">
+              <Label htmlFor="email">登录邮箱</Label>
+              <div
+                id="email"
+                className="flex h-11 items-center rounded-md border border-border/60 bg-background/70 px-3.5 text-base tracking-[0.02em] text-foreground"
               >
-                {submitting ? "发送中…" : "发送验证码"}
-                {submitting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <ArrowRight className="h-4 w-4" />
-                )}
-              </Button>
-            </form>
-          ) : (
-            <form className="space-y-5" onSubmit={handleVerify}>
-              <div className="rounded-lg border border-border/60 bg-background/70 px-3.5 py-2.5 text-sm text-muted-foreground">
-                验证码已发送至 <span className="text-foreground">{normalizedEmail}</span>
+                {DEMO_EMAIL}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="code">验证码</Label>
-                <Input
-                  id="code"
-                  name="code"
-                  inputMode="numeric"
-                  value={code}
-                  autoComplete="one-time-code"
-                  placeholder="6 位数字"
-                  className="h-11 text-base tracking-[0.3em]"
-                  onChange={(event) => setCode(event.target.value)}
-                />
-              </div>
-              {devCode && (
-                <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/8 px-3.5 py-2.5 text-xs text-primary">
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  直接输入验证码：{devCode}
-                </div>
+            </div>
+            <Button
+              type="submit"
+              className="h-11 w-full justify-between text-base hover:bg-primary/90"
+              disabled={submitting}
+            >
+              {submitting ? "登录中…" : "登录"}
+              {submitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ArrowRight className="h-4 w-4" />
               )}
-              <Button
-                type="submit"
-                className="h-11 w-full justify-between text-base hover:bg-primary/90"
-                disabled={!canVerify || submitting}
-              >
-                {submitting ? "验证中…" : "进入工作台"}
-                {submitting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <ArrowRight className="h-4 w-4" />
-                )}
-              </Button>
-              <button
-                type="button"
-                className="text-xs text-muted-foreground transition-colors hover:text-foreground"
-                onClick={() => {
-                  setStep("email");
-                  setCode("");
-                }}
-              >
-                换一个邮箱
-              </button>
-            </form>
-          )}
+            </Button>
+          </form>
 
           {authError && (
             <p className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3.5 py-2.5 text-sm text-destructive">

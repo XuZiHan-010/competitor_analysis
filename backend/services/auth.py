@@ -2,18 +2,11 @@ import base64
 import hashlib
 import hmac
 import json
-import secrets
-import smtplib
-from contextlib import suppress
 from datetime import UTC, datetime, timedelta
-from email.message import EmailMessage
-from types import TracebackType
 from typing import Any
 from uuid import UUID, uuid5
 
 from pydantic import BaseModel, field_validator
-
-from settings import Settings
 
 SESSION_COOKIE_NAME = "strata_session"
 USER_NAMESPACE = UUID("6f3ee5d8-19d6-4a60-aef3-91c76b1b2f7c")
@@ -37,89 +30,6 @@ class UserIdentity(BaseModel):
 
 def user_id_for_email(email: str) -> UUID:
     return uuid5(USER_NAMESPACE, email.strip().lower())
-
-
-class EmailCodeStore:
-    def __init__(self) -> None:
-        self._codes: dict[str, tuple[str, datetime]] = {}
-
-    def issue_code(self, email: str) -> str:
-        code = f"{secrets.randbelow(1_000_000):06d}"
-        self._codes[email.lower()] = (code, datetime.now(UTC) + timedelta(minutes=5))
-        return code
-
-    def verify_code(self, email: str, code: str) -> bool:
-        stored = self._codes.get(email.lower())
-        if stored is None:
-            return False
-        expected, expires_at = stored
-        if expires_at < datetime.now(UTC):
-            self._codes.pop(email.lower(), None)
-            return False
-        if not hmac.compare_digest(expected, code):
-            return False
-        self._codes.pop(email.lower(), None)
-        return True
-
-
-class EmailDeliveryError(RuntimeError):
-    pass
-
-
-class SmtpEmailSender:
-    def __init__(self, settings: Settings) -> None:
-        self._settings = settings
-
-    def send_verification_code(self, email: str, code: str) -> None:
-        if not self._settings.smtp_host or not self._settings.smtp_from_email:
-            raise EmailDeliveryError("SMTP_HOST and SMTP_FROM_EMAIL are required")
-
-        message = EmailMessage()
-        message["Subject"] = "竞品分析系统登录验证码"
-        message["From"] = self._settings.smtp_from_email
-        message["To"] = email
-        message.set_content(
-            f"你的登录验证码是：{code}\n\n"
-            "验证码 5 分钟内有效。如果这不是你本人操作，请忽略这封邮件。"
-        )
-
-        client: smtplib.SMTP | smtplib.SMTP_SSL
-        if self._settings.smtp_use_ssl:
-            client = smtplib.SMTP_SSL(
-                self._settings.smtp_host,
-                self._settings.smtp_port,
-                timeout=10,
-            )
-        else:
-            client = smtplib.SMTP(
-                self._settings.smtp_host,
-                self._settings.smtp_port,
-                timeout=10,
-            )
-
-        with _smtp_client(client) as smtp:
-            if not self._settings.smtp_use_ssl and self._settings.smtp_starttls:
-                smtp.starttls()
-            if self._settings.smtp_username and self._settings.smtp_password:
-                smtp.login(self._settings.smtp_username, self._settings.smtp_password)
-            smtp.send_message(message)
-
-
-class _smtp_client:
-    def __init__(self, client: smtplib.SMTP | smtplib.SMTP_SSL) -> None:
-        self._client = client
-
-    def __enter__(self) -> smtplib.SMTP | smtplib.SMTP_SSL:
-        return self._client
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> None:
-        with suppress(OSError, smtplib.SMTPException):
-            self._client.quit()
 
 
 class JwtService:

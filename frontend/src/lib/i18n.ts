@@ -31,7 +31,7 @@ export const translations = {
     stageBackDefault: "回到任务创建",
     loginTitle: "登录",
     loginBlurb:
-      "邮箱验证码登录页。Stage 2 接入 /api/auth/send-code 与 /api/auth/verify 两个端点；JWT 落 httpOnly cookie。",
+      "Demo 一键直接登录页。点击登录调用 /api/auth/login 直接签发 JWT 并落 httpOnly cookie。",
     loginBack: "先体验 demo",
     reportsTitle: "我的报告",
     reportsBlurb:
@@ -159,7 +159,7 @@ export const translations = {
     stageBackDefault: "Back to task setup",
     loginTitle: "Log In",
     loginBlurb:
-      "Email verification login page. Stage 2 will connect /api/auth/send-code and /api/auth/verify, then store JWT in an httpOnly cookie.",
+      "One-click demo login. Clicking log in calls /api/auth/login, which issues a JWT and stores it in an httpOnly cookie.",
     loginBack: "Try the demo first",
     reportsTitle: "My Reports",
     reportsBlurb:

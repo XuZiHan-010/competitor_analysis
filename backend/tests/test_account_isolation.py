@@ -61,23 +61,11 @@ def test_history_requires_token() -> None:
 def test_same_email_gets_stable_user_id() -> None:
     client = TestClient(app)
 
-    first_code = client.post("/api/auth/send-code", json={"email": "Alice@example.com"}).json()[
-        "dev_code"
-    ]
-    assert client.post(
-        "/api/auth/verify",
-        json={"email": "Alice@example.com", "code": first_code},
-    ).status_code == 200
+    assert client.post("/api/auth/login", json={"email": "Alice@example.com"}).status_code == 200
     first_me = client.get("/api/auth/me")
     assert first_me.status_code == 200
 
-    second_code = client.post("/api/auth/send-code", json={"email": "alice@example.com"}).json()[
-        "dev_code"
-    ]
-    assert client.post(
-        "/api/auth/verify",
-        json={"email": "alice@example.com", "code": second_code},
-    ).status_code == 200
+    assert client.post("/api/auth/login", json={"email": "alice@example.com"}).status_code == 200
     second_me = client.get("/api/auth/me")
     assert second_me.status_code == 200
 

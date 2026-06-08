@@ -3,10 +3,9 @@
 import { create } from "zustand";
 import {
   getMe,
+  login as loginRequest,
   logout as logoutRequest,
-  sendCode,
   type UserIdentity,
-  verifyCode,
 } from "@/lib/api/auth";
 
 type AuthStatus = "idle" | "checking" | "authenticated" | "anonymous";
@@ -14,11 +13,9 @@ type AuthStatus = "idle" | "checking" | "authenticated" | "anonymous";
 interface AuthState {
   user: UserIdentity | null;
   status: AuthStatus;
-  devCode: string | null;
   error: string | null;
   refresh: () => Promise<UserIdentity | null>;
-  requestCode: (email: string) => Promise<void>;
-  verify: (email: string, code: string) => Promise<UserIdentity | null>;
+  login: (email: string) => Promise<UserIdentity | null>;
   logout: () => Promise<void>;
   clearError: () => void;
 }
@@ -26,7 +23,6 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   status: "idle",
-  devCode: null,
   error: null,
   refresh: async () => {
     set({ status: "checking", error: null });
@@ -39,21 +35,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return null;
     }
   },
-  requestCode: async (email) => {
-    set({ error: null, devCode: null });
-    try {
-      const response = await sendCode(email);
-      set({ devCode: response.dev_code });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "验证码发送失败";
-      set({ error: message });
-      throw error;
-    }
-  },
-  verify: async (email, code) => {
+  login: async (email) => {
     set({ status: "checking", error: null });
     try {
-      await verifyCode(email, code);
+      await loginRequest(email);
       return get().refresh();
     } catch (error) {
       const message = error instanceof Error ? error.message : "登录失败";
@@ -65,7 +50,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       await logoutRequest();
     } finally {
-      set({ user: null, status: "anonymous", devCode: null, error: null });
+      set({ user: null, status: "anonymous", error: null });
     }
   },
   clearError: () => set({ error: null }),
