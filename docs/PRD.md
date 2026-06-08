@@ -182,7 +182,7 @@
 
 | Agent | 模型 | 输入 / 输出（USD/1M tokens） | 7 天演示成本 | 能力分 | 选择理由 |
 |-------|------|----------------------------|-------------|--------|---------|
-| CollectorAgent | `gemini-2.5-flash` | $0.30 / $2.50 | ~$0.28 | 78 | 1M 上下文塞检索结果；tool use 稳定；Google 索引内核做 query 改写参考 |
+| CollectorAgent | `gpt-4o-mini` | $0.15 / $0.60 | ~$0.08 | 75 | query 改写任务轻、JSON 输出强约束，便宜款够用；与 Scoping/QA 同模型同 SDK，收敛外部依赖 |
 | AnalystAgent | `deepseek-v4-pro` | $0.435 / $0.87 | ~$0.21 | 86 | 推理强 + 384K 输出容量；成本仅 gpt-4.1 的 1/6（2026-05 永久 75% 降价后） |
 | WriterAgent | `deepseek-v4-pro` | $0.435 / $0.87 | ~$0.21 | 88（中文） | 中文长报告自然度高；与 AnalystAgent 同模型简化 prompt 协调 |
 | QAAgent | `gpt-4o-mini` | $0.15 / $0.60 | ~$0.10 | 75 | JSON 结构化检查任务简单，便宜款够用 |
@@ -191,12 +191,12 @@
 
 **选型原则**："成本 × 能力同时兼顾，不追求最强"——例如 Analyst 不用 gpt-4.1（能力 90 / 成本 $1.26），改用 DeepSeek V4 Pro（能力 86 / 成本 $0.21），**用 1/6 的钱买 95% 的能力**。
 
-**为什么不全用 DeepSeek**：CollectorAgent 一格保留 Gemini 2.5 Flash —— 因为它的 1M 上下文 + Google 索引内核做 query 改写参考时质量更好；QAAgent 用 gpt-4o-mini 是因为 OpenAI SDK 与 DeepSeek 兼容 SDK 同源，跨家协调成本最低。
+**为什么不全用 DeepSeek**：CollectorAgent 的 query 改写是轻量 JSON 任务，与 Scoping/QA 一并用 gpt-4o-mini，共用 OpenAI 同源栈、跨家协调成本最低（早期曾用 Gemini 2.5 Flash 看中其 1M 上下文，但该优势在小输入的 query 改写上用不到，已下线为休眠可选 provider 以降本）。
 
 **SDK 与配置**：
 - DeepSeek 兼容 OpenAI SDK（base_url=`https://api.deepseek.com/v1`），与 gpt-4o-mini 共用 `openai` Python 包
-- Gemini 用 `google-genai` SDK
-- 环境变量：`OPENAI_API_KEY` / `GEMINI_API_KEY` / `DEEPSEEK_API_KEY`（密钥管理见 [docs/security.md](security.md)）
+- Gemini 用 `google-genai` SDK（休眠可选 provider，默认 Agent 链路不再调用）
+- 环境变量：`OPENAI_API_KEY` / `DEEPSEEK_API_KEY`（`GEMINI_API_KEY` 可选）（密钥管理见 [docs/security.md](security.md)）
 
 **未来路径**：见 §十一-ter 第二阶段「合规」行——MVP 已部分国产化（Analyst+Writer），生产化阶段补充智谱 GLM / 阿里通义 / MiniMax 多 Provider。
 
@@ -281,7 +281,7 @@ class ScopingDraft(BaseModel):
 
 ### Agent 5.1: 采集 Agent (`CollectorAgent`)
 
-**使用模型**：`gemini-2.5-flash`（1M 上下文塞检索结果不慌；tool use 稳定；详见 §五.X 选型决策）
+**使用模型**：`gpt-4o-mini`（query 改写任务轻、JSON 输出强约束，便宜款够用；与 Scoping/QA 同模型同 SDK；详见 §五.X 选型决策）
 
 **职责**: 把"产品/竞品名"变成结构化原始数据
 
@@ -308,7 +308,7 @@ class ScopingDraft(BaseModel):
 
 **并行采集约束**：5 个竞品的 `web_search` + `fetch_page` 走 `asyncio.gather` 节点内并行（**P0 性能必需**，串行 5 × 30s 演示卡 2.5 分钟）；竞品内多维度 `web_search` 亦并发；每个竞品采集任务带 60s timeout + 单点失败隔离（一个竞品挂不拖累其他）。代码位置：`backend/services/agents/nodes/collector.py`。所有 tool 调用走 §五.Y 约束 2 的统一 wrapper，错误不挂掉 DAG。
 
-**LLM 瞬时错误退避**：`LLMClient` 对所有 provider 调用（OpenAI / DeepSeek / Gemini）统一加**指数退避重试**（仅瞬时错误 429/503/超时/连接中断，最多 3 次）+ 单次调用超时上限，避免 Gemini `gemini-2.5-flash` 高峰期 503 直接把节点打成降级兜底。非瞬时错误（如 400）立即抛出不重试。代码位置：`backend/services/llm/client.py`（`_call_with_retries` / `_is_transient`）。
+**LLM 瞬时错误退避**：`LLMClient` 对所有 provider 调用（OpenAI / DeepSeek / Gemini）统一加**指数退避重试**（仅瞬时错误 429/503/超时/连接中断，最多 3 次）+ 单次调用超时上限，避免高峰期 503 直接把节点打成降级兜底。非瞬时错误（如 400）立即抛出不重试。代码位置：`backend/services/llm/client.py`（`_call_with_retries` / `_is_transient`）。
 
 **输入 Schema**:
 ```json

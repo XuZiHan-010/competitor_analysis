@@ -18,7 +18,7 @@
 | 前端 | Next.js 16 + React 19 + Tailwind v4 + shadcn/ui | Railway 部署 |
 | 后端 API | FastAPI + Pydantic v2 | Railway 部署 |
 | 编排引擎 | LangGraph（PostgresCheckpointer，MemorySaver 兜底） | State 驱动 DAG + 反馈闭环 |
-| LLM | Gemini 2.5 Flash / DeepSeek V4 Pro / gpt-4o-mini | 按 Agent 分配，见 [PRD §五.X](PRD.md#五x-模型选型决策表) |
+| LLM | gpt-4o-mini / DeepSeek V4 Pro（Gemini 2.5 Flash 休眠可选） | 按 Agent 分配，见 [PRD §五.X](PRD.md#五x-模型选型决策表) |
 | 搜索 | Tavily → SerpApi（HybridSearch 降级链） | 失败自动降级 |
 | 抓取 | Playwright | 强制 robots.txt 检查 |
 | 数据 | Neon Postgres（13 表 + pgvector） | 业务数据 + Trace + 向量检索 |
@@ -55,7 +55,7 @@ flowchart TB
     end
 
     subgraph EXT["外部服务"]
-        LLM["LLM<br/>Gemini 2.5 Flash /<br/>DeepSeek V4 Pro / gpt-4o-mini"]
+        LLM["LLM<br/>gpt-4o-mini /<br/>DeepSeek V4 Pro"]
         SRCH["HybridSearch<br/>Tavily → SerpApi"]
         SCR["Playwright 抓取<br/>（robots.txt 检查）"]
     end
@@ -123,7 +123,7 @@ flowchart LR
 | Backend (FastAPI) | Railway | Hobby ~$3-5/月 |
 | Postgres + pgvector | Neon | Free Forever (3GB) |
 | Redis | Upstash | Free (10K commands/天) |
-| LLM | Gemini 2.5 Flash + DeepSeek V4 Pro + gpt-4o-mini（按 Agent 分配，见 [PRD §五.X](PRD.md#五x-模型选型决策表)） | 演示周约 $3 |
+| LLM | gpt-4o-mini + DeepSeek V4 Pro（Gemini 2.5 Flash 休眠可选，按 Agent 分配，见 [PRD §五.X](PRD.md#五x-模型选型决策表)） | 演示周约 $3 |
 | Search API | Tavily Free / SerpApi Free | 免费额度 |
 
 > 详细部署步骤（环境变量清单、Railway/Neon/Upstash 配置）见 `docs/deployment.md`（Week 2 部署后补）。

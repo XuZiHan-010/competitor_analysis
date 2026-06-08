@@ -200,17 +200,17 @@ class CollectorAgent:
         base_queries: list[tuple[str, str]],
         llm: LLMClient | None,
     ) -> list[tuple[str, str]]:
-        """Rewrite static search queries with Gemini (PRD §五.X / §284).
+        """Rewrite static search queries with the collector LLM (PRD §五.X / §284).
 
-        Falls back to the original queries on any failure or when Gemini is
+        Falls back to the original queries on any failure or when the LLM is
         unavailable, so collection degrades gracefully rather than aborting.
         """
         settings = get_settings()
-        if llm is None or not llm.enabled or not settings.gemini_api_key:
+        if llm is None or not llm.enabled or not settings.openai_api_key:
             return base_queries
         try:
             payload = await llm.complete_json(
-                provider="gemini",
+                provider="openai",
                 model=settings.collector_model,
                 messages=[
                     {
