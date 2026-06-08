@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     langchain_api_key: str | None = None
     langchain_project: str = "competitor-analysis"
     scoping_model: str = "gpt-4o-mini"
-    collector_model: str = "gemini-2.5-flash"
+    collector_model: str = "gpt-4o-mini"
     analyst_model: str = "deepseek-v4-pro"
     writer_model: str = "deepseek-v4-pro"
     qa_model: str = "gpt-4o-mini"

@@ -18,7 +18,7 @@ from services.llm.usage import (
 
 # PRD §五.X: input_price/output_price in USD per 1M tokens
 _AGENT_PRICING: dict[str, tuple[float, float]] = {
-    "CollectorAgent": (0.30, 2.50),  # Gemini 2.5 Flash
+    "CollectorAgent": (0.15, 0.60),  # gpt-4o-mini
     "AnalystAgent": (0.435, 0.87),  # DeepSeek V4 Pro
     "WriterAgent": (0.435, 0.87),  # DeepSeek V4 Pro
     "QAAgent": (0.15, 0.60),  # gpt-4o-mini
