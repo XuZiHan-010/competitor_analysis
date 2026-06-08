@@ -25,7 +25,7 @@ WriterAgent     — 生成报告草稿
     ↓
 QAAgent         — 质检，不通过则打回上游重做（反馈闭环）
     ↓
-结构化报告（网页 / PDF / PPTX）
+结构化报告（pdf）
 ```
 
 LangGraph 驱动 DAG，Agent 间通过 `WorkflowState` 结构化消息通信，前端实时显示进度。
