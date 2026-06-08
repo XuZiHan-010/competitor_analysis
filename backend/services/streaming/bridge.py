@@ -1,7 +1,7 @@
 import asyncio
 import json
 from collections import defaultdict
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any, Protocol
 
 from schemas.events import StreamEvent
@@ -39,7 +39,7 @@ class InMemoryStreamBridge:
         run_id: str,
         *,
         last_event_id: int | None = None,
-    ) -> AsyncIterator[StreamEvent]:
+    ) -> AsyncGenerator[StreamEvent, None]:
         queue: asyncio.Queue[StreamEvent] = asyncio.Queue()
         async with self._lock:
             replay = [
@@ -92,11 +92,13 @@ class RedisStreamBridge:
         run_id: str,
         *,
         last_event_id: int | None = None,
-    ) -> AsyncIterator[StreamEvent]:
+    ) -> AsyncGenerator[StreamEvent, None]:
         stream_key = self._stream_key(run_id)
         last_id = f"{last_event_id or 0}-0"
         while True:
-            response = await self._redis.xread({stream_key: last_id}, block=15_000, count=20)
+            # redis-py types xread's result inconsistently across versions; widen
+            # to Any so unpacking the (stream, [(id, fields)]) shape type-checks.
+            response: Any = await self._redis.xread({stream_key: last_id}, block=15_000, count=20)
             if not response:
                 yield StreamEvent(
                     id=(last_event_id or 0) + 1,
