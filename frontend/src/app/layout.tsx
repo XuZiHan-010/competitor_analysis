@@ -4,6 +4,8 @@ import { GeistSans } from "geist/font/sans";
 import { AppProviders } from "@/components/layout/app-providers";
 import "./globals.css";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Strata - 竞品分析情报系统",
   description:

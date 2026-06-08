@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { Download, ExternalLink } from "lucide-react";
 import { toast } from "sonner";

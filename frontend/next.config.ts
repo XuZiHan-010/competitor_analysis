@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["@base-ui/react"],
+  output: "standalone",
+  serverExternalPackages: ["@base-ui/react"],
   devIndicators: false,
   async rewrites() {
     return [
