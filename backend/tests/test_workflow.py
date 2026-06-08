@@ -1,9 +1,9 @@
+from collections.abc import Callable
 from time import sleep
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
-
-from main import app
 
 
 def _scope_contract(client: TestClient) -> dict:
@@ -18,8 +18,16 @@ def _scope_contract(client: TestClient) -> dict:
     return response.json()["scope_contract"]
 
 
-def test_run_mock_workflow_and_report_contract() -> None:
-    client = TestClient(app)
+def test_run_mock_workflow_and_report_contract(
+    auth_client_factory: Callable[[str], TestClient],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_render_report_pdf(report: object) -> bytes:
+        return b"%PDF-1.4\n% test pdf\n"
+
+    monkeypatch.setattr("api.routes.reports.render_report_pdf", fake_render_report_pdf)
+
+    client = auth_client_factory("eric@example.com")
     scope_contract = _scope_contract(client)
     task_id = scope_contract["id"]
 
@@ -42,6 +50,14 @@ def test_run_mock_workflow_and_report_contract() -> None:
     report = report_response.json()
     assert report["claims"]
     assert all(claim["source_ids"] for claim in report["claims"])
+    source_ids = [source["id"] for source in report["sources"]]
+    assert len(source_ids) == len(set(source_ids))
+    source_id_set = set(source_ids)
+    assert all(
+        source_id in source_id_set
+        for claim in report["claims"]
+        for source_id in claim["source_ids"]
+    )
     structured = report["structured_content"]
     assert structured["feature_tree"]["rows"]
     assert structured["pricing"]["tiers"]
@@ -89,6 +105,19 @@ def test_run_mock_workflow_and_report_contract() -> None:
         "survey.stage4.aggregate",
     }
     assert survey_stages.issubset({trace["node_name"] for trace in timeline})
+    succeeded_traces = [trace for trace in timeline if trace["status"] == "succeeded"]
+    assert succeeded_traces
+    assert all(
+        isinstance(trace["output_payload"].get("output_summary"), str)
+        and trace["output_payload"]["output_summary"]
+        and not trace["output_payload"]["output_summary"].startswith("{")
+        for trace in succeeded_traces
+    )
+    assert any(
+        trace["agent_name"] == "CollectorAgent"
+        and trace["output_payload"]["output_summary"].startswith("采集")
+        for trace in succeeded_traces
+    )
     collector_traces = [trace for trace in timeline if trace["agent_name"] == "CollectorAgent"]
     assert len(collector_traces) >= 2
     recovered_sources = [
@@ -102,10 +131,20 @@ def test_run_mock_workflow_and_report_contract() -> None:
     assert tasks_response.status_code == 200
     tasks = tasks_response.json()
     assert any(task["id"] == run_id and task["status"] == "succeeded" for task in tasks)
+    task_record = next(task for task in tasks if task["id"] == run_id)
+    assert task_record["competitors"] == ["Notion", "Lark", "Airtable"]
 
 
-def test_p1_contract_placeholders(monkeypatch: Any) -> None:
-    client = TestClient(app)
+def test_p1_contract_placeholders(
+    monkeypatch: Any,
+    auth_client_factory: Callable[[str], TestClient],
+) -> None:
+    async def fake_render_report_pdf(report: object) -> bytes:
+        return b"%PDF-1.4\n% test pdf\n"
+
+    monkeypatch.setattr("api.routes.reports.render_report_pdf", fake_render_report_pdf)
+
+    client = auth_client_factory("eric@example.com")
     scope_contract = _scope_contract(client)
     task_id = scope_contract["id"]
     run_response = client.post(
@@ -163,6 +202,11 @@ def test_p1_contract_placeholders(monkeypatch: Any) -> None:
     data = search_response.json()
     assert data["mode"] == "in_memory_semantic_fallback"
     assert data["results"]
+    assert data["results"][0]["title"] == "Notion / Lark / Airtable"
+
+    empty_search_response = client.get("/api/reports/search", params={"q": ""})
+    assert empty_search_response.status_code == 200
+    assert empty_search_response.json()["results"]
 
     claim_search_response = client.get("/api/reports/search", params={"q": "collaboration"})
     assert claim_search_response.status_code == 200

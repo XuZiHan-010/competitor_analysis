@@ -1,14 +1,15 @@
+from collections.abc import Callable
 from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 
-from main import app
 from schemas.source import SourceCitation
 from schemas.survey import Questionnaire, SurveyQuestion
 from services.survey import redact_sensitive_text
 from services.survey.existing_survey_finder import ExistingSurveyFinder
 from services.survey.questionnaire_designer import QuestionnaireDesigner
+from services.survey.tool import _summarize_output
 
 
 def test_redact_sensitive_text() -> None:
@@ -19,8 +20,32 @@ def test_redact_sensitive_text() -> None:
     assert "eric@example.com" not in redacted
 
 
-def test_upload_survey_redacts_and_counts_evidence() -> None:
-    client = TestClient(app)
+def test_survey_trace_output_summary_is_human_readable() -> None:
+    questionnaire = Questionnaire(
+        competitor="Notion",
+        dimension_intent="用户声音",
+        questions=[
+            SurveyQuestion(
+                id="sq_001",
+                text="为什么选择该产品？",
+                type="open",
+                intent="识别采用动机。",
+            )
+        ],
+        design_rationale="test",
+    )
+
+    summary = _summarize_output(questionnaire)["output_summary"]
+
+    assert isinstance(summary, str)
+    assert summary == f"问卷 {questionnaire.id} / 1 题"
+    assert not summary.startswith("{")
+
+
+def test_upload_survey_redacts_and_counts_evidence(
+    auth_client_factory: Callable[[str], TestClient],
+) -> None:
+    client = auth_client_factory("eric@example.com")
     task_id = uuid4()
     response = client.post(
         f"/api/tasks/{task_id}/survey/upload",
@@ -37,8 +62,10 @@ def test_upload_survey_redacts_and_counts_evidence() -> None:
     assert "13900000000" not in str(data)
 
 
-def test_uploaded_survey_evidence_enters_workflow() -> None:
-    client = TestClient(app)
+def test_uploaded_survey_evidence_enters_workflow(
+    auth_client_factory: Callable[[str], TestClient],
+) -> None:
+    client = auth_client_factory("eric@example.com")
     scope_response = client.post(
         "/api/tasks/scoping",
         json={

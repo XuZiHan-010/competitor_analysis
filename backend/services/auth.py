@@ -9,10 +9,14 @@ from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 from types import TracebackType
 from typing import Any
+from uuid import UUID, uuid5
 
 from pydantic import BaseModel, field_validator
 
 from settings import Settings
+
+SESSION_COOKIE_NAME = "strata_session"
+USER_NAMESPACE = UUID("6f3ee5d8-19d6-4a60-aef3-91c76b1b2f7c")
 
 
 class AuthToken(BaseModel):
@@ -29,6 +33,10 @@ class UserIdentity(BaseModel):
         if "@" not in value or "." not in value.rsplit("@", 1)[-1]:
             raise ValueError("invalid email")
         return value.lower()
+
+
+def user_id_for_email(email: str) -> UUID:
+    return uuid5(USER_NAMESPACE, email.strip().lower())
 
 
 class EmailCodeStore:

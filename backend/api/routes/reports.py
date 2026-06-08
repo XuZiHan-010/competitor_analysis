@@ -3,6 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Response
 
+from api.auth_deps import CurrentUser, CurrentUserDep
 from api.dependencies import run_manager
 from schemas.report import (
     ClaimReviewRequest,
@@ -13,16 +14,21 @@ from schemas.report import (
     ReportSearchResponse,
     ReportSearchResult,
 )
-from services.exporter import export_markdown, export_pdf
+from services.exporter import PdfRenderError, export_markdown, render_report_pdf
 from services.llm import LLMClient
+from services.report_search import report_search_title
 from settings import get_settings
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 
 @router.get("/search", response_model=ReportSearchResponse)
-async def search_reports(q: str, limit: int = 10) -> ReportSearchResponse:
-    result = await run_manager.search_reports(q, limit=limit)
+async def search_reports(
+    q: str,
+    current_user: CurrentUserDep,
+    limit: int = 10,
+) -> ReportSearchResponse:
+    result = await run_manager.search_reports(q, limit=limit, user_id=current_user.user_id)
     return ReportSearchResponse(
         query=q,
         mode=result.mode,
@@ -31,50 +37,58 @@ async def search_reports(q: str, limit: int = 10) -> ReportSearchResponse:
 
 
 @router.get("/{task_id}", response_model=Report)
-async def get_report(task_id: UUID) -> Report:
-    report = await run_manager.get_report(task_id)
-    if report is None:
-        raise HTTPException(status_code=404, detail="report not found")
-    return report
+async def get_report(
+    task_id: UUID,
+    current_user: CurrentUserDep,
+) -> Report:
+    return await _require_owned_report(task_id, current_user)
 
 
 @router.get("/{task_id}/metrics", response_model=ReportMetrics)
-async def get_report_metrics(task_id: UUID) -> ReportMetrics:
-    report = await run_manager.get_report(task_id)
-    if report is None:
-        raise HTTPException(status_code=404, detail="report not found")
+async def get_report_metrics(
+    task_id: UUID,
+    current_user: CurrentUserDep,
+) -> ReportMetrics:
+    report = await _require_owned_report(task_id, current_user)
     return report.metrics
 
 
 @router.get("/{task_id}/export")
-async def export_report(task_id: UUID, format: str = "markdown") -> Response:
-    report = await run_manager.get_report(task_id)
-    if report is None:
-        raise HTTPException(status_code=404, detail="report not found")
-    exporters = {
-        "markdown": (
-            export_markdown,
-            "text/markdown; charset=utf-8",
-            "md",
-        ),
-        "pdf": (export_pdf, "application/pdf", "pdf"),
-    }
-    if format not in exporters:
+async def export_report(
+    task_id: UUID,
+    current_user: CurrentUserDep,
+    format: str = "markdown",
+) -> Response:
+    report = await _require_owned_report(task_id, current_user)
+    if format == "markdown":
+        content = export_markdown(report)
+        media_type = "text/markdown; charset=utf-8"
+        extension = "md"
+    elif format == "pdf":
+        try:
+            content = await render_report_pdf(report)
+        except PdfRenderError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        media_type = "application/pdf"
+        extension = "pdf"
+    else:
         raise HTTPException(status_code=400, detail="unsupported export format")
-    exporter, media_type, extension = exporters[format]
+
     filename = f"report-{task_id}.{extension}"
     return Response(
-        content=exporter(report),
+        content=content,
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
 @router.post("/{task_id}/language", response_model=Report)
-async def switch_report_language(task_id: UUID, request: LanguageRequest) -> Report:
-    report = await run_manager.get_report(task_id)
-    if report is None:
-        raise HTTPException(status_code=404, detail="report not found")
+async def switch_report_language(
+    task_id: UUID,
+    request: LanguageRequest,
+    current_user: CurrentUserDep,
+) -> Report:
+    report = await _require_owned_report(task_id, current_user)
     if report.language == request.language:
         return report
 
@@ -99,10 +113,12 @@ async def switch_report_language(task_id: UUID, request: LanguageRequest) -> Rep
 
 
 @router.patch("/{task_id}/field", response_model=Report)
-async def correct_field(task_id: UUID, request: FieldCorrectionRequest) -> Report:
-    report = await run_manager.get_report(task_id)
-    if report is None:
-        raise HTTPException(status_code=404, detail="report not found")
+async def correct_field(
+    task_id: UUID,
+    request: FieldCorrectionRequest,
+    current_user: CurrentUserDep,
+) -> Report:
+    report = await _require_owned_report(task_id, current_user)
     claim_index = _claim_index(report, request.claim_id)
     claims = list(report.claims)
     claims[claim_index] = claims[claim_index].model_copy(
@@ -127,10 +143,9 @@ async def review_claim(
     task_id: UUID,
     claim_id: UUID,
     request: ClaimReviewRequest,
+    current_user: CurrentUserDep,
 ) -> Report:
-    report = await run_manager.get_report(task_id)
-    if report is None:
-        raise HTTPException(status_code=404, detail="report not found")
+    report = await _require_owned_report(task_id, current_user)
     claim_index = _claim_index(report, claim_id)
     claims = list(report.claims)
     claims[claim_index] = claims[claim_index].model_copy(
@@ -141,10 +156,12 @@ async def review_claim(
 
 
 @router.post("/{task_id}/dimensions/{dimension_id}/regenerate", response_model=Report)
-async def regenerate_dimension(task_id: UUID, dimension_id: str) -> Report:
-    report = await run_manager.get_report(task_id)
-    if report is None:
-        raise HTTPException(status_code=404, detail="report not found")
+async def regenerate_dimension(
+    task_id: UUID,
+    dimension_id: str,
+    current_user: CurrentUserDep,
+) -> Report:
+    report = await _require_owned_report(task_id, current_user)
 
     settings = get_settings()
     llm = LLMClient(settings)
@@ -207,6 +224,13 @@ def _claim_index(report: Report, claim_id: UUID) -> int:
         if claim.id == claim_id:
             return index
     raise HTTPException(status_code=404, detail="claim not found")
+
+
+async def _require_owned_report(task_id: UUID, current_user: CurrentUser) -> Report:
+    report = await run_manager.get_report(task_id, user_id=current_user.user_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="report not found")
+    return report
 
 
 def _set_field_path(payload: dict, field_path: str, value: object) -> None:
@@ -335,7 +359,7 @@ def _search_result(report: Report, query: str) -> ReportSearchResult:
         report_id=report.id,
         task_id=report.task_id,
         language=report.language,
-        title=str(report.structured_content.get("summary") or "Competitor analysis report"),
+        title=report_search_title(report),
         snippet=snippet,
         claim_ids=[claim.id for claim in claims],
         source_ids=source_ids,

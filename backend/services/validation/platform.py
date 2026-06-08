@@ -36,7 +36,7 @@ class PlatformReadiness(BaseModel):
 async def check_platform_readiness() -> PlatformReadiness:
     settings = get_settings()
     db = await _check_db(settings.database_url)
-    redis = await _check_redis(settings.redis_url)
+    redis = await _check_redis(settings.redis_dsn)
     required_env_present = {
         "DATABASE_URL": bool(settings.database_url),
         "REDIS_URL": bool(settings.redis_url),
@@ -56,7 +56,7 @@ async def check_platform_readiness() -> PlatformReadiness:
             and redis.configured
             and redis.connected
         ),
-        mode="real" if not settings.mock_llm else "mock",
+        mode="mock" if settings.mock_llm else "real",
         db=db,
         redis=redis,
         required_env_present=required_env_present,
@@ -111,7 +111,12 @@ async def _check_redis(redis_url: str | None) -> RedisReadiness:
     try:
         from redis.asyncio import Redis
 
-        redis: Redis = Redis.from_url(redis_url, decode_responses=True)
+        redis: Redis = Redis.from_url(
+            redis_url,
+            decode_responses=True,
+            socket_connect_timeout=3,
+            socket_timeout=3,
+        )
         try:
             connected = bool(await cast(Awaitable[bool], redis.ping()))
         finally:

@@ -8,7 +8,7 @@ the true summed usage instead of a payload-size estimate.
 """
 
 from contextvars import ContextVar, Token
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -16,6 +16,8 @@ class _UsageAccumulator:
     tokens_in: int = 0
     tokens_out: int = 0
     calls: int = 0
+    langsmith_run_id: str | None = None
+    degradations: list[str] = field(default_factory=list)
 
 
 _current: ContextVar[_UsageAccumulator | None] = ContextVar("llm_usage", default=None)
@@ -43,3 +45,38 @@ def collected_usage() -> tuple[int, int] | None:
     if accumulator is None or accumulator.calls == 0:
         return None
     return accumulator.tokens_in, accumulator.tokens_out
+
+
+def record_langsmith_run_id(run_id: str) -> None:
+    """Stash the LangSmith run id of this node's LLM call (first call wins).
+
+    Must be called from *inside* the traced call context (where the run tree is
+    live); ``traced_node`` reads it back via ``collected_langsmith_run_id`` to
+    link the persisted trace to its LangSmith run.
+    """
+    accumulator = _current.get()
+    if accumulator is not None and accumulator.langsmith_run_id is None:
+        accumulator.langsmith_run_id = run_id
+
+
+def collected_langsmith_run_id() -> str | None:
+    accumulator = _current.get()
+    return accumulator.langsmith_run_id if accumulator is not None else None
+
+
+def record_degradation(reason: str) -> None:
+    """Mark that this node silently fell back to a template after an LLM/parse failure.
+
+    ``traced_node`` reads these back via ``collected_degradations`` so the persisted
+    trace shows the node ran degraded instead of reporting a clean success — the
+    failure was previously invisible because ``run()`` swallows the exception and
+    returns the fallback result.
+    """
+    accumulator = _current.get()
+    if accumulator is not None:
+        accumulator.degradations.append(reason)
+
+
+def collected_degradations() -> list[str]:
+    accumulator = _current.get()
+    return list(accumulator.degradations) if accumulator is not None else []

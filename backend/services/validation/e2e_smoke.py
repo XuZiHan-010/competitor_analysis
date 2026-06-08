@@ -10,8 +10,11 @@ from schemas.scope import (
     TaskScopeContract,
     UserResearchPlan,
 )
-from services.exporter import export_markdown, export_pdf
+from services.auth import user_id_for_email
+from services.exporter import export_markdown, render_report_pdf
 from services.runs.manager import RunManager
+
+SMOKE_USER_EMAIL = "validation-smoke@example.com"
 
 
 class SmokeCaseResult(BaseModel):
@@ -70,7 +73,12 @@ async def _run_case(
     force_feedback_demo: bool,
 ) -> SmokeCaseResult:
     started = perf_counter()
-    record = await run_manager.start_run(scope_contract)
+    smoke_user_id = user_id_for_email(SMOKE_USER_EMAIL)
+    record = await run_manager.start_run(
+        scope_contract,
+        user_id=smoke_user_id,
+        user_email=SMOKE_USER_EMAIL,
+    )
     state = run_manager.build_initial_state(
         record,
         scope_contract,
@@ -78,7 +86,7 @@ async def _run_case(
     )
     await run_manager.execute_run(record.id, state)
 
-    report = await run_manager.get_report(scope_contract.id)
+    report = await run_manager.get_report(scope_contract.id, user_id=smoke_user_id)
     timeline = await run_manager.get_timeline(record.id)
     warnings: list[str] = []
     export_checks: dict[str, int] = {}
@@ -106,7 +114,7 @@ async def _run_case(
             warnings.append("missing_survey_section")
         export_checks = {
             "markdown_bytes": len(export_markdown(report)),
-            "pdf_bytes": len(export_pdf(report)),
+            "pdf_bytes": len(await render_report_pdf(report)),
         }
         if export_checks["pdf_bytes"] == 0:
             warnings.append("empty_export")

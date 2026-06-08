@@ -24,8 +24,15 @@ def calculate_report_metrics(
         )
         for claim in reviewed_claims
     )
-    supported_claims = [claim for claim in claims if claim.source_support == "supported"]
-    sourced_claims = [claim for claim in claims if claim.source_ids]
+    source_ids = {source.id for source in sources}
+    supported_claims = [
+        claim
+        for claim in claims
+        if claim.source_support == "supported" and _source_ids_resolve(claim.source_ids, source_ids)
+    ]
+    sourced_claims = [
+        claim for claim in claims if _source_ids_resolve(claim.source_ids, source_ids)
+    ]
     invalid_sources = [source for source in sources if not source.valid]
     source_categories = {source.category for source in sources if source.category != "unknown"}
     correction_breakdown = Counter(
@@ -53,3 +60,9 @@ def _rate(numerator: float, denominator: int) -> float:
     if denominator <= 0:
         return 0.0
     return round(float(numerator) / denominator, 4)
+
+
+def _source_ids_resolve(claim_source_ids: list[str], report_source_ids: set[str]) -> bool:
+    return bool(claim_source_ids) and all(
+        source_id in report_source_ids for source_id in claim_source_ids
+    )

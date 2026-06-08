@@ -1,3 +1,5 @@
+from typing import Any
+
 import structlog
 
 from graph.state import (
@@ -8,9 +10,36 @@ from graph.state import (
 )
 from services.agents.decorators import traced_node
 from services.llm import LLMClient
+from services.llm.usage import record_degradation
 from settings import get_settings
 
 logger = structlog.get_logger(__name__)
+
+
+def _coerce_mapping(value: Any) -> dict[str, Any]:
+    """Schema 要 dict，但 LLM 偶尔把对象返成 list/标量；在边界兜成 dict。"""
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, list):
+        for item in value:
+            if isinstance(item, dict):
+                return item
+    return {}
+
+
+def _coerce_personas(value: Any) -> list[dict[str, Any]]:
+    """``user_personas`` schema 要 list[dict]，但 DeepSeek 实测会返回单个 dict
+    或 ``{"personas": [...]}`` 包一层；统一兜成 list[dict]，避免真实结果被丢弃。"""
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    if isinstance(value, dict):
+        # 形如 {"personas": [{...}, {...}]}：取内层 list[dict]。但要避开把
+        # 单个 persona 自身的标量 list 字段（如 source_ids: [str]）误当成画像列表。
+        for inner in value.values():
+            if isinstance(inner, list) and any(isinstance(item, dict) for item in inner):
+                return [item for item in inner if isinstance(item, dict)]
+        return [value]
+    return []
 
 
 class AnalystAgent:
@@ -31,12 +60,16 @@ class AnalystAgent:
     ]:
         settings = get_settings()
         llm = LLMClient(settings)
-        if llm.enabled and settings.deepseek_api_key:
-            try:
-                return await self._run_llm(state, llm)
-            except Exception:
-                logger.warning("analyst_llm_failed_falling_back", exc_info=True)
-        return self._run_fallback(state)
+        if settings.mock_llm:
+            return self._run_fallback(state)
+        if not settings.deepseek_api_key:
+            raise RuntimeError("DEEPSEEK_API_KEY is required for AnalystAgent in real mode")
+        try:
+            return await self._run_llm(state, llm)
+        except Exception as exc:
+            logger.warning("analyst_llm_failed", exc_info=True)
+            record_degradation(f"analyst: {type(exc).__name__}: {exc}")
+            raise RuntimeError(f"AnalystAgent LLM failed: {type(exc).__name__}: {exc}") from exc
 
     async def _run_llm(
         self,
@@ -71,7 +104,23 @@ class AnalystAgent:
                         "content": (
                             "You are AnalystAgent (core extractor). Return JSON with "
                             "feature_tree, pricing, user_personas, swot. "
-                            "Every field must reference source_ids from provided sources."
+                            "Every source_ids value must be copied from the provided sources. "
+                            "Do not output placeholder text such as 需验证, 待确认, 标准版, "
+                            "unknown, TBD, or needs verification. If evidence is missing, "
+                            "leave the specific list empty instead of inventing a placeholder. "
+                            'Return exactly this shape: {"feature_tree":{"rows":[{"feature":'
+                            '"Real feature name","description":"Evidence-backed detail",'
+                            '"cells":[{"competitor":"Competitor name","status":"supported",'
+                            '"note":"Specific evidence-backed note"}],"source_ids":["src_id"]}]},'
+                            '"pricing":{"tiers":[{"competitor":"Competitor name","tier":'
+                            '"Plan name","price":"Published price or pricing rule",'
+                            '"highlights":["Evidence-backed highlight"],"source_ids":["src_id"]}]},'
+                            '"user_personas":[{"competitor":"Competitor name","label":'
+                            '"Persona label","size":"majority","needs":["Need"],'
+                            '"pain_points":["Pain point"],"evidence":"Evidence summary",'
+                            '"source_ids":["src_id"]}],"swot":{"strengths":[{"text":"Strength",'
+                            '"source_ids":["src_id"]}],"weaknesses":[],"opportunities":[],'
+                            '"threats":[]}}.'
                         ),
                     },
                     {
@@ -87,10 +136,10 @@ class AnalystAgent:
             source_ids = [s.id for s in result.sources]
             structured_profiles[name] = StructuredCompetitorProfile(
                 competitor_name=name,
-                feature_tree=core_payload.get("feature_tree") or {},
-                pricing=core_payload.get("pricing") or {},
-                user_personas=core_payload.get("user_personas") or [],
-                swot=core_payload.get("swot") or {},
+                feature_tree=_coerce_mapping(core_payload.get("feature_tree")),
+                pricing=_coerce_mapping(core_payload.get("pricing")),
+                user_personas=_coerce_personas(core_payload.get("user_personas")),
+                swot=_coerce_mapping(core_payload.get("swot")),
                 source_ids=source_ids,
             )
 

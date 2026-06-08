@@ -1,12 +1,18 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { FileText, Home, PlayCircle, Search } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
-import { AccountMenu } from "./account-menu";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+
+// @base-ui/react uses React.useContext at module init; skip SSR to avoid Turbopack null-React issue
+const AccountMenu = dynamic(
+  () => import("./account-menu").then((m) => ({ default: m.AccountMenu })),
+  { ssr: false },
+);
 
 export function TopNav() {
   const { t } = useI18n();

@@ -1,9 +1,18 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from main import app
 
 
-def test_e2e_smoke_validation_runs_three_cases() -> None:
+def test_e2e_smoke_validation_runs_three_cases(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_render_report_pdf(report: object) -> bytes:
+        return b"%PDF-1.4\n% test pdf\n"
+
+    monkeypatch.setattr(
+        "services.validation.e2e_smoke.render_report_pdf",
+        fake_render_report_pdf,
+    )
+
     client = TestClient(app)
     response = client.post("/api/validation/e2e-smoke")
     assert response.status_code == 200
