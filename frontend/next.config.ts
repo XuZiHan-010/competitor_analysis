@@ -3,6 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   output: "standalone",
   serverExternalPackages: ["@base-ui/react"],
+
   devIndicators: false,
   async rewrites() {
     return [
