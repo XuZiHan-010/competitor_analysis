@@ -75,7 +75,7 @@
 ### 主流程（P0，MVP 必须）
 
 ```
-[1] 用户登录（邮箱验证码 OAuth）
+[1] 用户登录（demo 一键直登，未来可扩展 OAuth）
     ↓
 [2] 新建分析任务（任务创建页 /tasks/new）：
     **唯一输入：单一 NL 文本框**——不再提供独立的竞品 chip 输入区，
@@ -864,8 +864,7 @@ class ReportClaim(BaseModel):
 ## 八、API 划分
 
 ### 8.1 认证
-- `POST /api/auth/send-code` — 发邮箱验证码
-- `POST /api/auth/verify` — 验证码登录，返回 JWT
+- `POST /api/auth/login` — demo 一键登录（传入内置邮箱直接签发 JWT 并落 httpOnly cookie，无验证码）
 - `GET /api/auth/me` — 当前用户信息
 
 ### 8.2 任务
