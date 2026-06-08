@@ -71,6 +71,8 @@
  * Hue: 80 for warm cream (slight yellow), 220 for ink (slight cool blue)
  */
 :root {
+  --font-fraunces: "Fraunces", "Noto Serif SC", "PingFang SC", Georgia, serif;
+
   --background: oklch(0.975 0.008 85); /* warm off-white, aged paper */
   --foreground: oklch(0.18 0.012 245); /* near-black with cool ink tint */
 
