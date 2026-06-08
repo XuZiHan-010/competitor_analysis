@@ -1,5 +1,4 @@
-from collections.abc import Awaitable
-from typing import Any, cast
+from typing import Any
 
 from pydantic import BaseModel, Field
 from sqlalchemy import text
@@ -118,7 +117,10 @@ async def _check_redis(redis_url: str | None) -> RedisReadiness:
             socket_timeout=3,
         )
         try:
-            connected = bool(await cast(Awaitable[bool], redis.ping()))
+            # redis-py types ping() differently across versions (Awaitable[bool]
+            # vs a loose union); widen to Any so await type-checks on all of them.
+            ping_result: Any = redis.ping()
+            connected = bool(await ping_result)
         finally:
             await redis.aclose()
         return RedisReadiness(configured=True, connected=connected)
