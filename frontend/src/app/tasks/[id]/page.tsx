@@ -7,6 +7,7 @@ import { AlertTriangle, ExternalLink } from "lucide-react";
 import { PageContainer } from "@/components/layout/page-container";
 import { DagGraph } from "@/components/dag/dag-graph";
 import { TraceRow } from "@/components/dag/trace-row";
+import { SurveyTraceGroup } from "@/components/dag/survey-trace-group";
 import {
   ConnectionIcon,
   type ConnectionState,
@@ -136,6 +137,13 @@ export default function TaskRunPage() {
     () => [...traces].sort((a, b) => a.sequence_no - b.sequence_no),
     [traces],
   );
+  // SurveyTool runs as a sub-workflow inside Collector and emits 7 stages ×
+  // N competitors; fold each consecutive run of its traces into one collapsible
+  // group so the four top-level agents stay legible in the flat timeline.
+  const timelineItems = useMemo(
+    () => groupTimelineItems(sortedTraces),
+    [sortedTraces],
+  );
   const latestEvents = [...events].reverse().slice(0, 8);
   const doneCount = nodes.filter((node) => node.status === "done").length;
   const overallPct = Math.round((doneCount / nodes.length) * 100);
@@ -238,7 +246,13 @@ export default function TaskRunPage() {
                   等待第一条 trace 写入...
                 </li>
               ) : (
-                sortedTraces.map((trace) => <TraceRow key={trace.id} trace={trace} />)
+                timelineItems.map((item) =>
+                  item.kind === "survey-group" ? (
+                    <SurveyTraceGroup key={item.key} traces={item.traces} />
+                  ) : (
+                    <TraceRow key={item.trace.id} trace={item.trace} />
+                  ),
+                )
               )}
             </ol>
           </section>
@@ -287,6 +301,41 @@ export default function TaskRunPage() {
       </div>
     </PageContainer>
   );
+}
+
+type TimelineItem =
+  | { kind: "trace"; trace: AgentTrace }
+  | { kind: "survey-group"; key: string; traces: AgentTrace[] };
+
+/**
+ * Collapses each consecutive run of SurveyTool traces into a single group while
+ * leaving the four top-level agents as standalone rows. Traces are assumed
+ * pre-sorted by sequence_no.
+ */
+function groupTimelineItems(traces: AgentTrace[]): TimelineItem[] {
+  const items: TimelineItem[] = [];
+  let group: AgentTrace[] = [];
+
+  const flush = () => {
+    if (group.length === 0) return;
+    items.push({
+      kind: "survey-group",
+      key: `survey-${group[0].id}`,
+      traces: group,
+    });
+    group = [];
+  };
+
+  for (const trace of traces) {
+    if (trace.agent_name === "SurveyTool") {
+      group.push(trace);
+      continue;
+    }
+    flush();
+    items.push({ kind: "trace", trace });
+  }
+  flush();
+  return items;
 }
 
 /**
