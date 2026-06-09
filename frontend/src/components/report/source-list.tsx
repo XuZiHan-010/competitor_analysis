@@ -25,19 +25,20 @@ export function SourceList({ sources }: SourceListProps) {
       >
         溯源
       </h2>
-      <ol className="space-y-2.5">
+      <ol className="space-y-3.5">
         {sources.map((s, index) => (
           <li
             key={`${s.id}-${index}`}
-            className="flex items-baseline gap-3 text-[12.5px] leading-relaxed"
+            id={s.id}
+            className="grid grid-cols-[auto_1fr] gap-x-3 text-[12.5px] leading-relaxed scroll-mt-20"
           >
             <span
-              className="tabular text-muted-foreground/70 w-12 shrink-0"
+              className="tabular text-muted-foreground/60 tabular-nums"
               style={{ fontFamily: "var(--font-mono)" }}
             >
-              {s.id}
+              {index + 1}.
             </span>
-            <div className="flex-1 min-w-0">
+            <div className="min-w-0">
               <a
                 href={s.url}
                 target="_blank"
@@ -45,9 +46,17 @@ export function SourceList({ sources }: SourceListProps) {
                 className="text-foreground/90 hover:text-primary inline-flex items-baseline gap-1 underline decoration-border underline-offset-4 hover:decoration-primary"
               >
                 {s.title}
-                <ExternalLink className="h-3 w-3 self-center" aria-hidden="true" />
+                <ExternalLink className="h-3 w-3 self-center shrink-0" aria-hidden="true" />
               </a>
-              <p className="text-muted-foreground/85 mt-0.5">{s.snippet}</p>
+              <p
+                className="text-[10.5px] text-muted-foreground/55 break-all mt-0.5"
+                style={{ fontFamily: "var(--font-mono)" }}
+              >
+                {s.id}
+              </p>
+              {s.snippet && (
+                <p className="text-muted-foreground/85 mt-1 break-words">{s.snippet}</p>
+              )}
             </div>
           </li>
         ))}

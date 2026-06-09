@@ -15,7 +15,6 @@ import { PersonaCard } from "@/components/report/persona-card";
 import { PositioningCard } from "@/components/report/positioning-card";
 import { PricingTable } from "@/components/report/pricing-table";
 import { QualityPanel } from "@/components/report/quality-panel";
-import { ReportLanguageToggle } from "@/components/report/report-language-toggle";
 import { SourceList } from "@/components/report/source-list";
 import { langsmithProjectUrl } from "@/lib/langsmith";
 import { SurveySection } from "@/components/report/survey-section";
@@ -29,7 +28,6 @@ import {
   type Report,
   type ReviewStatus,
 } from "@/lib/api/reports";
-import { cn } from "@/lib/utils";
 
 interface EditState {
   chapterIndex: number;
@@ -164,7 +162,7 @@ export default function ReportPage() {
 
   return (
     <>
-      <PageContainer width="wide" className="max-w-[1024px]">
+      <PageContainer width="wide" className="max-w-[1280px]">
         <div className="flex gap-8 items-start">
           {/* ── Main content ── */}
           <div className="flex-1 min-w-0">
@@ -216,13 +214,6 @@ export default function ReportPage() {
                     {icon} {label}
                   </button>
                 ))}
-
-                <span className="mx-1 h-4 w-px bg-border/70" aria-hidden="true" />
-                <ReportLanguageToggle
-                  taskId={taskId}
-                  value={report.language}
-                  onSwitched={setReport}
-                />
 
                 <span className="mx-1 h-4 w-px bg-border/70" aria-hidden="true" />
                 <a
@@ -372,12 +363,7 @@ export default function ReportPage() {
                     {sc.cross_analysis.differentiation_summary}
                   </p>
                 )}
-                <div
-                  className={cn(
-                    "grid gap-6",
-                    crossMatrix && positioningMap ? "md:grid-cols-[1fr_320px]" : "",
-                  )}
-                >
+                <div className="flex flex-col gap-8">
                   {crossMatrix && (
                     <FeatureMatrix
                       rows={crossMatrix.rows}
@@ -386,11 +372,13 @@ export default function ReportPage() {
                     />
                   )}
                   {positioningMap && (
-                    <PositioningCard
-                      xAxis={positioningMap.x_axis}
-                      yAxis={positioningMap.y_axis}
-                      points={positioningMap.competitors ?? []}
-                    />
+                    <div className="max-w-[420px]">
+                      <PositioningCard
+                        xAxis={positioningMap.x_axis}
+                        yAxis={positioningMap.y_axis}
+                        points={positioningMap.competitors ?? []}
+                      />
+                    </div>
                   )}
                 </div>
               </Chapter>
@@ -425,7 +413,7 @@ export default function ReportPage() {
 
 function ReportSkeleton() {
   return (
-    <PageContainer width="wide" className="max-w-[1024px]">
+    <PageContainer width="wide" className="max-w-[1280px]">
       <div className="flex gap-8">
         <div className="flex-1 min-w-0 space-y-6">
           <div className="space-y-3">
