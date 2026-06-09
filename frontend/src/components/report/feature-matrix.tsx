@@ -1,13 +1,24 @@
-import type { FeatureRow, ReportSource } from "@/lib/api/reports";
+import type { FeatureCell, FeatureRow, ReportSource } from "@/lib/api/reports";
 import { CitationChips } from "./citation-chips";
 import { cn } from "@/lib/utils";
 
-const SUPPORT_GLYPH: Record<string, { label: string; tone: string }> = {
+type FeatureStatus = FeatureCell["status"];
+
+const SUPPORT_GLYPH: Record<FeatureStatus, { label: string; tone: string }> = {
   supported: { label: "●", tone: "text-primary" },
   partial: { label: "◐", tone: "text-[var(--color-accent-warm)]" },
   unsupported: { label: "○", tone: "text-muted-foreground/60" },
   unknown: { label: "?", tone: "text-muted-foreground/40" },
 };
+
+function normalizeFeatureStatus(status: unknown): FeatureStatus {
+  return status === "supported" ||
+    status === "partial" ||
+    status === "unsupported" ||
+    status === "unknown"
+    ? status
+    : "unknown";
+}
 
 interface FeatureMatrixProps {
   rows: FeatureRow[];
@@ -48,16 +59,21 @@ export function FeatureMatrix({ rows, competitors, sources }: FeatureMatrixProps
               </td>
               {competitors.map((c) => {
                 const cell = row.cells.find((cc) => cc.competitor === c);
-                const glyph = SUPPORT_GLYPH[cell?.status ?? "unknown"];
+                const status = normalizeFeatureStatus(cell?.status);
+                const glyph = SUPPORT_GLYPH[status];
+                const originalStatus =
+                  typeof cell?.status === "string" && cell.status !== status
+                    ? `原始状态: ${cell.status}; 显示为: ${status}`
+                    : status;
                 return (
                   <td key={c} className="py-3 pr-4">
                     <span
                       className={cn("inline-flex items-baseline gap-1.5", glyph.tone)}
-                      title={cell?.status}
+                      title={originalStatus}
                     >
                       <span aria-hidden="true">{glyph.label}</span>
                       <span className="text-foreground/85 text-[12.5px]">
-                        {cell?.note ?? "—"}
+                        {cell?.note || "—"}
                       </span>
                     </span>
                   </td>

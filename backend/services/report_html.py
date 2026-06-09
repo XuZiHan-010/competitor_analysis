@@ -458,12 +458,11 @@ def _feature_matrix_table(
 def _support_cell(cell: JsonMapping) -> str:
     status = text_value(cell.get("status")) or "unknown"
     note = text_value(cell.get("note")) or "—"
-    tone = status if status in {"supported", "partial", "unsupported", "unverified"} else "unknown"
+    tone = status if status in {"supported", "partial", "unsupported", "unknown"} else "unknown"
     glyph = {
         "supported": "●",
         "partial": "◐",
         "unsupported": "○",
-        "unverified": "未确认",
         "unknown": "?",
     }[tone]
     return (
