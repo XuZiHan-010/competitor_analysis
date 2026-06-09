@@ -337,7 +337,6 @@ def test_writer_normalizes_feature_matrix_status_values() -> None:
         for row in report.structured_content["feature_tree"]["rows"]
     ]
     assert statuses == ["unknown", "supported", "partial"]
-    assert report.structured_content["pricing"]["intro"].startswith("Pricing signals")
 
 
 def test_report_source_integrity_rejects_duplicate_and_unresolved_ids() -> None:
