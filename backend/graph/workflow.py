@@ -47,6 +47,7 @@ async def _qa_node(state: WorkflowState, config: RunnableConfig) -> dict[str, An
     qa_result = await QAAgent().run(state, trace_context=_trace_ctx(config))
     retry_counts = dict(state.retry_counts)
     feedback_signals = dict(state.feedback_signals)
+    field_verification_status = dict(state.field_verification_status)
     if qa_result and not qa_result.passed:
         retry_counts["collector"] = retry_counts.get("collector", 0) + 1
         blocker_issues = [issue for issue in qa_result.issues if issue.severity == "blocker"]
@@ -55,10 +56,24 @@ async def _qa_node(state: WorkflowState, config: RunnableConfig) -> dict[str, An
             "retry_count": retry_counts["collector"],
             "issues": [issue.model_dump(mode="json") for issue in blocker_issues],
         }
+        if retry_counts["collector"] >= MAX_COLLECTOR_RETRIES:
+            for issue in blocker_issues:
+                if not issue.target_competitor:
+                    continue
+                field_path = issue.failed_field
+                key = f"{issue.target_competitor}.{field_path}"
+                field_verification_status[key] = {
+                    "competitor": issue.target_competitor,
+                    "field_path": field_path,
+                    "status": "unverified",
+                    "reason": issue.message,
+                    "source_ids": [],
+                }
     return {
         "qa_result": qa_result.model_dump(mode="json") if qa_result else None,
         "retry_counts": retry_counts,
         "feedback_signals": feedback_signals,
+        "field_verification_status": field_verification_status,
     }
 
 

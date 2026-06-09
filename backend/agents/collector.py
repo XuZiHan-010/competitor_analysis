@@ -16,6 +16,7 @@ from services.llm import LLMClient
 from services.scraper import FetchResult, PageFetcher
 from services.search import AppReviewProvider, HybridSearch
 from services.search.providers import SearchProvider
+from services.search.relevance import filter_relevant_sources
 from services.search.serpapi import SerpApiProvider
 from services.search.tavily import TavilyProvider
 from services.survey.existing_survey_finder import ExistingSurveyFinder
@@ -217,10 +218,13 @@ class CollectorAgent:
                         "role": "system",
                         "content": (
                             "You are CollectorAgent's search planner. Rewrite each query to "
-                            "maximize retrieval of high-signal public sources (official docs, "
-                            "pricing pages, credible reviews). Preserve every dimension_id "
-                            'exactly. Return JSON {"queries": [{"dimension_id": str, '
-                            '"query": str}]}.'
+                            "maximize retrieval of high-signal public sources in the product's "
+                            "likely market language. Prefer official sites, product pages, "
+                            "app stores, pricing pages, credible reviews, and industry media. "
+                            "Explicitly avoid academic papers, satisfaction models, literature "
+                            "reviews, and sources that only mention the product as a research "
+                            "sample. Preserve every dimension_id exactly. Return JSON "
+                            '{"queries": [{"dimension_id": str, "query": str}]}.'
                         ),
                     },
                     {
@@ -292,6 +296,7 @@ class CollectorAgent:
                     search,
                     app_reviews,
                     fetcher,
+                    llm,
                     dimension_queries=query_map[competitor.name],
                 ),
                 timeout=_COLLECTOR_TIMEOUT_S,
@@ -391,6 +396,7 @@ class CollectorAgent:
         search: HybridSearch,
         app_reviews: AppReviewProvider,
         fetcher: PageFetcher,
+        llm: LLMClient | None = None,
         dimension_queries: list[tuple[str, str]] | None = None,
     ) -> RawCollectionResult:
         skipped_urls: list[str] = []
@@ -425,6 +431,12 @@ class CollectorAgent:
         else:
             sources.extend(review_result)
 
+        relevant = await filter_relevant_sources(competitor_name, sources, llm)
+        sources = relevant.kept
+        errors.extend(
+            f"dropped_irrelevant: {source.url or source.id}" for source in relevant.dropped
+        )
+
         # Enrich every page in one batched, single-browser pass instead of
         # launching a browser per URL. A skip/fetch failure keeps the original
         # search citation (with its snippet) rather than dropping the source, so
@@ -458,6 +470,19 @@ class CollectorAgent:
                         "title": source.title or fetch_result.title,
                     }
                 )
+            )
+
+        post_fetch_relevance = await filter_relevant_sources(
+            competitor_name,
+            enriched_sources,
+            llm,
+            include_raw_content=True,
+        )
+        if post_fetch_relevance.dropped:
+            enriched_sources = post_fetch_relevance.kept
+            errors.extend(
+                f"dropped_irrelevant: {source.url or source.id}"
+                for source in post_fetch_relevance.dropped
             )
 
         completeness = min(len(enriched_sources) / 5, 1.0)

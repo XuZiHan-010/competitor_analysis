@@ -2,13 +2,16 @@ from datetime import UTC, datetime
 
 import structlog
 
-from graph.state import QAIssue, QAResult, WorkflowState
+from graph.state import QAIssue, QAResult, StructuredCompetitorProfile, WorkflowState
 from services.agents.decorators import traced_node
 from services.llm import LLMClient
 from settings import get_settings
 
 _MIN_SOURCES_PER_COMPETITOR = 5
 _SOURCE_STALENESS_YEARS = 2
+_MAX_FEATURE_UNKNOWN_RATE = 0.4
+_MIN_SWOT_NON_EMPTY_QUADRANTS = 2
+_MAX_FACT_CHECK_SAMPLES = 8
 
 logger = structlog.get_logger(__name__)
 
@@ -42,6 +45,7 @@ class QAAgent:
             for result in state.raw_collections.values()
             for s in result.sources
         ]
+        fact_check_payload = _fact_check_samples(state)
         payload = await llm.complete_json(
             provider="openai",
             model=settings.qa_model,
@@ -50,12 +54,18 @@ class QAAgent:
                     "role": "system",
                     "content": (
                         "You are QAAgent. Return JSON: {passed:boolean, issues:[{severity,"
-                        "target_agent,target_competitor,failed_field,message,retryable}]}."
+                        "target_agent,target_competitor,failed_field,message,retryable}]}. "
+                        "Treat unsupported or contradictory sampled claims as blocker issues "
+                        "targeting CollectorAgent."
                     ),
                 },
                 {
                     "role": "user",
                     "content": (f"Profiles: {profiles_payload}\n" f"Sources: {sources_payload}"),
+                },
+                {
+                    "role": "user",
+                    "content": f"Fact-check samples: {fact_check_payload}",
                 },
             ],
         )
@@ -111,6 +121,72 @@ class QAAgent:
                         target_competitor=name,
                         failed_field="source_ids",
                         message="Profile has no citations.",
+                    )
+                )
+
+            unknown_rate = _feature_unknown_rate(profile)
+            if unknown_rate is None:
+                issues.append(
+                    QAIssue(
+                        severity="blocker",
+                        target_agent="CollectorAgent",
+                        target_competitor=name,
+                        failed_field="feature_tree",
+                        message="Feature tree has no comparable rows.",
+                    )
+                )
+            elif unknown_rate > _MAX_FEATURE_UNKNOWN_RATE:
+                issues.append(
+                    QAIssue(
+                        severity="blocker",
+                        target_agent="CollectorAgent",
+                        target_competitor=name,
+                        failed_field="feature_tree",
+                        message=(
+                            f"Feature tree unknown rate {unknown_rate:.0%} exceeds "
+                            f"{_MAX_FEATURE_UNKNOWN_RATE:.0%}."
+                        ),
+                    )
+                )
+
+            if not profile.pricing.get("tiers"):
+                issues.append(
+                    QAIssue(
+                        severity="blocker",
+                        target_agent="CollectorAgent",
+                        target_competitor=name,
+                        failed_field="pricing",
+                        message="Pricing tiers are missing.",
+                    )
+                )
+
+            if not profile.user_personas:
+                issues.append(
+                    QAIssue(
+                        severity="blocker",
+                        target_agent="CollectorAgent",
+                        target_competitor=name,
+                        failed_field="user_personas",
+                        message="User personas are missing.",
+                    )
+                )
+
+            non_empty_swot = sum(
+                1
+                for quadrant in ("strengths", "weaknesses", "opportunities", "threats")
+                if profile.swot.get(quadrant)
+            )
+            if non_empty_swot < _MIN_SWOT_NON_EMPTY_QUADRANTS:
+                issues.append(
+                    QAIssue(
+                        severity="blocker",
+                        target_agent="CollectorAgent",
+                        target_competitor=name,
+                        failed_field="swot",
+                        message=(
+                            f"SWOT has {non_empty_swot} populated quadrants; "
+                            f"need at least {_MIN_SWOT_NON_EMPTY_QUADRANTS}."
+                        ),
                     )
                 )
 
@@ -227,3 +303,50 @@ class QAAgent:
             passed=not any(i.severity == "blocker" for i in issues),
             issues=issues,
         )
+
+
+def _feature_unknown_rate(profile: StructuredCompetitorProfile) -> float | None:
+    rows = profile.feature_tree.get("rows") or []
+    cells: list[dict] = []
+    for row in rows:
+        row_cells = row.get("cells") or []
+        cells.extend(
+            cell
+            for cell in row_cells
+            if str(cell.get("competitor", profile.competitor_name)).lower()
+            == profile.competitor_name.lower()
+        )
+    if not cells:
+        return None
+    unknown = sum(1 for cell in cells if str(cell.get("status", "")).lower() == "unknown")
+    return unknown / len(cells)
+
+
+def _fact_check_samples(state: WorkflowState) -> list[dict]:
+    source_text = {
+        source.id: {
+            "title": source.title,
+            "snippet": source.snippet,
+            "content_sample": (source.raw_content or "")[:1000],
+        }
+        for result in state.raw_collections.values()
+        for source in result.sources
+    }
+    samples: list[dict] = []
+    for name, profile in state.structured_profiles.items():
+        source_ids = [source_id for source_id in profile.source_ids if source_id in source_text]
+        if not source_ids:
+            continue
+        samples.append({
+            "competitor": name,
+            "field": "pricing",
+            "claim": profile.pricing,
+            "sources": {source_id: source_text[source_id] for source_id in source_ids[:3]},
+        })
+        samples.append({
+            "competitor": name,
+            "field": "swot",
+            "claim": profile.swot,
+            "sources": {source_id: source_text[source_id] for source_id in source_ids[:3]},
+        })
+    return samples[:_MAX_FACT_CHECK_SAMPLES]

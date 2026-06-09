@@ -69,5 +69,6 @@ class WorkflowState(BaseModel):
     cross_analysis: CrossCompetitorAnalysis | None = None
     report: Report | None = None
     qa_result: QAResult | None = None
+    field_verification_status: dict[str, Any] = Field(default_factory=dict)
     feedback_signals: dict[str, Any] = Field(default_factory=dict)
     retry_counts: dict[str, int] = Field(default_factory=dict)
