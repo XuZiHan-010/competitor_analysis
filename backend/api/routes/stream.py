@@ -13,6 +13,11 @@ router = APIRouter(prefix="/api/tasks", tags=["stream"])
 
 
 def _format_sse(event: StreamEvent) -> str:
+    # Heartbeats are SSE comments (no id/event/data) so the browser never
+    # stores their id as Last-Event-ID; otherwise a reconnect would resume from
+    # a heartbeat id that collides with a real event's id and skip it.
+    if event.event == "__heartbeat__":
+        return ": heartbeat\n\n"
     return f"id: {event.id}\nevent: {event.event}\ndata: {event.model_dump_json()}\n\n"
 
 
@@ -31,4 +36,14 @@ async def stream_events(
         async for event in stream_bridge.subscribe(str(run_id), last_event_id=parsed_event_id):
             yield _format_sse(event)
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        # Defeat proxy buffering on the backend→edge hop so heartbeats reach the
+        # client in real time and idle HTTP/2 streams aren't reset mid-run.
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

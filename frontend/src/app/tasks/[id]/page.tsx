@@ -39,7 +39,6 @@ const STREAM_EVENT_NAMES = [
   "qa.blocker",
   "run.succeeded",
   "run.failed",
-  "__heartbeat__",
 ];
 
 export default function TaskRunPage() {
@@ -54,6 +53,7 @@ export default function TaskRunPage() {
 
   useEffect(() => {
     let mounted = true;
+    const source = taskEventSource(runId);
 
     async function refreshTimeline() {
       try {
@@ -83,6 +83,11 @@ export default function TaskRunPage() {
         const taskId = event.data.task_id;
         if (typeof taskId === "string" && taskId) setReportTaskId(taskId);
         void refreshTimeline();
+        // Terminal state: close the stream so EventSource stops auto-reconnecting
+        // to a run that will never emit again (the source of the repeated
+        // ERR_HTTP2_PROTOCOL_ERROR churn after completion).
+        source.close();
+        setConnectionState("closed");
       }
       if (event.event === "node.succeeded" || event.event === "node.failed") {
         void refreshTimeline();
@@ -90,12 +95,13 @@ export default function TaskRunPage() {
       if (event.event === "run.failed") {
         setError("任务运行失败，请查看后端日志或重试。");
         void refreshTimeline();
+        source.close();
+        setConnectionState("closed");
       }
     }
 
     void refreshTimeline();
     const interval = window.setInterval(refreshTimeline, 1500);
-    const source = taskEventSource(runId);
 
     source.onopen = () => {
       if (mounted) setConnectionState("open");
