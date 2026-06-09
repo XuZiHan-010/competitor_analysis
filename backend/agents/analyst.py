@@ -8,12 +8,27 @@ from graph.state import (
     StructuredCompetitorProfile,
     WorkflowState,
 )
+from schemas.source import SourceCitation
 from services.agents.decorators import traced_node
 from services.llm import LLMClient
 from services.llm.usage import record_degradation
 from settings import get_settings
 
 logger = structlog.get_logger(__name__)
+
+# Full fetched page bodies (``raw_content``) can be tens of KB each; dumping all
+# of them per competitor bloats the prompt and slows generation. Keep enough for
+# evidence-grounded extraction without sending whole articles.
+_MAX_RAW_CONTENT_CHARS = 1500
+
+
+def _source_for_prompt(source: SourceCitation) -> dict[str, Any]:
+    """Trim a source to the fields the extractor needs, truncating raw_content."""
+    payload = source.model_dump(mode="json")
+    raw = payload.get("raw_content")
+    if isinstance(raw, str) and len(raw) > _MAX_RAW_CONTENT_CHARS:
+        payload["raw_content"] = raw[:_MAX_RAW_CONTENT_CHARS] + "…[truncated]"
+    return payload
 
 
 def _coerce_mapping(value: Any) -> dict[str, Any]:
@@ -90,7 +105,7 @@ class AnalystAgent:
         ]
 
         for name, result in state.raw_collections.items():
-            sources_payload = [s.model_dump(mode="json") for s in result.sources]
+            sources_payload = [_source_for_prompt(s) for s in result.sources]
 
             # Core layer: fixed schema extractors for all 4 core dimensions at once
             core_dim_ids = {d.id for d in core_dims}
@@ -128,7 +143,7 @@ class AnalystAgent:
                         "content": (
                             f"Competitor: {name}\n"
                             f"Core dimensions: {[d.model_dump() for d in core_dims]}\n"
-                            f"Sources: {[s.model_dump(mode='json') for s in core_sources] or sources_payload}"  # noqa: E501
+                            f"Sources: {[_source_for_prompt(s) for s in core_sources] or sources_payload}"  # noqa: E501
                         ),
                     },
                 ],
@@ -163,7 +178,7 @@ class AnalystAgent:
                             "content": (
                                 f"Competitor: {name}\n"
                                 f"Dimension intent: {dim.intent}\n"
-                                f"Sources: {[s.model_dump(mode='json') for s in dim_sources] or sources_payload}"  # noqa: E501
+                                f"Sources: {[_source_for_prompt(s) for s in dim_sources] or sources_payload}"  # noqa: E501
                             ),
                         },
                     ],
