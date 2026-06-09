@@ -1,7 +1,11 @@
 # 竞品分析系统 - 全局进度日志
 
-**最后更新**: 2026-06-07
-**系统状态**: 代码层面后端 ~100% / 前端 ~95% 落地；`feature/collector-reliability` 分支新增 Collector 可靠性（source ID 全局去重重整、survey source ID remapping）、LLM 自动重试（transient 503 指数退避）、Agent 解析容错（_coerce_mapping/_coerce_personas/degradation 记录）、HTML 报告导出、报告完整性检测（placeholder/claim/source 校验）、流式事件测试、账号隔离测试、deployment.md 初稿，测试文件新增 8 个；账号隔离（user_id 全链路隔离）+ 报告搜索优化 + 任务竞品名标识已完成并验证；LangSmith trace 接线已完成；真实 API key 端到端跑通：ScopingAgent 单点已验证（真 gpt-4o-mini），全链路 3 竞品跑批仍为 0 次
+**最后更新**: 2026-06-09
+**系统状态**: 代码层面后端 ~100% / 前端 ~95% 落地；`feature/collector-reliability` 分支新增 Collector 可靠性（source ID 全局去重重整、survey source ID remapping）、LLM 自动重试（transient 503 指数退避）、Agent 解析容错（_coerce_mapping/_coerce_personas/degradation 记录）、HTML 报告导出、报告完整性检测（placeholder/claim/source 校验）、流式事件测试、账号隔离测试、deployment.md 初稿，测试文件新增 8 个；账号隔离（user_id 全链路隔离）+ 报告搜索优化 + 任务竞品名标识已完成并验证；LangSmith trace 接线已完成；报告质量修复进行中：Collector 来源相关性闸门、QA 核心 Schema blocker、retry 用尽字段级未确认、真实字段覆盖率已按计划落地；真实 API key 端到端跑通：ScopingAgent 单点已验证（真 gpt-4o-mini），全链路 3 竞品跑批仍为 0 次
+
+## 2026-06-09 本轮修复：报告质量与来源相关性
+
+按 `plans/2026-06-09-report-quality-source-relevance.md` 开始落地报告质量修复：新增 Collector 来源相关性过滤，搜索改写 prompt 本地化并排除学术论文/满意度模型；QA 补齐核心层 Schema 完整性 blocker 与事实校验输入；workflow 在 Collector retry 达上限后写入字段级 `field_verification_status`；Writer/metrics 消费未确认状态，避免 `unknown/?` 和虚高字段覆盖率继续伪装成 100%。PRD §六 5.4 与 WorkflowState 示例已同步更新。
 
 ## 2026-06-05 本轮修复：报告搜索 label 优先 + 任务竞品名标识
 

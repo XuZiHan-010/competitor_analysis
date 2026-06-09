@@ -100,8 +100,8 @@ class WriterAgent:
                     field_type="structured",
                     source_ids=profile.source_ids,
                     generating_agent="WriterAgent",
-                    source_support="supported",
-                    validity="valid",
+                    source_support=_source_support_for_state(state, profile.source_ids),
+                    validity="valid" if profile.source_ids else "unknown",
                 )
             )
 
@@ -162,7 +162,7 @@ class WriterAgent:
                     else "free_text",
                     source_ids=source_ids,
                     generating_agent="WriterAgent",
-                    source_support="supported" if source_ids else "unchecked",
+                    source_support=_source_support_for_state(state, source_ids),
                     validity="valid" if source_ids else "unknown",
                 )
             )
@@ -177,8 +177,8 @@ class WriterAgent:
                     field_type="structured",
                     source_ids=profile.source_ids,
                     generating_agent="WriterAgent",
-                    source_support="supported",
-                    validity="valid",
+                    source_support=_source_support_for_state(state, profile.source_ids),
+                    validity="valid" if profile.source_ids else "unknown",
                 )
             )
         return claims
@@ -277,7 +277,8 @@ class WriterAgent:
             "extensions": extensions,
             "cross_analysis": cross,
             "survey": [r.model_dump(mode="json") for r in state.survey_results.values()],
-        }
+            "field_verification_status": state.field_verification_status,
+        } | _field_status_overrides(state, ft_rows, all_tiers, all_personas, swot_blocks)
 
     def _build_report(
         self,
@@ -300,14 +301,17 @@ class WriterAgent:
         metrics = calculate_report_metrics(
             claims=claims,
             sources=sources,
+            structured_content=structured_content,
+            field_verification_status=state.field_verification_status,
             rerun_count=sum(state.retry_counts.values()),
             module_count=max(len(state.scope_contract.dimensions), 1),
             ai_self_assessment={
                 "confidence": "needs_review",
-                "needs_human_review": bool(integrity_issues) or bool(
-                    state.qa_result and not state.qa_result.passed
-                ),
+                "needs_human_review": bool(integrity_issues)
+                or bool(state.field_verification_status)
+                or bool(state.qa_result and not state.qa_result.passed),
                 "integrity_issues": integrity_issues,
+                "field_verification_status": state.field_verification_status,
             },
         )
         qa_issues = (
@@ -316,6 +320,7 @@ class WriterAgent:
             else []
         )
         qa_issues.extend(integrity_issues)
+        qa_issues.extend(_field_status_issues(state.field_verification_status))
         return Report(
             task_id=UUID(str(state.task_id)),
             language="zh" if language not in {"zh", "en"} else language,
@@ -326,7 +331,9 @@ class WriterAgent:
             metrics=metrics,
             qa_status=(
                 "issues"
-                if integrity_issues or (state.qa_result and not state.qa_result.passed)
+                if integrity_issues
+                or state.field_verification_status
+                or (state.qa_result and not state.qa_result.passed)
                 else "passed"
             ),
             qa_issues=qa_issues,
@@ -348,6 +355,82 @@ def _build_simulated_warnings(state: WorkflowState) -> list[dict]:
                 "note": "⚠️ mark required on insights from simulated evidence",
             })
     return warnings
+
+
+def _source_support_for_state(state: WorkflowState, source_ids: list[str]) -> str:
+    if not source_ids:
+        return "unchecked"
+    if state.qa_result and state.qa_result.passed:
+        return "supported"
+    return "unchecked"
+
+
+def _field_status_overrides(
+    state: WorkflowState,
+    feature_rows: list[dict],
+    tiers: list[dict],
+    personas: list[dict],
+    swot_blocks: list[dict],
+) -> dict:
+    if not state.field_verification_status:
+        return {}
+
+    notes: list[dict] = []
+    for item in state.field_verification_status.values():
+        if not isinstance(item, Mapping):
+            continue
+        competitor = str(item.get("competitor", ""))
+        field_path = str(item.get("field_path", ""))
+        reason = str(item.get("reason", "该字段未获充分证据支撑。"))
+        status = str(item.get("status", "unverified"))
+        notes.append({
+            "competitor": competitor,
+            "field_path": field_path,
+            "status": status,
+            "message": f"未确认：{reason}",
+            "source_ids": item.get("source_ids", []),
+        })
+        if field_path == "feature_tree":
+            _mark_feature_cells_unverified(feature_rows, competitor, reason)
+
+    return {
+        "feature_tree": {"intro": "", "rows": feature_rows},
+        "pricing": {"intro": "", "tiers": tiers, "unverified_notes": notes},
+        "user_personas": {"intro": "", "personas": personas, "unverified_notes": notes},
+        "swot": {"intro": "", "blocks": swot_blocks, "unverified_notes": notes},
+        "unverified_fields": notes,
+    }
+
+
+def _mark_feature_cells_unverified(
+    feature_rows: list[dict],
+    competitor: str,
+    reason: str,
+) -> None:
+    for row in feature_rows:
+        for cell in row.get("cells") or []:
+            if (
+                str(cell.get("competitor", "")).lower() == competitor.lower()
+                and str(cell.get("status", "")).lower() == "unknown"
+            ):
+                cell["status"] = "unverified"
+                cell["note"] = f"未确认：{reason}"
+
+
+def _field_status_issues(field_status: dict[str, object]) -> list[dict]:
+    issues: list[dict] = []
+    for item in field_status.values():
+        if not isinstance(item, Mapping):
+            continue
+        issues.append({
+            "severity": "warning",
+            "target_agent": "CollectorAgent",
+            "target_competitor": item.get("competitor"),
+            "failed_field": item.get("field_path"),
+            "message": item.get("reason", "字段未获充分证据支撑。"),
+            "retryable": False,
+        })
+    return issues
 
 
 def _survey_insight_source_ids(

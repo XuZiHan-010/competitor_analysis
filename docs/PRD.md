@@ -425,6 +425,11 @@ class ScopingDraft(BaseModel):
 - **blocker** → 打回 Collector 重抓（最多 3 次），3 次仍失败则字段标"未确认"
 - **warning** → 不阻塞流程，在最终报告中标"未充分确认"提示
 
+**实现注记（2026-06-09 补齐）**：
+- QAAgent 已补齐核心层 Schema 完整性 blocker：功能矩阵 `unknown` 占比过高、定价 tiers 缺失、用户画像缺失、SWOT 象限过少都会触发打回 Collector。
+- Collector 在搜索结果进入抓取前后执行来源相关性闸门，优先保留官网、产品页、应用商店、行业媒体和可信评论，丢弃仅把竞品当作学术样本提及的离题来源，并将 `dropped_irrelevant` 写入采集 errors。
+- QA retry 达到上限后，`WorkflowState.field_verification_status` 记录字段级未确认状态，Writer 在报告和指标中以"未确认/公开信息未发现"方式诚实降级，不再把 `unknown` 当作已覆盖字段。
+
 **correction_detected 信号**：QAAgent 输出 blocker 时同步在 `WorkflowState.feedback_signals` 写入 `correction_detected: {target_competitor, failed_field, last_evidence_summary}`，CollectorAgent 重跑时读这个信号，在 prompt 里强调"上次错的是 XX 字段，证据是 YY，这次特别检查 ZZ"，避免无指导性的盲目重抓。借鉴自 DeerFlow memory 模块（见 §五.Y 与 [plans/2026-05-26-deerflow-architecture-inspirations.md](../plans/2026-05-26-deerflow-architecture-inspirations.md) D1）。代码位置：`backend/services/agents/signals.py`。
 
 这套分层保证了 §十三 35% 评分项里"严格符合预定义 Schema、字段完整"对**核心层**始终成立；扩展层走"尽力服务"，缺失也不影响演示主流程。
@@ -463,6 +468,7 @@ class WorkflowState(BaseModel):
     cross_analysis: CrossCompetitorAnalysis | None
     draft_report: ReportDraft | None
     qa_result: QAResult | None
+    field_verification_status: dict[str, Any]          # 字段级 verified/unverified/not_applicable 状态
     retry_counts: dict[str, int]                          # node_name → count
     trace_log: list[TraceEntry]                           # 完整决策日志
 ```
