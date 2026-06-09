@@ -55,8 +55,10 @@ class InMemoryStreamBridge:
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=15)
                 except TimeoutError:
-                    heartbeat_id = len(self._events[run_id]) + 1
-                    yield StreamEvent(id=heartbeat_id, run_id=run_id, event="__heartbeat__")
+                    # id is unused: heartbeats render as SSE comments (see
+                    # api.routes.stream._format_sse), so they never advance the
+                    # client's Last-Event-ID.
+                    yield StreamEvent(id=0, run_id=run_id, event="__heartbeat__")
                     continue
                 yield event
         finally:
@@ -100,11 +102,9 @@ class RedisStreamBridge:
             # to Any so unpacking the (stream, [(id, fields)]) shape type-checks.
             response: Any = await self._redis.xread({stream_key: last_id}, block=15_000, count=20)
             if not response:
-                yield StreamEvent(
-                    id=(last_event_id or 0) + 1,
-                    run_id=run_id,
-                    event="__heartbeat__",
-                )
+                # id is unused: heartbeats render as SSE comments, so they never
+                # advance the client's Last-Event-ID (see _format_sse).
+                yield StreamEvent(id=0, run_id=run_id, event="__heartbeat__")
                 continue
             for _, messages in response:
                 for redis_id, fields in messages:
