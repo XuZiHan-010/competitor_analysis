@@ -53,6 +53,7 @@ export default function TaskRunPage() {
 
   useEffect(() => {
     let mounted = true;
+    let terminal = false;
     const source = taskEventSource(runId);
 
     async function refreshTimeline() {
@@ -65,9 +66,15 @@ export default function TaskRunPage() {
         setTraces(next);
         if (run.status === "succeeded" && run.task_id) {
           setReportTaskId(run.task_id);
+          terminal = true;
+          source.close();
+          setConnectionState("closed");
         }
         if (run.status === "failed") {
           setError("任务运行失败，请查看后端日志或重试。");
+          terminal = true;
+          source.close();
+          setConnectionState("closed");
         }
       } catch {
         // silently ignore — the empty-state "等待第一条 trace 写入..." handles this
@@ -86,6 +93,7 @@ export default function TaskRunPage() {
         // Terminal state: close the stream so EventSource stops auto-reconnecting
         // to a run that will never emit again (the source of the repeated
         // ERR_HTTP2_PROTOCOL_ERROR churn after completion).
+        terminal = true;
         source.close();
         setConnectionState("closed");
       }
@@ -95,6 +103,7 @@ export default function TaskRunPage() {
       if (event.event === "run.failed") {
         setError("任务运行失败，请查看后端日志或重试。");
         void refreshTimeline();
+        terminal = true;
         source.close();
         setConnectionState("closed");
       }
@@ -107,7 +116,9 @@ export default function TaskRunPage() {
       if (mounted) setConnectionState("open");
     };
     source.onerror = () => {
-      if (mounted) setConnectionState("closed");
+      if (!mounted) return;
+      setConnectionState("closed");
+      if (terminal) source.close();
     };
     STREAM_EVENT_NAMES.forEach((eventName) => {
       source.addEventListener(eventName, appendEvent);
