@@ -407,7 +407,7 @@ class CollectorAgent:
         # longer serializes behind the others.
         search_results = await asyncio.gather(
             *(
-                run_tool_safely("web_search", partial(search.search, query, max_results=5))
+                run_tool_safely("web_search", partial(search.search, query, max_results=10))
                 for _, query in dimension_queries or []
             )
         )
@@ -424,7 +424,7 @@ class CollectorAgent:
 
         review_result = await run_tool_safely(
             "app_review_fetch",
-            lambda: app_reviews.fetch_reviews(competitor_name, max_results=2),
+            lambda: app_reviews.fetch_reviews(competitor_name, max_results=5),
         )
         if isinstance(review_result, ToolError):
             errors.append(f"app_reviews: {review_result.error_content}")

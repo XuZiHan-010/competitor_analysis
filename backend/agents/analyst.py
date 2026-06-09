@@ -19,7 +19,8 @@ logger = structlog.get_logger(__name__)
 # Full fetched page bodies (``raw_content``) can be tens of KB each; dumping all
 # of them per competitor bloats the prompt and slows generation. Keep enough for
 # evidence-grounded extraction without sending whole articles.
-_MAX_RAW_CONTENT_CHARS = 1500
+_MAX_RAW_CONTENT_CHARS = 5000
+_MAX_COMPETITOR_RAW_CONTENT_CHARS = 24000
 
 
 def _source_for_prompt(source: SourceCitation) -> dict[str, Any]:
@@ -29,6 +30,24 @@ def _source_for_prompt(source: SourceCitation) -> dict[str, Any]:
     if isinstance(raw, str) and len(raw) > _MAX_RAW_CONTENT_CHARS:
         payload["raw_content"] = raw[:_MAX_RAW_CONTENT_CHARS] + "…[truncated]"
     return payload
+
+
+def _sources_for_prompt(sources: list[SourceCitation]) -> list[dict[str, Any]]:
+    payloads = [_source_for_prompt(source) for source in sources]
+    remaining = _MAX_COMPETITOR_RAW_CONTENT_CHARS
+    for payload in payloads:
+        raw = payload.get("raw_content")
+        if not isinstance(raw, str):
+            continue
+        if remaining <= 0:
+            payload["raw_content"] = ""
+            continue
+        if len(raw) > remaining:
+            payload["raw_content"] = raw[:remaining] + "…[truncated]"
+            remaining = 0
+        else:
+            remaining -= len(raw)
+    return payloads
 
 
 def _coerce_mapping(value: Any) -> dict[str, Any]:
@@ -105,7 +124,7 @@ class AnalystAgent:
         ]
 
         for name, result in state.raw_collections.items():
-            sources_payload = [_source_for_prompt(s) for s in result.sources]
+            sources_payload = _sources_for_prompt(result.sources)
 
             # Core layer: fixed schema extractors for all 4 core dimensions at once
             core_dim_ids = {d.id for d in core_dims}
@@ -123,6 +142,9 @@ class AnalystAgent:
                             "Do not output placeholder text such as 需验证, 待确认, 标准版, "
                             "unknown, TBD, or needs verification. If evidence is missing, "
                             "leave the specific list empty instead of inventing a placeholder. "
+                            "description, note, evidence, highlights, and SWOT text must "
+                            "contain concrete evidence such as numbers, version names, quoted "
+                            "phrases, pricing rules, or clearly attributed product facts. "
                             'Return exactly this shape: {"feature_tree":{"rows":[{"feature":'
                             '"Real feature name","description":"Evidence-backed detail",'
                             '"cells":[{"competitor":"Competitor name","status":"supported",'
@@ -143,7 +165,7 @@ class AnalystAgent:
                         "content": (
                             f"Competitor: {name}\n"
                             f"Core dimensions: {[d.model_dump() for d in core_dims]}\n"
-                            f"Sources: {[_source_for_prompt(s) for s in core_sources] or sources_payload}"  # noqa: E501
+                            f"Sources: {_sources_for_prompt(core_sources) or sources_payload}"
                         ),
                     },
                 ],
@@ -170,7 +192,11 @@ class AnalystAgent:
                             "content": (
                                 "You are AnalystAgent (extension extractor). "
                                 "Return JSON with summary, bullets (list[str]), "
-                                "table_data (list[dict]), source_ids (list[str])."
+                                "table_data (list[dict]), source_ids (list[str]). "
+                                "Every summary, bullet, and table note must include concrete "
+                                "evidence such as numbers, version names, quoted phrases, or "
+                                "specific product facts. Do not output 需验证, 待确认, 标准版, "
+                                "unknown, TBD, or needs verification; omit unsupported points."
                             ),
                         },
                         {
@@ -178,7 +204,7 @@ class AnalystAgent:
                             "content": (
                                 f"Competitor: {name}\n"
                                 f"Dimension intent: {dim.intent}\n"
-                                f"Sources: {[_source_for_prompt(s) for s in dim_sources] or sources_payload}"  # noqa: E501
+                                f"Sources: {_sources_for_prompt(dim_sources) or sources_payload}"
                             ),
                         },
                     ],
@@ -220,7 +246,11 @@ class AnalystAgent:
                             "feature": "核心功能",
                             "description": "基础工作流与协作能力",
                             "cells": [
-                                {"competitor": name, "status": "supported", "note": "需验证"}
+                                {
+                                    "competitor": name,
+                                    "status": "supported",
+                                    "note": "insufficient evidence",
+                                }
                             ],
                             "source_ids": source_ids[:1],
                         }
@@ -230,8 +260,8 @@ class AnalystAgent:
                     "tiers": [
                         {
                             "competitor": name,
-                            "tier": "标准版",
-                            "price": "待确认",
+                            "tier": "Documented plan",
+                            "price": "insufficient evidence",
                             "highlights": ["订阅制"],
                             "source_ids": source_ids[:1],
                         }
@@ -244,13 +274,13 @@ class AnalystAgent:
                         "size": "majority",
                         "needs": ["高效分析"],
                         "pain_points": ["人工研究耗时"],
-                        "evidence": "待补充",
+                        "evidence": "insufficient evidence",
                         "source_ids": source_ids[:1],
                     }
                 ],
                 swot={
                     "strengths": [{"text": "结构化工作流", "source_ids": source_ids[:1]}],
-                    "weaknesses": [{"text": "定价待验证", "source_ids": []}],
+                    "weaknesses": [{"text": "insufficient evidence", "source_ids": []}],
                     "opportunities": [{"text": "AI 辅助分析", "source_ids": []}],
                     "threats": [{"text": "竞品快速迭代", "source_ids": []}],
                 },

@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from agents.writer import WriterAgent
@@ -127,7 +129,7 @@ def test_writer_survey_claims_reference_report_sources() -> None:
     assert set(survey_claim.source_ids).issubset({item.id for item in report.sources})
 
 
-def test_writer_fallback_report_marks_placeholder_quality_issue() -> None:
+def test_writer_fallback_report_has_rendered_markdown_without_placeholder_issue() -> None:
     source = SourceCitation(
         id="src_tavily_deadbeef_001",
         type="media",
@@ -175,11 +177,88 @@ def test_writer_fallback_report_marks_placeholder_quality_issue() -> None:
 
     report = WriterAgent()._run_fallback(state, language="zh")
 
-    assert report.qa_status == "issues"
-    assert any(
+    assert "S0 mock report" not in report.markdown_content
+    assert "待确认" not in str(report.structured_content)
+    assert "需验证" not in str(report.structured_content)
+    assert "标准版" not in str(report.structured_content)
+    assert not any(
         issue.get("failed_field") == "report.placeholder_content"
         for issue in report.qa_issues
     )
+
+
+def test_writer_llm_consumes_markdown_and_section_intros() -> None:
+    source = SourceCitation(
+        id="src_tavily_deadbeef_001",
+        type="media",
+        category="media",
+        title="Source",
+        snippet="Evidence.",
+        provider="tavily",
+    )
+    scope = TaskScopeContract(
+        user_brief="Compare AI coding tools",
+        intent_mode="list",
+        competitors=[CompetitorCandidate(name="Trae", source="nl_extracted")],
+        dimensions=[
+            ScopeDimension(
+                id="core.feature_tree",
+                title="Feature tree",
+                intent="Compare features",
+                layer="core",
+                order=1,
+            )
+        ],
+    )
+    state = WorkflowState(
+        task_id=scope.id,
+        run_id=scope.id,
+        scope_contract=scope,
+        raw_collections={
+            "Trae": RawCollectionResult(
+                competitor_name="Trae",
+                sources=[source],
+                completeness_score=1.0,
+            )
+        },
+        structured_profiles={
+            "Trae": StructuredCompetitorProfile(
+                competitor_name="Trae",
+                feature_tree={},
+                pricing={},
+                user_personas=[],
+                swot={},
+                source_ids=[source.id],
+            )
+        },
+    )
+
+    class _LLM:
+        async def complete_json(self, **kwargs: object) -> dict:
+            return {
+                "markdown": "# Custom Report\n\nNarrative comparison.",
+                "summary": "Executive summary.",
+                "section_intros": {
+                    "feature_tree": "Trae differentiates through editor workflow depth.",
+                    "pricing": "Pricing signals remain tied to public packaging evidence.",
+                },
+                "claims": [
+                    {
+                        "competitor_name": "Trae",
+                        "claim_text": "Trae has public product evidence.",
+                        "source_ids": [source.id],
+                    }
+                ],
+            }
+
+    report = asyncio.run(WriterAgent()._run_llm(state, _LLM(), language="zh"))  # type: ignore[arg-type]
+
+    assert report.markdown_content == "# Custom Report\n\nNarrative comparison."
+    assert (
+        report.structured_content["feature_tree"]["intro"]
+        == "Trae differentiates through editor workflow depth."
+    )
+    assert report.structured_content["pricing"]["intro"].startswith("Pricing signals")
 
 
 def test_report_source_integrity_rejects_duplicate_and_unresolved_ids() -> None:
