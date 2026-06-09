@@ -86,7 +86,7 @@ flowchart LR
 
     subgraph DAG["LangGraph 主 DAG（State 驱动）"]
         direction LR
-        COL["collect<br/>CollectorAgent"] --> ANA["analyze<br/>AnalystAgent"]
+        COL["collect<br/>CollectorAgent"] --> ANA["analyze<br/>AnalystAgent<br/>含 evidence-gated 跨竞品矩阵补全"]
         ANA --> QA["qa_check<br/>QAAgent"]
         QA -->|"blocker 且 retry < 3"| COL
         QA -->|"通过 / retry ≥ 3"| WR["write<br/>WriterAgent"]

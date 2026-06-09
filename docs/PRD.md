@@ -362,6 +362,8 @@ class ScopingDraft(BaseModel):
 
 完成所有维度抽取后，做**多竞品交叉对比** → CrossCompetitorAnalysis（功能矩阵默认只对核心层，扩展层有则附加）
 
+> **跨竞品功能矩阵补全（evidence-gated cross-fill）**：每个竞品的 feature_tree 独立抽取，并集后矩阵稀疏——A 记录的功能对 B/C 默认 `unknown`。补全步骤逐竞品基于**其自身来源**对缺口功能二次分类（supported/partial/unsupported）。**仅当模型引用了确属该竞品的 `source_ids` 时才采纳**，否则保持 `unknown`——严格证据驱动、不依赖世界知识、杜绝幻觉。该步骤永不阻断主流程：任何失败保留原矩阵。仅在真实 LLM 模式生效，CI mock 模式跳过。
+
 **输出 Schema**:
 - `StructuredCompetitorProfile`（核心层产物，详见 §七 7.4）
 - `list[ExtensionFinding]`（扩展层产物，详见 §七 7.7）
