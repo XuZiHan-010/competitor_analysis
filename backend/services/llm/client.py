@@ -70,12 +70,20 @@ class LLMClient:
         *,
         max_attempts: int = 3,
         retry_base_delay_s: float = 0.5,
-        call_timeout_s: float = 60.0,
+        # deepseek-v4-pro generates large structured JSON at ~50 tok/s; a single
+        # core-profile extraction (~3.5k out tokens) runs ~70s, so the old 60s
+        # ceiling timed the node out. 150s fits a full profile with headroom.
+        call_timeout_s: float = 150.0,
+        # Guardrail against runaway generation (the model can emit up to its 384K
+        # output ceiling). Kept generous so it never truncates a real profile —
+        # a tight cap returns empty/partial JSON and triggers spurious retries.
+        max_output_tokens: int = 8192,
     ) -> None:
         self._settings = settings
         self._max_attempts = max(1, max_attempts)
         self._retry_base_delay_s = retry_base_delay_s
         self._call_timeout_s = call_timeout_s
+        self._max_output_tokens = max_output_tokens
 
     async def _call_with_retries(self, call: Callable[[], Awaitable[T]]) -> T:
         """Run a provider call with a per-attempt timeout and exponential backoff
@@ -109,16 +117,26 @@ class LLMClient:
         )
 
     def _openai_client(self, provider: Literal["openai", "deepseek"]) -> AsyncOpenAI:
+        # max_retries=0 disables the SDK's own hidden retries so that
+        # _call_with_retries stays the single retry layer (PRD §五.Y "最多 3 次");
+        # timeout matches the per-attempt wait_for so a cancelled call releases
+        # the httpx connection cleanly instead of hanging in aiter_bytes.
         if provider == "openai":
             if not self._settings.openai_api_key:
                 raise RuntimeError("OPENAI_API_KEY is required for OpenAI calls")
-            client = AsyncOpenAI(api_key=self._settings.openai_api_key)
+            client = AsyncOpenAI(
+                api_key=self._settings.openai_api_key,
+                max_retries=0,
+                timeout=self._call_timeout_s,
+            )
         else:
             if not self._settings.deepseek_api_key:
                 raise RuntimeError("DEEPSEEK_API_KEY is required for DeepSeek calls")
             client = AsyncOpenAI(
                 api_key=self._settings.deepseek_api_key,
                 base_url="https://api.deepseek.com/v1",
+                max_retries=0,
+                timeout=self._call_timeout_s,
             )
         return client
 
@@ -170,6 +188,7 @@ class LLMClient:
                 model=model,
                 messages=messages,
                 temperature=temperature,
+                max_tokens=self._max_output_tokens,
             ),
         )
         self._record_openai_usage(response)
@@ -228,6 +247,7 @@ class LLMClient:
                 messages=messages,
                 response_format={"type": "json_object"},
                 temperature=0.2,
+                max_tokens=self._max_output_tokens,
             ),
         )
         self._record_openai_usage(response)

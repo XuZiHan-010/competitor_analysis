@@ -3,7 +3,7 @@ import asyncio
 import pytest
 
 from services.llm.client import LLMClient, _is_transient
-from settings import get_settings
+from settings import Settings, get_settings
 
 
 class _Transient(Exception):
@@ -41,6 +41,19 @@ def test_permanent_error_not_retried() -> None:
     with pytest.raises(_Permanent):
         asyncio.run(_client()._call_with_retries(call))
     assert calls["n"] == 1
+
+
+def test_openai_client_disables_sdk_retries() -> None:
+    """LLMClient must be the only retry layer (PRD §五.Y "最多 3 次"); the SDK's
+    own hidden retries are disabled and its timeout aligned to call_timeout_s."""
+    client = LLMClient(
+        Settings(openai_api_key="sk-test", deepseek_api_key="sk-test"),
+        call_timeout_s=150.0,
+    )
+    for provider in ("openai", "deepseek"):
+        sdk = client._openai_client(provider)
+        assert sdk.max_retries == 0
+        assert sdk.timeout == 150.0
 
 
 def test_is_transient_detects_gemini_server_error_and_timeout() -> None:
