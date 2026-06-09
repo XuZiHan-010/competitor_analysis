@@ -15,6 +15,25 @@ const backendUrl =
   process.env.NEXT_PUBLIC_API_BASE_URL ||
   "http://127.0.0.1:8000";
 
+function streamFailureEvent(runId: string, message: string): Response {
+  const event = {
+    id: 0,
+    run_id: runId,
+    event: "run.failed",
+    data: { message },
+    created_at: new Date().toISOString(),
+  };
+
+  return new Response(`event: run.failed\ndata: ${JSON.stringify(event)}\n\n`, {
+    status: 200,
+    headers: {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      "x-accel-buffering": "no",
+    },
+  });
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -30,15 +49,26 @@ export async function GET(
   const lastEventId = request.headers.get("last-event-id");
   if (lastEventId) headers.set("last-event-id", lastEventId);
 
-  const upstream = await fetch(`${backendUrl}/api/tasks/${id}/events`, {
-    headers,
-    cache: "no-store",
-    // Abort the upstream stream when the browser disconnects so the backend
-    // StreamBridge subscriber is cleaned up.
-    signal: request.signal,
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetch(`${backendUrl}/api/tasks/${id}/events`, {
+      headers,
+      cache: "no-store",
+      // Abort the upstream stream when the browser disconnects so the backend
+      // StreamBridge subscriber is cleaned up.
+      signal: request.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      return new Response(null, { status: 204 });
+    }
+    return streamFailureEvent(id, "事件流连接中断，请刷新任务状态或重试。");
+  }
 
   if (!upstream.ok || !upstream.body) {
+    if (upstream.status >= 500 || !upstream.body) {
+      return streamFailureEvent(id, "事件流暂时不可用，请刷新任务状态或重试。");
+    }
     return new Response(await upstream.text(), { status: upstream.status });
   }
 

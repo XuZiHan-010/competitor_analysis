@@ -29,6 +29,11 @@ export function PositioningCard({ xAxis, yAxis, points }: PositioningCardProps) 
       <div className="relative w-full aspect-square border border-border/60 bg-background/50">
         <span aria-hidden="true" className="absolute left-0 right-0 top-1/2 h-px bg-border/60" />
         <span aria-hidden="true" className="absolute top-0 bottom-0 left-1/2 w-px bg-border/60" />
+        {renderablePoints.length === 0 && (
+          <p className="absolute inset-0 flex items-center justify-center text-[11px] text-muted-foreground/60">
+            暂无定位数据
+          </p>
+        )}
         {renderablePoints.map((p) => (
           <span
             key={p.key}

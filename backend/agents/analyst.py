@@ -5,6 +5,7 @@ import structlog
 from graph.state import (
     CrossCompetitorAnalysis,
     ExtensionFinding,
+    RawCollectionResult,
     StructuredCompetitorProfile,
     WorkflowState,
 )
@@ -258,6 +259,9 @@ class AnalystAgent:
                 )
 
         cross = self._build_cross_analysis(structured_profiles)
+        cross = await self._enrich_cross_matrix(
+            cross, structured_profiles, state.raw_collections, llm
+        )
         return structured_profiles, extension_findings, cross
 
     def _run_fallback(
@@ -388,3 +392,122 @@ class AnalystAgent:
                 "features, pricing, personas, and SWOT."
             ),
         )
+
+    async def _enrich_cross_matrix(
+        self,
+        cross: CrossCompetitorAnalysis,
+        profiles: dict[str, StructuredCompetitorProfile],
+        raw_collections: dict[str, RawCollectionResult],
+        llm: LLMClient,
+    ) -> CrossCompetitorAnalysis:
+        """Fill ``unknown`` matrix cells via a second, *evidence-gated* LLM pass.
+
+        Each competitor's feature_tree is extracted independently, so the unioned
+        cross matrix is sparse: a feature one competitor documents is ``unknown``
+        for every other. We re-ask the model — per competitor, over that
+        competitor's own sources — to classify only the gap features. A
+        classification is accepted **only** when the model cites source_ids that
+        actually belong to that competitor; otherwise the cell stays ``unknown``.
+        This keeps the fill strictly grounded and immune to world-knowledge
+        guessing. Enrichment never blocks the run: any failure leaves the matrix
+        as-is.
+        """
+        rows = cross.feature_matrix.get("rows") or []
+        competitors = cross.feature_matrix.get("competitors") or []
+        if not rows or not competitors:
+            return cross
+
+        settings = get_settings()
+        for name in competitors:
+            result = raw_collections.get(name)
+            if result is None:
+                continue
+            gap_features = [
+                str(row.get("feature", ""))
+                for row in rows
+                if self._cell_is_unknown(row, name)
+            ]
+            gap_features = [f for f in gap_features if f]
+            if not gap_features:
+                continue
+
+            valid_ids = {s.id for s in result.sources}
+            try:
+                payload = await llm.complete_json(
+                    provider="deepseek",
+                    model=settings.analyst_model,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "You are AnalystAgent (cross-fill). For the given competitor, "
+                                "classify each listed feature using ONLY the provided sources. "
+                                'Return JSON {"features":[{"feature":"<exact name>","status":'
+                                '"supported|partial|unsupported","note":"evidence-backed note",'
+                                '"source_ids":["src_id"]}]}. status and source_ids are required: '
+                                "every classification must cite source_ids copied from the "
+                                "provided sources. If a feature has no supporting evidence in "
+                                "these sources, OMIT it entirely — never guess from prior "
+                                "knowledge, never output unknown/TBD/需验证."
+                            ),
+                        },
+                        {
+                            "role": "user",
+                            "content": (
+                                f"Competitor: {name}\n"
+                                f"Features to classify: {gap_features}\n"
+                                f"Sources: {_sources_for_prompt(result.sources)}"
+                            ),
+                        },
+                    ],
+                )
+            except Exception as exc:
+                logger.warning("analyst_cross_fill_failed", competitor=name, exc_info=True)
+                record_degradation(f"analyst_cross_fill: {type(exc).__name__}: {exc}")
+                continue
+
+            classified = self._accepted_classifications(payload.get("features"), valid_ids)
+            for row in rows:
+                info = classified.get(str(row.get("feature", "")))
+                if info is None:
+                    continue
+                for cell in row.get("cells") or []:
+                    if cell.get("competitor") == name and self._cell_is_unknown(row, name):
+                        cell["status"] = info["status"]
+                        cell["note"] = info["note"]
+                row["source_ids"] = list(
+                    dict.fromkeys([*(row.get("source_ids") or []), *info["source_ids"]])
+                )
+        return cross
+
+    @staticmethod
+    def _cell_is_unknown(row: dict[str, Any], competitor: str) -> bool:
+        return any(
+            cell.get("competitor") == competitor
+            and _canonical_feature_status(cell.get("status")) == "unknown"
+            for cell in row.get("cells") or []
+        )
+
+    @staticmethod
+    def _accepted_classifications(
+        items: Any, valid_ids: set[str]
+    ) -> dict[str, dict[str, Any]]:
+        """Keep only classifications that name a real status AND cite the
+        competitor's own sources — the evidence gate against hallucination."""
+        accepted: dict[str, dict[str, Any]] = {}
+        if not isinstance(items, list):
+            return accepted
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            feat = str(item.get("feature") or "").strip()
+            status = _canonical_feature_status(item.get("status"))
+            cited = [sid for sid in (item.get("source_ids") or []) if sid in valid_ids]
+            if not feat or status == "unknown" or not cited:
+                continue
+            accepted[feat] = {
+                "status": status,
+                "note": str(item.get("note") or ""),
+                "source_ids": cited,
+            }
+        return accepted
