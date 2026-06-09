@@ -11,13 +11,16 @@ from settings import get_settings
 
 
 def database_url_for_async(url: str) -> str:
-    if url.startswith("postgresql+"):
-        return url
-    if url.startswith("postgresql://"):
-        return url.replace("postgresql://", "postgresql+psycopg://", 1)
-    if url.startswith("postgres://"):
-        return url.replace("postgres://", "postgresql+psycopg://", 1)
-    return url
+    value = url.strip()
+    if value.startswith(("ostgresql://", "ostgresql+")):
+        raise ValueError("DATABASE_URL must start with postgresql:// or postgres://")
+    if value.startswith("postgresql+"):
+        return value
+    if value.startswith("postgresql://"):
+        return value.replace("postgresql://", "postgresql+psycopg://", 1)
+    if value.startswith("postgres://"):
+        return value.replace("postgres://", "postgresql+psycopg://", 1)
+    raise ValueError("DATABASE_URL must start with postgresql:// or postgres://")
 
 
 def create_engine() -> AsyncEngine:

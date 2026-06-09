@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import pytest
 
+from agents.analyst import AnalystAgent
 from agents.qa import QAAgent
 from agents.writer import WriterAgent
 from graph.state import (
@@ -200,7 +201,8 @@ def test_metrics_and_writer_treat_unverified_fields_as_uncovered() -> None:
     report = WriterAgent()._run_fallback(state, language="zh")
 
     cell = report.structured_content["feature_tree"]["rows"][0]["cells"][0]
-    assert cell["status"] == "unverified"
+    assert cell["status"] == "unknown"
+    assert "Feature tree has too many unknown cells." in cell["note"]
     assert report.metrics.field_coverage_rate < 1.0
     assert report.qa_status == "issues"
     assert report.metrics.ai_self_assessment["needs_human_review"] is True
@@ -230,3 +232,42 @@ def test_metrics_reports_full_coverage_for_filled_core_fields() -> None:
     )
 
     assert metrics.field_coverage_rate == 1.0
+
+
+def test_analyst_cross_analysis_normalizes_feature_status_values() -> None:
+    profiles = {
+        "Douyin": StructuredCompetitorProfile(
+            competitor_name="Douyin",
+            feature_tree={
+                "rows": [
+                    {
+                        "feature": "Editing",
+                        "cells": [{"competitor": "Douyin", "status": "unverified"}],
+                        "source_ids": ["src1"],
+                    },
+                    {
+                        "feature": "Search",
+                        "cells": [{"competitor": "Douyin", "status": "yes"}],
+                        "source_ids": ["src1"],
+                    },
+                    {
+                        "feature": "Commerce",
+                        "cells": [{"competitor": "Douyin", "status": "不支持"}],
+                        "source_ids": ["src1"],
+                    },
+                ]
+            },
+            pricing={},
+            user_personas=[],
+            swot={},
+            source_ids=["src1"],
+        )
+    }
+
+    cross = AnalystAgent()._build_cross_analysis(profiles)
+    statuses = [
+        row["cells"][0]["status"]
+        for row in cross.feature_matrix["rows"]
+    ]
+
+    assert statuses == ["unknown", "supported", "unsupported"]

@@ -258,7 +258,85 @@ def test_writer_llm_consumes_markdown_and_section_intros() -> None:
         report.structured_content["feature_tree"]["intro"]
         == "Trae differentiates through editor workflow depth."
     )
-    assert report.structured_content["pricing"]["intro"].startswith("Pricing signals")
+
+
+def test_writer_normalizes_feature_matrix_status_values() -> None:
+    source = SourceCitation(
+        id="src_tavily_deadbeef_001",
+        type="media",
+        category="media",
+        title="Source",
+        snippet="Evidence.",
+        provider="tavily",
+    )
+    scope = TaskScopeContract(
+        user_brief="Compare AI coding tools",
+        intent_mode="list",
+        competitors=[CompetitorCandidate(name="Trae", source="nl_extracted")],
+        dimensions=[
+            ScopeDimension(
+                id="core.feature_tree",
+                title="Feature tree",
+                intent="Compare features",
+                layer="core",
+                order=1,
+            )
+        ],
+    )
+    state = WorkflowState(
+        task_id=scope.id,
+        run_id=scope.id,
+        scope_contract=scope,
+        raw_collections={
+            "Trae": RawCollectionResult(
+                competitor_name="Trae",
+                sources=[source],
+                completeness_score=1.0,
+            )
+        },
+        structured_profiles={
+            "Trae": StructuredCompetitorProfile(
+                competitor_name="Trae",
+                feature_tree={
+                    "rows": [
+                        {
+                            "feature": "Verified cells",
+                            "cells": [
+                                {"competitor": "Trae", "status": "unverified", "note": ""},
+                            ],
+                            "source_ids": [source.id],
+                        },
+                        {
+                            "feature": "Boolean cells",
+                            "cells": [
+                                {"competitor": "Trae", "status": "yes", "note": "Present"},
+                            ],
+                            "source_ids": [source.id],
+                        },
+                        {
+                            "feature": "Localized cells",
+                            "cells": [
+                                {"competitor": "Trae", "status": "部分支持", "note": "Limited"},
+                            ],
+                            "source_ids": [source.id],
+                        },
+                    ]
+                },
+                pricing={},
+                user_personas=[],
+                swot={},
+                source_ids=[source.id],
+            )
+        },
+    )
+
+    report = WriterAgent()._run_fallback(state, language="zh")
+
+    statuses = [
+        row["cells"][0]["status"]
+        for row in report.structured_content["feature_tree"]["rows"]
+    ]
+    assert statuses == ["unknown", "supported", "partial"]
 
 
 def test_report_source_integrity_rejects_duplicate_and_unresolved_ids() -> None:

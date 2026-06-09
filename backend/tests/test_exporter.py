@@ -76,6 +76,20 @@ def test_build_report_html_escapes_llm_text() -> None:
     assert "<script>alert(1)</script>" not in html
 
 
+def test_build_report_html_degrades_unknown_feature_status() -> None:
+    structured = _structured_content()
+    feature_tree = structured["feature_tree"]
+    assert isinstance(feature_tree, dict)
+    rows = feature_tree["rows"]
+    assert isinstance(rows, list)
+    rows[0]["cells"][0]["status"] = "unverified"
+
+    html = build_report_html(_report(structured_content=structured))
+
+    assert 'class="support unknown"' in html
+    assert 'class="support unverified"' not in html
+
+
 def test_render_markdown_uses_clean_tables_and_no_internal_fields() -> None:
     md = render_report_markdown(_report())
 

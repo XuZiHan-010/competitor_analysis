@@ -17,6 +17,44 @@ from settings import get_settings
 
 logger = structlog.get_logger(__name__)
 
+_FEATURE_STATUS_ALIASES = {
+    "supported": "supported",
+    "support": "supported",
+    "yes": "supported",
+    "true": "supported",
+    "available": "supported",
+    "支持": "supported",
+    "partial": "partial",
+    "partially_supported": "partial",
+    "limited": "partial",
+    "weak": "partial",
+    "部分支持": "partial",
+    "有限支持": "partial",
+    "unsupported": "unsupported",
+    "not_supported": "unsupported",
+    "no": "unsupported",
+    "false": "unsupported",
+    "unavailable": "unsupported",
+    "不支持": "unsupported",
+    "unknown": "unknown",
+    "unverified": "unknown",
+    "unchecked": "unknown",
+    "": "unknown",
+}
+
+
+def _canonical_feature_status(value: object) -> str:
+    return _FEATURE_STATUS_ALIASES.get(str(value or "").strip().lower(), "unknown")
+
+
+def _canonical_feature_cell(cell: Mapping[str, object], competitor: str) -> dict[str, object]:
+    return {
+        **dict(cell),
+        "competitor": str(cell.get("competitor") or competitor),
+        "status": _canonical_feature_status(cell.get("status")),
+        "note": str(cell.get("note") or ""),
+    }
+
 
 class WriterAgent:
     @traced_node(
@@ -221,10 +259,14 @@ class WriterAgent:
                         "source_ids": [],
                     }
                 cell = next(
-                    (c for c in (row.get("cells") or []) if c.get("competitor") == name),
+                    (
+                        c
+                        for c in (row.get("cells") or [])
+                        if isinstance(c, Mapping) and c.get("competitor") == name
+                    ),
                     {"competitor": name, "status": "unknown", "note": ""},
                 )
-                feature_index[feat]["cells"].append(cell)
+                feature_index[feat]["cells"].append(_canonical_feature_cell(cell, name))
                 feature_index[feat]["source_ids"].extend(row.get("source_ids") or [])
         ft_rows = list(feature_index.values())
         for row in ft_rows:
@@ -573,7 +615,6 @@ def _mark_feature_cells_unverified(
                 str(cell.get("competitor", "")).lower() == competitor.lower()
                 and str(cell.get("status", "")).lower() == "unknown"
             ):
-                cell["status"] = "unverified"
                 cell["note"] = f"未确认：{reason}"
 
 

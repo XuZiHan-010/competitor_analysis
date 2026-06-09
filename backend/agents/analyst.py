@@ -21,6 +21,30 @@ logger = structlog.get_logger(__name__)
 # evidence-grounded extraction without sending whole articles.
 _MAX_RAW_CONTENT_CHARS = 5000
 _MAX_COMPETITOR_RAW_CONTENT_CHARS = 24000
+_FEATURE_STATUS_ALIASES = {
+    "supported": "supported",
+    "support": "supported",
+    "yes": "supported",
+    "true": "supported",
+    "available": "supported",
+    "支持": "supported",
+    "partial": "partial",
+    "partially_supported": "partial",
+    "limited": "partial",
+    "weak": "partial",
+    "部分支持": "partial",
+    "有限支持": "partial",
+    "unsupported": "unsupported",
+    "not_supported": "unsupported",
+    "no": "unsupported",
+    "false": "unsupported",
+    "unavailable": "unsupported",
+    "不支持": "unsupported",
+    "unknown": "unknown",
+    "unverified": "unknown",
+    "unchecked": "unknown",
+    "": "unknown",
+}
 
 
 def _source_for_prompt(source: SourceCitation) -> dict[str, Any]:
@@ -74,6 +98,19 @@ def _coerce_personas(value: Any) -> list[dict[str, Any]]:
                 return [item for item in inner if isinstance(item, dict)]
         return [value]
     return []
+
+
+def _canonical_feature_status(value: object) -> str:
+    return _FEATURE_STATUS_ALIASES.get(str(value or "").strip().lower(), "unknown")
+
+
+def _canonical_feature_cell(cell: dict[str, Any], competitor: str) -> dict[str, Any]:
+    return {
+        **cell,
+        "competitor": str(cell.get("competitor") or competitor),
+        "status": _canonical_feature_status(cell.get("status")),
+        "note": str(cell.get("note") or ""),
+    }
 
 
 class AnalystAgent:
@@ -329,7 +366,7 @@ class AnalystAgent:
                         (c for c in (row.get("cells") or []) if c.get("competitor") == name),
                         {"competitor": name, "status": "unknown", "note": ""},
                     )
-                    cells.append(competitor_cell)
+                    cells.append(_canonical_feature_cell(competitor_cell, name))
                     source_ids.extend(row.get("source_ids") or [])
                 else:
                     cells.append({"competitor": name, "status": "unknown", "note": ""})
