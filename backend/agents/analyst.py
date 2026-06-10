@@ -321,9 +321,9 @@ class AnalystAgent:
                 ],
                 swot={
                     "strengths": [{"text": "结构化工作流", "source_ids": source_ids[:1]}],
-                    "weaknesses": [{"text": "insufficient evidence", "source_ids": []}],
-                    "opportunities": [{"text": "AI 辅助分析", "source_ids": []}],
-                    "threats": [{"text": "竞品快速迭代", "source_ids": []}],
+                    "weaknesses": [{"text": "insufficient evidence", "source_ids": source_ids[:1]}],
+                    "opportunities": [{"text": "AI 辅助分析", "source_ids": source_ids[:1]}],
+                    "threats": [{"text": "竞品快速迭代", "source_ids": source_ids[:1]}],
                 },
                 source_ids=source_ids,
             )
