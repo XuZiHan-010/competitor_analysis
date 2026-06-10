@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 import structlog
 
 from graph.state import QAIssue, QAResult, StructuredCompetitorProfile, WorkflowState
+from schemas.source import SourceCitation
 from services.agents.decorators import traced_node
 from services.llm import LLMClient
 from settings import get_settings
@@ -98,6 +99,11 @@ class QAAgent:
     def _deterministic_checks(self, state: WorkflowState) -> QAResult:
         issues: list[QAIssue] = []
         now = datetime.now(UTC)
+        sources_by_id = {
+            source.id: source
+            for result in state.raw_collections.values()
+            for source in result.sources
+        }
 
         # Demo feedback loop trigger
         force_blocker = bool(state.feedback_signals.get("force_pricing_blocker"))
@@ -149,7 +155,8 @@ class QAAgent:
                     )
                 )
 
-            if not profile.pricing.get("tiers"):
+            tiers = profile.pricing.get("tiers") or []
+            if not tiers:
                 issues.append(
                     QAIssue(
                         severity="blocker",
@@ -157,6 +164,23 @@ class QAAgent:
                         target_competitor=name,
                         failed_field="pricing",
                         message="Pricing tiers are missing.",
+                    )
+                )
+            elif _pricing_lacks_factual_source(tiers, sources_by_id):
+                # Pricing is a hard fact: a price backed only by user reviews/feedback
+                # isn't trustworthy. Block until an official or commercial source is
+                # collected (a collection gap, hence retryable) rather than letting
+                # review chatter stand in for a published price.
+                issues.append(
+                    QAIssue(
+                        severity="blocker",
+                        target_agent="CollectorAgent",
+                        target_competitor=name,
+                        failed_field="pricing.source_ids",
+                        message=(
+                            "Pricing is only supported by user feedback; "
+                            "official or commercial source required."
+                        ),
                     )
                 )
 
@@ -303,6 +327,33 @@ class QAAgent:
             passed=not any(i.severity == "blocker" for i in issues),
             issues=issues,
         )
+
+
+_PRICING_FACTUAL_SOURCE = frozenset({"official", "commercial"})
+
+
+def _pricing_lacks_factual_source(
+    tiers: list[dict],
+    sources_by_id: dict[str, SourceCitation],
+) -> bool:
+    """True when pricing tiers cite sources but none are official/commercial.
+
+    Returns False when no cited source resolves (that's a missing-citation
+    concern surfaced elsewhere, not a "review-only pricing" violation), so the
+    gate fires only on the specific case it owns.
+    """
+    resolved = [
+        sources_by_id[source_id]
+        for tier in tiers
+        for source_id in (tier.get("source_ids") or [])
+        if source_id in sources_by_id
+    ]
+    if not resolved:
+        return False
+    return not any(
+        source.type in _PRICING_FACTUAL_SOURCE or source.category in _PRICING_FACTUAL_SOURCE
+        for source in resolved
+    )
 
 
 def _feature_unknown_rate(profile: StructuredCompetitorProfile) -> float | None:
