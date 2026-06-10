@@ -83,7 +83,7 @@ export function CitationPanel({ sources }: CitationPanelProps) {
             <div className="space-y-4">
               <div>
                 <a
-                  href={source.url}
+                  href={source.url ?? undefined}
                   target="_blank"
                   rel="noreferrer noopener"
                   className="inline-flex items-start gap-2 text-[14px] leading-snug text-foreground/95 hover:text-primary underline decoration-border underline-offset-4 hover:decoration-primary"

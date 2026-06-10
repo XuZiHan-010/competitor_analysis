@@ -40,7 +40,7 @@ export function SourceList({ sources }: SourceListProps) {
             </span>
             <div className="min-w-0">
               <a
-                href={s.url}
+                href={s.url ?? undefined}
                 target="_blank"
                 rel="noreferrer noopener"
                 className="text-foreground/90 hover:text-primary inline-flex items-baseline gap-1 underline decoration-border underline-offset-4 hover:decoration-primary"
