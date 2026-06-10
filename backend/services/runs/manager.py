@@ -23,28 +23,71 @@ from settings import get_settings
 logger = structlog.get_logger(__name__)
 
 
+async def _open_postgres_saver(dsn: str) -> tuple[Any, Any] | None:
+    """Open a liveness-checked pool + AsyncPostgresSaver, or None on setup failure.
+
+    Uses a connection pool rather than ``from_conn_string``'s single bare
+    connection: workflow nodes idle for tens of seconds between checkpoint
+    writes while LLMs run, long enough for Neon's pooler to recycle a lone
+    connection — the next ``aput_writes`` then hits "the connection is closed".
+    The pool re-checks liveness on checkout and reconnects. ``prepare_threshold=
+    None`` is required because pgbouncer transaction pooling can't keep psycopg's
+    prepared statements alive.
+    """
+    try:
+        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+        from psycopg import AsyncConnection
+        from psycopg.rows import DictRow, dict_row
+        from psycopg_pool import AsyncConnectionPool
+
+        pool: AsyncConnectionPool[AsyncConnection[DictRow]] = AsyncConnectionPool(
+            conninfo=dsn,
+            min_size=1,
+            max_size=4,
+            open=False,
+            kwargs={
+                "autocommit": True,
+                "prepare_threshold": None,
+                "row_factory": dict_row,
+                "keepalives": 1,
+                "keepalives_idle": 30,
+                "keepalives_interval": 10,
+                "keepalives_count": 5,
+            },
+            check=AsyncConnectionPool.check_connection,
+        )
+        await pool.open(wait=True, timeout=10)
+        saver = AsyncPostgresSaver(pool)
+        await saver.setup()
+        return pool, saver
+    except Exception:
+        logger.warning("postgres_checkpointer_unavailable_using_memory", exc_info=True)
+        return None
+
+
 @asynccontextmanager
 async def _checkpointer_ctx() -> AsyncIterator[Any]:
     """Yield an AsyncPostgresSaver when DATABASE_URL is configured, else MemorySaver.
 
     A configured-but-unreachable Postgres is logged as a warning (the run still
     proceeds on an in-memory checkpointer, but state will not survive a restart);
-    an unconfigured DATABASE_URL is the expected dev path and stays silent.
+    an unconfigured DATABASE_URL is the expected dev path and stays silent. The
+    ``yield`` sits outside the setup try/except on purpose: a run-time failure
+    must propagate, not get swallowed and re-yielded (which would raise
+    "generator didn't stop").
     """
     settings = get_settings()
-    if settings.database_url:
-        try:
-            from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+    opened = await _open_postgres_saver(settings.database_url) if settings.database_url else None
+    if opened is None:
+        from langgraph.checkpoint.memory import MemorySaver
 
-            async with AsyncPostgresSaver.from_conn_string(settings.database_url) as saver:
-                await saver.setup()
-                yield saver
-                return
-        except Exception:
-            logger.warning("postgres_checkpointer_unavailable_using_memory", exc_info=True)
-    from langgraph.checkpoint.memory import MemorySaver
-
-    yield MemorySaver()
+        yield MemorySaver()
+        return
+    pool, saver = opened
+    try:
+        yield saver
+    finally:
+        await pool.close()
 
 
 class RunRecord(BaseModel):
