@@ -214,6 +214,25 @@ class QAAgent:
                     )
                 )
 
+            # Core sections whose rows carry no citation at all. A warning (not a
+            # blocker) so the run still completes, but the report's quality panel
+            # can surface that a core section leans on uncited claims.
+            uncited_sections = _core_sections_missing_citations(profile)
+            if uncited_sections:
+                issues.append(
+                    QAIssue(
+                        severity="warning",
+                        target_agent="AnalystAgent",
+                        target_competitor=name,
+                        failed_field="core.source_ids",
+                        message=(
+                            "Core sections lack citations: "
+                            f"{', '.join(uncited_sections)}."
+                        ),
+                        retryable=False,
+                    )
+                )
+
             # Per-competitor source count check (PRD §六 5.4: ≥5 independent sources)
             raw = state.raw_collections.get(name)
             if raw is not None:
@@ -354,6 +373,29 @@ def _pricing_lacks_factual_source(
         source.type in _PRICING_FACTUAL_SOURCE or source.category in _PRICING_FACTUAL_SOURCE
         for source in resolved
     )
+
+
+def _rows_missing_source_ids(rows: object) -> bool:
+    return isinstance(rows, list) and any(
+        isinstance(row, dict) and not (row.get("source_ids") or []) for row in rows
+    )
+
+
+def _core_sections_missing_citations(profile: StructuredCompetitorProfile) -> list[str]:
+    """Names of core sections with at least one row that cites no source."""
+    sections: list[str] = []
+    if _rows_missing_source_ids(profile.feature_tree.get("rows")):
+        sections.append("feature_tree")
+    if _rows_missing_source_ids(profile.user_personas):
+        sections.append("user_personas")
+    swot_items = [
+        item
+        for quadrant in ("strengths", "weaknesses", "opportunities", "threats")
+        for item in (profile.swot.get(quadrant) or [])
+    ]
+    if _rows_missing_source_ids(swot_items):
+        sections.append("swot")
+    return sections
 
 
 def _feature_unknown_rate(profile: StructuredCompetitorProfile) -> float | None:

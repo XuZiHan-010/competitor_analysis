@@ -218,6 +218,29 @@ def test_qa_accepts_pricing_backed_by_commercial_source() -> None:
     assert not [issue for issue in result.issues if issue.failed_field == "pricing.source_ids"]
 
 
+def test_qa_warns_when_core_section_rows_lack_citations() -> None:
+    profile = _healthy_pricing_profile("src_official")
+    profile.feature_tree["rows"][0]["source_ids"] = []
+
+    result = QAAgent()._deterministic_checks(_state(profile, _pricing_sources(
+        SourceCitation(
+            id="src_official",
+            type="official",
+            category="official",
+            title="Official",
+            snippet="x",
+            provider="tavily",
+        )
+    )))
+
+    warnings = [issue for issue in result.issues if issue.failed_field == "core.source_ids"]
+    assert len(warnings) == 1
+    assert warnings[0].severity == "warning"
+    assert "feature_tree" in warnings[0].message
+    # A citation gap is a warning, not a blocker — the run still passes.
+    assert result.passed
+
+
 def test_retry_exhaustion_writes_field_verification_status(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
