@@ -46,13 +46,30 @@ export interface ReportMetrics {
   ai_self_assessment: Record<string, unknown>;
 }
 
+export type SourceType =
+  | "official"
+  | "media"
+  | "user_feedback"
+  | "tech_community"
+  | "commercial"
+  | "user_uploaded"
+  | "published_survey"
+  | "public_review"
+  | "app_review"
+  | "ai_simulated";
+
 export interface ReportSource {
   id: string;
-  url: string;
+  type: SourceType;
+  category: string;
+  url: string | null;
   title: string;
   snippet: string;
-  category: string;
+  raw_content?: string | null;
+  provider: string;
+  fetched_at?: string;
   valid: boolean;
+  dimension_id?: string | null;
 }
 
 // --- structured_content canonical shape (after WriterAgent fix) ---

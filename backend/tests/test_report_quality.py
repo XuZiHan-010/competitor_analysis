@@ -134,6 +134,113 @@ def test_qa_blocks_missing_core_schema_fields() -> None:
     assert not result.passed
 
 
+def _healthy_pricing_profile(pricing_source_id: str) -> StructuredCompetitorProfile:
+    return StructuredCompetitorProfile(
+        competitor_name="Douyin",
+        feature_tree={
+            "rows": [
+                {
+                    "feature": "Editing",
+                    "cells": [{"competitor": "Douyin", "status": "supported"}],
+                    "source_ids": ["src_official"],
+                }
+            ]
+        },
+        pricing={
+            "tiers": [
+                {
+                    "competitor": "Douyin",
+                    "tier": "Pro",
+                    "price": "$10/mo",
+                    "highlights": ["Unlimited"],
+                    "source_ids": [pricing_source_id],
+                }
+            ]
+        },
+        user_personas=[
+            {"competitor": "Douyin", "label": "Creator", "source_ids": ["src_official"]}
+        ],
+        swot={
+            "strengths": [{"text": "Reach", "source_ids": ["src_official"]}],
+            "weaknesses": [{"text": "Cost", "source_ids": ["src_official"]}],
+        },
+        source_ids=["src_official"],
+    )
+
+
+def _pricing_sources(pricing_source: SourceCitation) -> list[SourceCitation]:
+    official = SourceCitation(
+        id="src_official",
+        type="official",
+        category="official",
+        title="Douyin official",
+        snippet="Official overview.",
+        provider="tavily",
+    )
+    return [official, pricing_source, *([official] * 3)]
+
+
+def test_qa_blocks_pricing_backed_only_by_user_reviews() -> None:
+    review = SourceCitation(
+        id="src_review",
+        type="app_review",
+        category="user_feedback",
+        title="App store reviews",
+        snippet="Users mention paying around $10.",
+        provider="app_review_fetch",
+    )
+    profile = _healthy_pricing_profile("src_review")
+
+    result = QAAgent()._deterministic_checks(_state(profile, _pricing_sources(review)))
+
+    pricing_blockers = [
+        issue
+        for issue in result.issues
+        if issue.severity == "blocker" and issue.failed_field == "pricing.source_ids"
+    ]
+    assert len(pricing_blockers) == 1
+    assert not result.passed
+
+
+def test_qa_accepts_pricing_backed_by_commercial_source() -> None:
+    commercial = SourceCitation(
+        id="src_commercial",
+        type="commercial",
+        category="commercial",
+        title="Pricing page",
+        snippet="Pro plan is $10/mo.",
+        provider="fetch_pages",
+    )
+    profile = _healthy_pricing_profile("src_commercial")
+
+    result = QAAgent()._deterministic_checks(_state(profile, _pricing_sources(commercial)))
+
+    assert not [issue for issue in result.issues if issue.failed_field == "pricing.source_ids"]
+
+
+def test_qa_warns_when_core_section_rows_lack_citations() -> None:
+    profile = _healthy_pricing_profile("src_official")
+    profile.feature_tree["rows"][0]["source_ids"] = []
+
+    result = QAAgent()._deterministic_checks(_state(profile, _pricing_sources(
+        SourceCitation(
+            id="src_official",
+            type="official",
+            category="official",
+            title="Official",
+            snippet="x",
+            provider="tavily",
+        )
+    )))
+
+    warnings = [issue for issue in result.issues if issue.failed_field == "core.source_ids"]
+    assert len(warnings) == 1
+    assert warnings[0].severity == "warning"
+    assert "feature_tree" in warnings[0].message
+    # A citation gap is a warning, not a blocker — the run still passes.
+    assert result.passed
+
+
 def test_retry_exhaustion_writes_field_verification_status(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

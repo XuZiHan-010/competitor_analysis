@@ -127,111 +127,30 @@ class WriterAgent:
                 },
             ],
         )
-        claims = self._claims_from_payload(payload, state)
         section_intros = _section_intros_from_payload(payload.get("section_intros"))
         rich = self._assemble_rich_content(state, language, section_intros=section_intros)
         rich["summary"] = payload.get("summary", "") or rich["summary"]
         structured_content = rich
+        # Claims are derived field-by-field from the assembled structured content
+        # (its per-field source_ids are authoritative) plus deterministic survey
+        # claims — not from the LLM's free-text claim list, so every visible
+        # cell/tier/persona/bullet maps to a traceable claim.
+        claims = _field_level_core_claims(state, structured_content) + _survey_claims(
+            state, sources
+        )
         markdown = str(payload.get("markdown") or "").strip() or self._render_markdown(
             structured_content
         )
         return self._build_report(state, structured_content, markdown, claims, sources, language)
 
     def _run_fallback(self, state: WorkflowState, *, language: str) -> Report:
-        claims: list[ReportClaim] = []
         sources = [s for result in state.raw_collections.values() for s in result.sources]
-
-        for index, (name, profile) in enumerate(state.structured_profiles.items(), start=1):
-            claims.append(
-                ReportClaim(
-                    claim_path=f"profiles[{index}].summary",
-                    claim_text=f"{name} has collaboration and reporting features.",
-                    layer="core",
-                    field_type="structured",
-                    source_ids=profile.source_ids,
-                    generating_agent="WriterAgent",
-                    source_support=_source_support_for_state(state, profile.source_ids),
-                    validity="valid" if profile.source_ids else "unknown",
-                )
-            )
-
-        evidence_index = {
-            e.id: e
-            for survey in state.survey_results.values()
-            for e in survey.evidence
-        }
-        report_source_ids = {source.id for source in sources}
-        for index, (_, survey) in enumerate(state.survey_results.items(), start=1):
-            for insight_index, insight in enumerate(survey.insights, start=1):
-                source_support = "supported" if insight.confidence != "low" else "weak"
-                all_simulated = insight.evidence_ids and all(
-                    evidence_index.get(eid) is not None
-                    and evidence_index[eid].source_type == "ai_simulated"
-                    for eid in insight.evidence_ids
-                )
-                claim_text = (
-                    f"⚠️ [AI模拟] {insight.point}" if all_simulated else insight.point
-                )
-                claims.append(
-                    ReportClaim(
-                        claim_path=f"survey[{index}].insights[{insight_index}]",
-                        claim_text=claim_text,
-                        layer="survey",
-                        field_type="free_text",
-                        source_ids=_survey_insight_source_ids(
-                            evidence_index,
-                            insight.evidence_ids,
-                            report_source_ids,
-                        ),
-                        generating_agent="SurveyTool",
-                        source_support=source_support,
-                        validity="valid",
-                    )
-                )
-
         structured_content = self._assemble_rich_content(state, language)
+        claims = _field_level_core_claims(state, structured_content) + _survey_claims(
+            state, sources
+        )
         markdown = self._render_markdown(structured_content)
         return self._build_report(state, structured_content, markdown, claims, sources, language)
-
-    def _claims_from_payload(self, payload: dict, state: WorkflowState) -> list[ReportClaim]:
-        claims: list[ReportClaim] = []
-        fallback_source_ids = {
-            name: profile.source_ids for name, profile in state.structured_profiles.items()
-        }
-        for index, item in enumerate(payload.get("claims", []), start=1):
-            competitor_name = str(item.get("competitor_name") or item.get("competitor", ""))
-            source_ids = item.get("source_ids") or fallback_source_ids.get(competitor_name, [])
-            layer = item.get("layer", "core")
-            field_type = item.get("field_type", "free_text")
-            claims.append(
-                ReportClaim(
-                    claim_path=str(item.get("claim_path", f"claims[{index}]")),
-                    claim_text=str(item.get("claim_text", "")),
-                    layer=layer if layer in ("core", "extension", "survey") else "core",
-                    field_type=field_type if field_type in ("structured", "free_text")
-                    else "free_text",
-                    source_ids=source_ids,
-                    generating_agent="WriterAgent",
-                    source_support=_source_support_for_state(state, source_ids),
-                    validity="valid" if source_ids else "unknown",
-                )
-            )
-        if claims:
-            return claims
-        for index, (name, profile) in enumerate(state.structured_profiles.items(), start=1):
-            claims.append(
-                ReportClaim(
-                    claim_path=f"profiles[{index}].summary",
-                    claim_text=f"{name} has structured competitive signals.",
-                    layer="core",
-                    field_type="structured",
-                    source_ids=profile.source_ids,
-                    generating_agent="WriterAgent",
-                    source_support=_source_support_for_state(state, profile.source_ids),
-                    validity="valid" if profile.source_ids else "unknown",
-                )
-            )
-        return claims
 
     def _assemble_rich_content(
         self,
@@ -632,6 +551,106 @@ def _field_status_issues(field_status: dict[str, object]) -> list[dict]:
             "retryable": False,
         })
     return issues
+
+
+def _field_level_core_claims(
+    state: WorkflowState,
+    structured_content: Mapping[str, object],
+) -> list[ReportClaim]:
+    """One claim per visible core/extension field, citing that field's source_ids.
+
+    Field-level (not profile-level) so every cell, tier, persona, SWOT item, and
+    extension bullet in the report maps to a traceable claim; citation coverage
+    then measures the report body, not a single rolled-up summary per competitor.
+    """
+    claims: list[ReportClaim] = []
+
+    def _add(path: str, text: str, source_ids: list[str], layer: str) -> None:
+        ids = list(dict.fromkeys(source_ids))
+        claims.append(
+            ReportClaim(
+                claim_path=path,
+                claim_text=text.strip() or path,
+                layer=layer,
+                field_type="structured",
+                source_ids=ids,
+                generating_agent="WriterAgent",
+                source_support=_source_support_for_state(state, ids),
+                validity="valid" if ids else "unknown",
+            )
+        )
+
+    feature = _mapping(structured_content.get("feature_tree"))
+    for i, row in enumerate(_list_of_mappings(feature.get("rows"))):
+        _add(f"feature_tree.rows[{i}]", str(row.get("feature") or ""),
+             _strings(row.get("source_ids")), "core")
+
+    pricing = _mapping(structured_content.get("pricing"))
+    for i, tier in enumerate(_list_of_mappings(pricing.get("tiers"))):
+        label = _compact_join(
+            [
+                str(tier.get("competitor") or ""),
+                str(tier.get("tier") or tier.get("plan_name") or ""),
+                str(tier.get("price") or ""),
+            ],
+            separator=" · ",
+        )
+        _add(f"pricing.tiers[{i}]", label, _strings(tier.get("source_ids")), "core")
+
+    personas = _mapping(structured_content.get("user_personas"))
+    for i, persona in enumerate(_list_of_mappings(personas.get("personas"))):
+        label = _compact_join(
+            [str(persona.get("competitor") or ""), str(persona.get("label") or "")],
+            separator=" · ",
+        )
+        _add(f"user_personas.personas[{i}]", label, _strings(persona.get("source_ids")), "core")
+
+    swot = _mapping(structured_content.get("swot"))
+    for b, block in enumerate(_list_of_mappings(swot.get("blocks"))):
+        for quadrant in ("strengths", "weaknesses", "opportunities", "threats"):
+            for i, item in enumerate(_list_of_mappings(block.get(quadrant))):
+                _add(f"swot.blocks[{b}].{quadrant}[{i}]", str(item.get("text") or ""),
+                     _strings(item.get("source_ids")), "core")
+
+    for e, extension in enumerate(_list_of_mappings(structured_content.get("extensions"))):
+        for i, bullet in enumerate(_list_of_mappings(extension.get("bullets"))):
+            _add(f"extensions[{e}].bullets[{i}]", "; ".join(_strings(bullet.get("points"))),
+                 _strings(bullet.get("source_ids")), "extension")
+
+    return claims
+
+
+def _survey_claims(state: WorkflowState, sources: list) -> list[ReportClaim]:
+    """Deterministic survey-layer claims mapping insight evidence to report sources."""
+    evidence_index = {
+        e.id: e for survey in state.survey_results.values() for e in survey.evidence
+    }
+    report_source_ids = {source.id for source in sources}
+    claims: list[ReportClaim] = []
+    for index, (_, survey) in enumerate(state.survey_results.items(), start=1):
+        for insight_index, insight in enumerate(survey.insights, start=1):
+            source_support = "supported" if insight.confidence != "low" else "weak"
+            all_simulated = bool(insight.evidence_ids) and all(
+                evidence_index.get(eid) is not None
+                and evidence_index[eid].source_type == "ai_simulated"
+                for eid in insight.evidence_ids
+            )
+            claim_text = f"⚠️ [AI模拟] {insight.point}" if all_simulated else insight.point
+            claims.append(
+                ReportClaim(
+                    claim_path=f"survey[{index}].insights[{insight_index}]",
+                    claim_text=claim_text,
+                    layer="survey",
+                    field_type="free_text",
+                    source_ids=_survey_insight_source_ids(
+                        evidence_index, insight.evidence_ids, report_source_ids
+                    ),
+                    generating_agent="SurveyTool",
+                    source_support=source_support,
+                    validity="valid",
+                )
+            )
+    return claims
 
 
 def _survey_insight_source_ids(

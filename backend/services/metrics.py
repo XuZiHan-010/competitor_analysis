@@ -55,6 +55,25 @@ def calculate_report_metrics(
         claim.correction_type for claim in claims if claim.correction_type is not None
     )
 
+    core_ext_claims = [c for c in claims if c.layer in ("core", "extension")]
+    survey_claims_list = [c for c in claims if c.layer == "survey"]
+    core_sourced = [c for c in core_ext_claims if _source_ids_resolve(c.source_ids, source_ids)]
+    survey_sourced = [
+        c for c in survey_claims_list if _source_ids_resolve(c.source_ids, source_ids)
+    ]
+    core_supported = [
+        c for c in core_ext_claims
+        if c.source_support == "supported" and _source_ids_resolve(c.source_ids, source_ids)
+    ]
+    split_metrics: dict[str, Any] = {
+        "core_citation_coverage_rate": _rate(len(core_sourced), len(core_ext_claims)),
+        "survey_citation_coverage_rate": _rate(len(survey_sourced), len(survey_claims_list)),
+        "core_source_support_rate": (
+            _rate(len(core_supported), len(core_ext_claims)) if core_ext_claims else None
+        ),
+    }
+    assessment = {**split_metrics, **(ai_self_assessment or {})}
+
     return ReportMetrics(
         analysis_duration_seconds=analysis_duration_seconds,
         field_coverage_rate=_field_coverage_rate(
@@ -71,7 +90,7 @@ def calculate_report_metrics(
         invalid_source_rate=_rate(len(invalid_sources), len(sources)) if sources else 0.0,
         rerun_rate=_rate(rerun_count, module_count),
         correction_type_breakdown={str(key): value for key, value in correction_breakdown.items()},
-        ai_self_assessment=ai_self_assessment or {},
+        ai_self_assessment=assessment,
     )
 
 

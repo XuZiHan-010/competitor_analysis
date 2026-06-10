@@ -208,7 +208,7 @@ def test_p1_contract_placeholders(
     assert empty_search_response.status_code == 200
     assert empty_search_response.json()["results"]
 
-    claim_search_response = client.get("/api/reports/search", params={"q": "collaboration"})
+    claim_search_response = client.get("/api/reports/search", params={"q": "Notion"})
     assert claim_search_response.status_code == 200
     claim_search_results = claim_search_response.json()["results"]
     assert claim_search_results
