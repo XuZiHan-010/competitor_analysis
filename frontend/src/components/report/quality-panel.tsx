@@ -96,6 +96,20 @@ export function QualityPanel({
         <div className="space-y-2.5 border-b border-border/60 px-4 py-3">
           <MetricRow label="字段覆盖率" value={pct(metrics.field_coverage_rate)} />
           <MetricRow label="引用覆盖率" value={pct(metrics.citation_coverage_rate)} />
+          {typeof metrics.ai_self_assessment.core_citation_coverage_rate === "number" && (
+            <MetricRow
+              label="正文引用覆盖"
+              value={pct(metrics.ai_self_assessment.core_citation_coverage_rate as number)}
+              sub="核心"
+            />
+          )}
+          {typeof metrics.ai_self_assessment.survey_citation_coverage_rate === "number" && (
+            <MetricRow
+              label="Survey 引用覆盖"
+              value={pct(metrics.ai_self_assessment.survey_citation_coverage_rate as number)}
+              sub="调研"
+            />
+          )}
           <MetricRow label="人工修正率" value={pct(metrics.manual_correction_rate)} />
           {metrics.human_verified_accuracy_rate != null && (
             <MetricRow label="人工确认准确率" value={pct(metrics.human_verified_accuracy_rate)} />
