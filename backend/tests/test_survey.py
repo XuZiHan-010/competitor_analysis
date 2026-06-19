@@ -1,15 +1,16 @@
 from collections.abc import Callable
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 
 from schemas.source import SourceCitation
-from schemas.survey import Questionnaire, SurveyQuestion
+from schemas.survey import Questionnaire, SurveyEvidence, SurveyQuestion
 from services.survey import redact_sensitive_text
 from services.survey.existing_survey_finder import ExistingSurveyFinder
 from services.survey.questionnaire_designer import QuestionnaireDesigner
-from services.survey.tool import _summarize_output
+from services.survey.tool import SurveyTool, _summarize_output
 
 
 def test_redact_sensitive_text() -> None:
@@ -40,6 +41,125 @@ def test_survey_trace_output_summary_is_human_readable() -> None:
     assert isinstance(summary, str)
     assert summary == f"问卷 {questionnaire.id} / 1 题"
     assert not summary.startswith("{")
+
+
+@pytest.mark.asyncio
+async def test_survey_llm_prompt_requires_simplified_chinese() -> None:
+    class FakeLLM:
+        enabled = True
+
+        def __init__(self) -> None:
+            self.messages: list[dict[str, str]] = []
+
+        async def complete_json(self, **kwargs: object) -> dict:
+            self.messages = cast(list[dict[str, str]], kwargs["messages"])
+            return {
+                "insights": [
+                    {
+                        "question_id": "sq_001",
+                        "point": "用户重视内容推荐质量。",
+                        "frequency": 1,
+                        "representative_quotes": ["推荐准"],
+                        "evidence_ids": ["se_001"],
+                        "confidence": "high",
+                    }
+                ]
+            }
+
+    fake_llm = FakeLLM()
+    questionnaire = Questionnaire(
+        competitor="快手",
+        dimension_intent="用户声音",
+        questions=[
+            SurveyQuestion(
+                id="sq_001",
+                text="为什么选择该产品？",
+                type="open",
+                intent="识别采用动机。",
+            )
+        ],
+        design_rationale="test",
+    )
+    evidence = [
+        SurveyEvidence(
+            id="se_001",
+            question_id="sq_001",
+            source_type="public_review",
+            source_id="src_1",
+            raw_quote="Recommended content is accurate.",
+        )
+    ]
+
+    insights = await SurveyTool(llm_client=cast(Any, fake_llm))._aggregate_insights(
+        evidence, questionnaire, "快手"
+    )
+
+    system_prompt = fake_llm.messages[0]["content"]
+    assert "Simplified Chinese" in system_prompt
+    assert insights[0].point == "用户重视内容推荐质量。"
+
+
+@pytest.mark.asyncio
+async def test_survey_aggregate_coerces_malformed_llm_types() -> None:
+    """LLM 偶尔把 representative_quotes 返回成字符串、confidence 返回成 'Medium'/'高'，
+    不应再触发 SurveyInsight 的 ValidationError 导致整段 survey 降级。"""
+
+    class FakeLLM:
+        enabled = True
+
+        async def complete_json(self, **kwargs: object) -> dict:
+            return {
+                "insights": [
+                    {
+                        "question_id": "sq_001",
+                        "point": "用户满意推荐质量。",
+                        "frequency": "high",
+                        "representative_quotes": "用户满意",
+                        "evidence_ids": ["se_001"],
+                        "confidence": "Medium",
+                    },
+                    {
+                        "question_id": "sq_001",
+                        "point": "界面体验良好。",
+                        "frequency": 2,
+                        "representative_quotes": ["流畅", "", "好用"],
+                        "evidence_ids": ["se_001"],
+                        "confidence": "高",
+                    },
+                ]
+            }
+
+    questionnaire = Questionnaire(
+        competitor="快手",
+        dimension_intent="用户声音",
+        questions=[
+            SurveyQuestion(
+                id="sq_001",
+                text="为什么选择该产品？",
+                type="open",
+                intent="识别采用动机。",
+            )
+        ],
+        design_rationale="test",
+    )
+    evidence = [
+        SurveyEvidence(
+            id="se_001",
+            question_id="sq_001",
+            source_type="public_review",
+            source_id="src_1",
+            raw_quote="Recommended content is accurate.",
+        )
+    ]
+
+    insights = await SurveyTool(llm_client=cast(Any, FakeLLM()))._aggregate_insights(
+        evidence, questionnaire, "快手"
+    )
+
+    assert insights[0].representative_quotes == ["用户满意"]
+    assert insights[0].confidence == "medium"
+    assert insights[1].representative_quotes == ["流畅", "好用"]
+    assert insights[1].confidence == "high"
 
 
 def test_upload_survey_redacts_and_counts_evidence(
