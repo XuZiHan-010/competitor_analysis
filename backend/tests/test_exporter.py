@@ -53,7 +53,7 @@ def test_build_report_html_renders_ui_like_sections_without_field_leaks() -> Non
     assert "用户画像" in html
     assert "SWOT" in html
     assert "生态强" in html
-    assert "Notion 的模板生态领先竞品。" in html
+    assert "中文摘要" in html
     assert "中文来源片段" in html
     assert "{'text'" not in html
     assert "source_ids:" not in html
@@ -88,6 +88,27 @@ def test_build_report_html_degrades_unknown_feature_status() -> None:
 
     assert 'class="support unknown"' in html
     assert 'class="support unverified"' not in html
+
+
+def test_build_report_html_marks_failed_quality_gate_as_draft() -> None:
+    structured = {
+        **_structured_content(),
+        "pricing": {"tiers": []},
+        "field_gaps": [
+            {
+                "competitor": "Notion",
+                "field_path": "pricing",
+                "code": "pricing_missing",
+                "message": "定价模型：未找到可验证定价来源。",
+            }
+        ],
+    }
+
+    html = build_report_html(_report(structured_content=structured, qa_status="issues"))
+
+    assert "草稿 / 待复核" in html
+    assert "不可作为正式交付" in html
+    assert "定价模型：未找到可验证定价来源" in html
 
 
 def test_render_markdown_uses_clean_tables_and_no_internal_fields() -> None:

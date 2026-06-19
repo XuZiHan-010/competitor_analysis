@@ -2,7 +2,13 @@ from datetime import UTC, datetime
 
 import structlog
 
-from graph.state import QAIssue, QAResult, StructuredCompetitorProfile, WorkflowState
+from graph.state import (
+    QAIssue,
+    QAResult,
+    RawCollectionResult,
+    StructuredCompetitorProfile,
+    WorkflowState,
+)
 from schemas.source import SourceCitation
 from services.agents.decorators import traced_node
 from services.llm import LLMClient
@@ -55,7 +61,10 @@ class QAAgent:
                     "role": "system",
                     "content": (
                         "You are QAAgent. Return JSON: {passed:boolean, issues:[{severity,"
-                        "target_agent,target_competitor,failed_field,message,retryable}]}. "
+                        "target_agent,target_competitor,failed_field,message,retryable,code}]}. "
+                        "code must be stable snake_case, such as pricing_missing, "
+                        "pricing_source_weak, swot_incomplete, source_count_low, "
+                        "feature_tree_sparse, or citation_missing. "
                         "Treat unsupported or contradictory sampled claims as blocker issues "
                         "targeting CollectorAgent."
                     ),
@@ -78,6 +87,10 @@ class QAAgent:
                 failed_field=str(issue.get("failed_field", "unknown")),
                 message=str(issue.get("message", "")),
                 retryable=bool(issue.get("retryable", True)),
+                code=str(
+                    issue.get("code")
+                    or _issue_code(str(issue.get("failed_field", "unknown")))
+                ),
             )
             for issue in payload.get("issues", [])
         ]
@@ -113,7 +126,8 @@ class QAAgent:
                     severity="blocker",
                     target_agent="CollectorAgent",
                     failed_field="pricing.entry_price",
-                    message="Pricing is intentionally incomplete for feedback-loop demo.",
+                    message="演示反馈闭环：定价字段被故意置为不完整。",
+                    code="pricing_demo_blocker",
                 )
             )
 
@@ -126,7 +140,8 @@ class QAAgent:
                         target_agent="CollectorAgent",
                         target_competitor=name,
                         failed_field="source_ids",
-                        message="Profile has no citations.",
+                        message="竞品画像缺少引用来源。",
+                        code="citation_missing",
                     )
                 )
 
@@ -138,7 +153,8 @@ class QAAgent:
                         target_agent="CollectorAgent",
                         target_competitor=name,
                         failed_field="feature_tree",
-                        message="Feature tree has no comparable rows.",
+                        message="功能树缺少可比较的结构化行。",
+                        code="feature_tree_missing",
                     )
                 )
             elif unknown_rate > _MAX_FEATURE_UNKNOWN_RATE:
@@ -149,9 +165,10 @@ class QAAgent:
                         target_competitor=name,
                         failed_field="feature_tree",
                         message=(
-                            f"Feature tree unknown rate {unknown_rate:.0%} exceeds "
-                            f"{_MAX_FEATURE_UNKNOWN_RATE:.0%}."
+                            f"功能树未知字段占比 {unknown_rate:.0%}，超过 "
+                            f"{_MAX_FEATURE_UNKNOWN_RATE:.0%} 的质量阈值。"
                         ),
+                        code="feature_tree_sparse",
                     )
                 )
 
@@ -163,7 +180,8 @@ class QAAgent:
                         target_agent="CollectorAgent",
                         target_competitor=name,
                         failed_field="pricing",
-                        message="Pricing tiers are missing.",
+                        message="缺少可验证的定价档位。",
+                        code="pricing_missing",
                     )
                 )
             elif _pricing_lacks_factual_source(tiers, sources_by_id):
@@ -178,9 +196,9 @@ class QAAgent:
                         target_competitor=name,
                         failed_field="pricing.source_ids",
                         message=(
-                            "Pricing is only supported by user feedback; "
-                            "official or commercial source required."
+                            "定价仅由用户反馈支撑，缺少官网或商业来源。"
                         ),
+                        code="pricing_source_weak",
                     )
                 )
 
@@ -191,7 +209,8 @@ class QAAgent:
                         target_agent="CollectorAgent",
                         target_competitor=name,
                         failed_field="user_personas",
-                        message="User personas are missing.",
+                        message="缺少用户画像。",
+                        code="persona_missing",
                     )
                 )
 
@@ -208,9 +227,10 @@ class QAAgent:
                         target_competitor=name,
                         failed_field="swot",
                         message=(
-                            f"SWOT has {non_empty_swot} populated quadrants; "
-                            f"need at least {_MIN_SWOT_NON_EMPTY_QUADRANTS}."
+                            f"SWOT 仅填充 {non_empty_swot} 个象限，至少需要 "
+                            f"{_MIN_SWOT_NON_EMPTY_QUADRANTS} 个象限。"
                         ),
+                        code="swot_incomplete",
                     )
                 )
 
@@ -226,9 +246,10 @@ class QAAgent:
                         target_competitor=name,
                         failed_field="core.source_ids",
                         message=(
-                            "Core sections lack citations: "
-                            f"{', '.join(uncited_sections)}."
+                            "核心章节存在未引用字段："
+                            f"{', '.join(uncited_sections)}。"
                         ),
+                        code="core_citation_missing",
                         retryable=False,
                     )
                 )
@@ -244,9 +265,10 @@ class QAAgent:
                             target_competitor=name,
                             failed_field="sources",
                             message=(
-                                f"Only {len(raw.sources)} sources collected; "
-                                f"need at least {_MIN_SOURCES_PER_COMPETITOR}."
+                                f"仅采集到 {len(raw.sources)} 条来源，至少需要 "
+                                f"{_MIN_SOURCES_PER_COMPETITOR} 条独立来源。"
                             ),
+                            code="source_count_low",
                         )
                     )
 
@@ -264,9 +286,10 @@ class QAAgent:
                             target_competitor=name,
                             failed_field="sources.fetched_at",
                             message=(
-                                f"{len(stale)} source(s) older than "
-                                f"{_SOURCE_STALENESS_YEARS} years."
+                                f"{len(stale)} 条来源超过 "
+                                f"{_SOURCE_STALENESS_YEARS} 年，可能过时。"
                             ),
+                            code="source_stale",
                             retryable=False,
                         )
                     )
@@ -280,7 +303,8 @@ class QAAgent:
                         target_agent="AnalystAgent",
                         target_competitor=finding.competitor_name,
                         failed_field=f"extension_findings[{finding.dimension_id}].source_ids",
-                        message="Extension finding has no citations.",
+                        message="扩展维度结论缺少引用来源。",
+                        code="extension_citation_missing",
                     )
                 )
 
@@ -293,7 +317,8 @@ class QAAgent:
                         target_agent="SurveyTool",
                         target_competitor=name,
                         failed_field="survey.evidence",
-                        message="Survey result has no evidence.",
+                        message="调研结果缺少证据。",
+                        code="survey_evidence_missing",
                     )
                 )
                 continue
@@ -306,7 +331,8 @@ class QAAgent:
                             target_agent="SurveyTool",
                             target_competitor=name,
                             failed_field=f"survey.insights[{insight.question_id}].evidence_ids",
-                            message="Survey insight has no evidence ids.",
+                            message="调研洞察缺少 evidence_ids。",
+                            code="survey_insight_evidence_missing",
                         )
                     )
                     continue
@@ -324,7 +350,8 @@ class QAAgent:
                             target_agent="SurveyTool",
                             target_competitor=name,
                             failed_field=f"survey.insights[{insight.question_id}].evidence_ids",
-                            message="Survey insight backed only by AI simulated evidence.",
+                            message="调研洞察仅由 AI 模拟证据支撑。",
+                            code="survey_ai_simulated_only",
                             retryable=False,
                         )
                     )
@@ -337,15 +364,70 @@ class QAAgent:
                         target_agent="SurveyTool",
                         target_competitor=name,
                         failed_field="survey.source_breakdown",
-                        message="Survey result relies mostly on AI simulated evidence.",
+                        message="调研结果主要依赖 AI 模拟证据。",
+                        code="survey_ai_simulated_majority",
                         retryable=False,
                     )
                 )
+
+        # A collector retry can only help when the failure was transient. When a
+        # competitor got zero real sources and the errors point at quota/auth
+        # exhaustion, every retry hits the same wall (3 × full re-collection +
+        # LLM cost for nothing) — mark those blockers non-retryable so routing
+        # can skip straight to the writer.
+        unrecoverable = {
+            name
+            for name, raw in state.raw_collections.items()
+            if _collection_unrecoverable(raw)
+        }
+        for issue in issues:
+            if (
+                issue.severity == "blocker"
+                and issue.target_agent == "CollectorAgent"
+                and issue.target_competitor in unrecoverable
+            ):
+                issue.retryable = False
 
         return QAResult(
             passed=not any(i.severity == "blocker" for i in issues),
             issues=issues,
         )
+
+
+_UNRECOVERABLE_ERROR_HINTS = (
+    "429",
+    "quota",
+    "too many requests",
+    "rate limit",
+    "401",
+    "403",
+    "unauthorized",
+    "no search providers configured",
+)
+
+
+def _collection_unrecoverable(raw: RawCollectionResult | None) -> bool:
+    if raw is None or raw.has_real_sources():
+        return False
+    error_text = " ".join(raw.errors).lower()
+    return any(hint in error_text for hint in _UNRECOVERABLE_ERROR_HINTS)
+
+
+def _issue_code(failed_field: str) -> str:
+    field = failed_field.lower()
+    if "pricing" in field:
+        return "pricing_missing"
+    if "swot" in field:
+        return "swot_incomplete"
+    if "feature" in field:
+        return "feature_tree_sparse"
+    if "source" in field or "citation" in field:
+        return "citation_missing"
+    if "survey" in field:
+        return "survey_quality_issue"
+    if "persona" in field:
+        return "persona_missing"
+    return "quality_issue"
 
 
 _PRICING_FACTUAL_SOURCE = frozenset({"official", "commercial"})

@@ -14,10 +14,11 @@ from settings import Settings
 logger = structlog.get_logger(__name__)
 
 LLMRole = Literal["system", "user", "assistant"]
-Provider = Literal["openai", "deepseek", "gemini"]
+Provider = Literal["openai", "deepseek"]
 
 T = TypeVar("T")
 _JSON_MAX_ATTEMPTS = 3
+_JSON_LOG_SNIPPET_CHARS = 180
 
 _TRANSIENT_STATUS = {408, 409, 425, 429, 500, 502, 503, 504}
 _TRANSIENT_NAME_HINTS = (
@@ -31,13 +32,15 @@ _TRANSIENT_NAME_HINTS = (
 )
 
 
-def _is_transient(exc: BaseException) -> bool:
-    """Whether a provider error is worth retrying (overload / rate limit / network).
+def provider_for_model(model: str) -> Provider:
+    lowered = model.lower()
+    if lowered.startswith("deepseek"):
+        return "deepseek"
+    return "openai"
 
-    Gemini raises ``ServerError`` (with a 503 ``code``), OpenAI/DeepSeek raise
-    ``APIStatusError`` (with ``status_code``); we treat timeouts and connection
-    drops as transient too. Anything else (e.g. 400 bad request) is permanent.
-    """
+
+def _is_transient(exc: BaseException) -> bool:
+    """Whether a provider error is worth retrying (overload / rate limit / network)."""
     if isinstance(exc, asyncio.TimeoutError | TimeoutError):
         return True
     status = getattr(exc, "status_code", None)
@@ -61,6 +64,61 @@ def _capture_run_id() -> None:
         run_tree = get_current_run_tree()
         if run_tree is not None:
             record_langsmith_run_id(str(run_tree.id))
+
+
+def _extract_first_json_object(content: str) -> str | None:
+    start = content.find("{")
+    if start < 0:
+        return None
+
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(start, len(content)):
+        char = content[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return content[start : index + 1]
+    return None
+
+
+def _parse_json_object(content: str) -> dict[str, Any]:
+    if not content.strip():
+        raise ValueError("empty JSON response")
+
+    try:
+        payload = json.loads(content)
+    except json.JSONDecodeError as exc:
+        candidate = _extract_first_json_object(content)
+        if candidate is None or candidate == content.strip():
+            raise exc
+        payload = json.loads(candidate)
+
+    if not isinstance(payload, dict):
+        raise ValueError("JSON response must be an object")
+    return payload
+
+
+def _json_content_snippets(content: str) -> dict[str, str | int]:
+    return {
+        "response_length": len(content),
+        "response_head": content[:_JSON_LOG_SNIPPET_CHARS],
+        "response_tail": content[-_JSON_LOG_SNIPPET_CHARS:],
+    }
 
 
 class LLMClient:
@@ -112,9 +170,13 @@ class LLMClient:
             [
                 self._settings.openai_api_key,
                 self._settings.deepseek_api_key,
-                self._settings.gemini_api_key,
             ]
         )
+
+    def supports_provider(self, provider: Provider) -> bool:
+        if provider == "openai":
+            return bool(self._settings.openai_api_key)
+        return bool(self._settings.deepseek_api_key)
 
     def _openai_client(self, provider: Literal["openai", "deepseek"]) -> AsyncOpenAI:
         # max_retries=0 disables the SDK's own hidden retries so that
@@ -175,10 +237,6 @@ class LLMClient:
         messages: list[dict[str, str]],
         temperature: float = 0.2,
     ) -> str:
-        if provider == "gemini":
-            return await self._gemini_complete(
-                model=model, messages=messages, temperature=temperature, json_mode=False
-            )
         client = self._openai_client(provider)
         completions = cast(Any, client.chat.completions)
         response = await self._traced_llm_call(
@@ -200,28 +258,90 @@ class LLMClient:
         provider: Provider,
         model: str,
         messages: list[dict[str, str]],
+        repair_invalid: bool = True,
+        expected_shape: str | None = None,
     ) -> dict[str, Any]:
         guarded_messages = _messages_with_json_guard(provider, messages)
         last_error: Exception | None = None
-        for _ in range(_JSON_MAX_ATTEMPTS):
+        for attempt in range(_JSON_MAX_ATTEMPTS):
+            content = ""
             try:
                 content = await self._complete_json_text(
                     provider=provider,
                     model=model,
                     messages=guarded_messages,
                 )
-                if not content.strip():
-                    raise ValueError("empty JSON response")
-                payload = json.loads(content)
-                if not isinstance(payload, dict):
-                    raise ValueError("JSON response must be an object")
-                return payload
+                return _parse_json_object(content)
             except (json.JSONDecodeError, ValueError) as exc:
                 last_error = exc
+                logger.warning(
+                    "llm_json_parse_failed",
+                    provider=provider,
+                    model=model,
+                    attempt=attempt + 1,
+                    error_type=type(exc).__name__,
+                    error_message=str(exc),
+                    **_json_content_snippets(content),
+                )
+                if not repair_invalid or not content.strip():
+                    continue
+                try:
+                    repaired = await self._repair_json_text(
+                        provider=provider,
+                        model=model,
+                        invalid_content=content,
+                        expected_shape=expected_shape,
+                    )
+                    return _parse_json_object(repaired)
+                except (json.JSONDecodeError, ValueError) as repair_exc:
+                    last_error = repair_exc
+                    logger.warning(
+                        "llm_json_repair_failed",
+                        provider=provider,
+                        model=model,
+                        attempt=attempt + 1,
+                        error_type=type(repair_exc).__name__,
+                        error_message=str(repair_exc),
+                        **_json_content_snippets(content),
+                    )
         raise RuntimeError(
             f"{provider} model {model} returned invalid JSON after "
             f"{_JSON_MAX_ATTEMPTS} attempts: {type(last_error).__name__}: {last_error}"
         ) from last_error
+
+    async def _repair_json_text(
+        self,
+        *,
+        provider: Provider,
+        model: str,
+        invalid_content: str,
+        expected_shape: str | None,
+    ) -> str:
+        shape_instruction = (
+            f"Expected root JSON object shape: {expected_shape}"
+            if expected_shape
+            else "Return one valid JSON object."
+        )
+        return await self._complete_json_text(
+            provider=provider,
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Repair malformed JSON syntax only. Return valid JSON and nothing else. "
+                        "Do not add facts, remove facts, summarize, translate, rename fields, "
+                        "or change any field meaning. If a string is unterminated, close it with "
+                        "the smallest valid edit. "
+                        + shape_instruction
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": "Malformed JSON to repair:\n" + invalid_content,
+                },
+            ],
+        )
 
     async def _complete_json_text(
         self,
@@ -230,13 +350,6 @@ class LLMClient:
         model: str,
         messages: list[dict[str, str]],
     ) -> str:
-        if provider == "gemini":
-            return await self._gemini_complete(
-                model=model,
-                messages=messages,
-                temperature=0.2,
-                json_mode=True,
-            )
         client = self._openai_client(provider)
         completions = cast(Any, client.chat.completions)
         response = await self._traced_llm_call(
@@ -253,45 +366,6 @@ class LLMClient:
         self._record_openai_usage(response)
         return response.choices[0].message.content or ""
 
-    async def _gemini_complete(
-        self,
-        *,
-        model: str,
-        messages: list[dict[str, str]],
-        temperature: float,
-        json_mode: bool,
-    ) -> str:
-        if not self._settings.gemini_api_key:
-            raise RuntimeError("GEMINI_API_KEY is required for Gemini calls")
-        from google import genai
-        from google.genai import types
-
-        client = cast(Any, genai).Client(api_key=self._settings.gemini_api_key)
-        system_instruction = "\n".join(
-            message["content"] for message in messages if message["role"] == "system"
-        )
-        contents = [message["content"] for message in messages if message["role"] != "system"]
-        config = cast(Any, types).GenerateContentConfig(
-            temperature=temperature,
-            system_instruction=system_instruction or None,
-            response_mime_type="application/json" if json_mode else None,
-        )
-        response = await self._traced_llm_call(
-            name="gemini",
-            payload={"model": model, "messages": messages, "json_mode": json_mode},
-            call=lambda: client.aio.models.generate_content(
-                model=model, contents=contents, config=config
-            ),
-            process_outputs=_summarize_gemini_trace_output,
-        )
-        usage = getattr(response, "usage_metadata", None)
-        if usage is not None:
-            record_usage(
-                int(getattr(usage, "prompt_token_count", 0) or 0),
-                int(getattr(usage, "candidates_token_count", 0) or 0),
-            )
-        return response.text or ""
-
     def _record_openai_usage(self, response: Any) -> None:
         usage = getattr(response, "usage", None)
         if usage is not None:
@@ -299,19 +373,6 @@ class LLMClient:
                 int(getattr(usage, "prompt_tokens", 0) or 0),
                 int(getattr(usage, "completion_tokens", 0) or 0),
             )
-
-
-def _summarize_gemini_trace_output(response: Any) -> dict[str, Any]:
-    usage = getattr(response, "usage_metadata", None)
-    return {
-        "text_length": len(getattr(response, "text", "") or ""),
-        "prompt_tokens": int(getattr(usage, "prompt_token_count", 0) or 0)
-        if usage is not None
-        else 0,
-        "completion_tokens": int(getattr(usage, "candidates_token_count", 0) or 0)
-        if usage is not None
-        else 0,
-    }
 
 
 def _messages_with_json_guard(

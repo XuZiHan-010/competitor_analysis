@@ -37,6 +37,7 @@ const STREAM_EVENT_NAMES = [
   "node.started",
   "node.succeeded",
   "node.failed",
+  "collector.degraded",
   "qa.blocker",
   "run.succeeded",
   "run.failed",

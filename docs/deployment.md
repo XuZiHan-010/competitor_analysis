@@ -40,7 +40,6 @@ DATABASE_URL=<Neon 连接串，postgresql://...>
 REDIS_URL=<Upstash 连接串，rediss://...>
 JWT_SECRET=<随机 32+ 字节字符串>
 OPENAI_API_KEY=<你的 key>
-GEMINI_API_KEY=<你的 key>
 DEEPSEEK_API_KEY=<你的 key>
 TAVILY_API_KEY=<你的 key>
 BACKEND_CORS_ORIGINS=https://<你的前端域名>

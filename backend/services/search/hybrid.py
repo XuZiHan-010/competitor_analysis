@@ -1,9 +1,10 @@
-import logging
+import structlog
 
 from schemas.source import SourceCitation
+from services.redaction import redact_secrets
 from services.search.providers import SearchProvider
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class SearchUnavailableError(RuntimeError):
@@ -24,7 +25,8 @@ class HybridSearch:
 
         logger.info(
             "search.invoke",
-            extra={"query": query, "providers": [p.name for p in self._providers]},
+            query=query,
+            providers=[p.name for p in self._providers],
         )
 
         for provider in self._providers:
@@ -33,15 +35,13 @@ class HybridSearch:
             except Exception as exc:
                 logger.warning(
                     "search.fallback",
-                    extra={
-                        "failed_provider": provider.name,
-                        "failure_reason": str(exc),
-                        "next_provider": (
-                            self._providers[self._providers.index(provider) + 1].name
-                            if self._providers.index(provider) + 1 < len(self._providers)
-                            else None
-                        ),
-                    },
+                    failed_provider=provider.name,
+                    failure_reason=redact_secrets(str(exc)),
+                    next_provider=(
+                        self._providers[self._providers.index(provider) + 1].name
+                        if self._providers.index(provider) + 1 < len(self._providers)
+                        else None
+                    ),
                 )
                 tried.append(provider.name)
                 errors.append(f"{provider.name}: {exc}")
@@ -58,13 +58,11 @@ class HybridSearch:
                     added += 1
                 logger.info(
                     "search.invoke",
-                    extra={
-                        "provider": provider.name,
-                        "query": query,
-                        "results_count": len(results),
-                        "merged_count": len(merged),
-                        "added_count": added,
-                    },
+                    provider=provider.name,
+                    query=query,
+                    results_count=len(results),
+                    merged_count=len(merged),
+                    added_count=added,
                 )
                 continue
 
@@ -77,9 +75,12 @@ class HybridSearch:
 
         logger.error(
             "search.exhausted",
-            extra={"tried_providers": tried, "final_error": "; ".join(errors)},
+            tried_providers=tried,
+            final_error=redact_secrets("; ".join(errors)),
         )
-        raise SearchUnavailableError("; ".join(errors) or "no search providers configured")
+        raise SearchUnavailableError(
+            redact_secrets("; ".join(errors)) or "no search providers configured"
+        )
 
 
 def _dedupe_key(source: SourceCitation) -> str:

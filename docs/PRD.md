@@ -191,12 +191,11 @@
 
 **选型原则**："成本 × 能力同时兼顾，不追求最强"——例如 Analyst 不用 gpt-4.1（能力 90 / 成本 $1.26），改用 DeepSeek V4 Pro（能力 86 / 成本 $0.21），**用 1/6 的钱买 95% 的能力**。
 
-**为什么不全用 DeepSeek**：CollectorAgent 的 query 改写是轻量 JSON 任务，与 Scoping/QA 一并用 gpt-4o-mini，共用 OpenAI 同源栈、跨家协调成本最低（早期曾用 Gemini 2.5 Flash 看中其 1M 上下文，但该优势在小输入的 query 改写上用不到，已下线为休眠可选 provider 以降本）。
+**为什么不全用 DeepSeek**：CollectorAgent 的 query 改写是轻量 JSON 任务，与 Scoping/QA 一并用 gpt-4o-mini，共用 OpenAI 同源栈、跨家协调成本最低。
 
 **SDK 与配置**：
 - DeepSeek 兼容 OpenAI SDK（base_url=`https://api.deepseek.com/v1`），与 gpt-4o-mini 共用 `openai` Python 包
-- Gemini 用 `google-genai` SDK（休眠可选 provider，默认 Agent 链路不再调用）
-- 环境变量：`OPENAI_API_KEY` / `DEEPSEEK_API_KEY`（`GEMINI_API_KEY` 可选）（密钥管理见 [docs/security.md](security.md)）
+- 环境变量：`OPENAI_API_KEY` / `DEEPSEEK_API_KEY`（密钥管理见 [docs/security.md](security.md)）
 
 **未来路径**：见 §十一-ter 第二阶段「合规」行——MVP 已部分国产化（Analyst+Writer），生产化阶段补充智谱 GLM / 阿里通义 / MiniMax 多 Provider。
 
@@ -308,7 +307,7 @@ class ScopingDraft(BaseModel):
 
 **并行采集约束**：5 个竞品的 `web_search` + `fetch_page` 走 `asyncio.gather` 节点内并行（**P0 性能必需**，串行 5 × 30s 演示卡 2.5 分钟）；竞品内多维度 `web_search` 亦并发；每个竞品采集任务带 60s timeout + 单点失败隔离（一个竞品挂不拖累其他）。代码位置：`backend/services/agents/nodes/collector.py`。所有 tool 调用走 §五.Y 约束 2 的统一 wrapper，错误不挂掉 DAG。
 
-**LLM 瞬时错误退避**：`LLMClient` 对所有 provider 调用（OpenAI / DeepSeek / Gemini）统一加**指数退避重试**（仅瞬时错误 429/503/超时/连接中断，最多 3 次）+ 单次调用超时上限，避免高峰期 503 直接把节点打成降级兜底。非瞬时错误（如 400）立即抛出不重试。代码位置：`backend/services/llm/client.py`（`_call_with_retries` / `_is_transient`）。
+**LLM 瞬时错误退避**：`LLMClient` 对所有 provider 调用（OpenAI / DeepSeek）统一加**指数退避重试**（仅瞬时错误 429/503/超时/连接中断，最多 3 次）+ 单次调用超时上限，避免高峰期 503 直接把节点打成降级兜底。非瞬时错误（如 400）立即抛出不重试。代码位置：`backend/services/llm/client.py`（`_call_with_retries` / `_is_transient`）。
 
 **输入 Schema**:
 ```json
@@ -320,6 +319,7 @@ class ScopingDraft(BaseModel):
 **行为约定**：
 - 不接收硬编码的 `dimensions_required: ["features", "pricing", ...]`
 - 从 `scope_contract.dimensions` 派生采集计划：核心层维度 → 跑预设搜索模板；扩展层维度 → 用 `dimension.intent` 做 query 改写（例："重点看会员体系" → 搜索 `<竞品名> 会员体系 黑卡` `<竞品名> 折扣节奏`）
+- **领域上下文消歧**：从 `scope_contract.user_brief` 提取简短领域关键词（`domain_context`），拼接到每条静态 query 末尾，并在 LLM query 改写的 prompt 中明确指示"竞品名可能有歧义，需用分析领域消歧+加产品类目限定词"。解决 `Trae`（易混淆球星名）、`Cursor`（通用 UI 术语）等歧义品牌在裸名搜索下命中率极低的问题。代码：`_domain_context()` + `_build_dimension_queries(domain_context=)` + `_rewrite_queries(domain_context=)`
 - 输出 `RawCollectionResult` 中的 sources 增加 `dimension_id` tag，便于 Analyst 路由
 
 **输出 Schema** (`RawCollectionResult`):
@@ -363,6 +363,8 @@ class ScopingDraft(BaseModel):
 完成所有维度抽取后，做**多竞品交叉对比** → CrossCompetitorAnalysis（功能矩阵默认只对核心层，扩展层有则附加）
 
 > **跨竞品功能矩阵补全（evidence-gated cross-fill）**：每个竞品的 feature_tree 独立抽取，并集后矩阵稀疏——A 记录的功能对 B/C 默认 `unknown`。补全步骤逐竞品基于**其自身来源**对缺口功能二次分类（supported/partial/unsupported）。**仅当模型引用了确属该竞品的 `source_ids` 时才采纳**，否则保持 `unknown`——严格证据驱动、不依赖世界知识、杜绝幻觉。该步骤永不阻断主流程：任何失败保留原矩阵。仅在真实 LLM 模式生效，CI mock 模式跳过。
+
+**输出语言约定**：所有人类可读文本（功能名、描述、定价档位、用户画像标签/需求/痛点、SWOT 文本、摘要）统一输出为 `WorkflowState.report_language` 所指定的语言（默认 `zh`=简体中文）。产品/品牌名、套餐名、数字和单位保留原文；`source_ids` 逐字复制来源，不翻译。采集仍保留中英双语（权威 dev 工具的官方定价/文档多为英文），语言规范化由 Analyst 的 prompt 指令在抽取时完成。
 
 **输出 Schema**:
 - `StructuredCompetitorProfile`（核心层产物，详见 §七 7.4）
@@ -463,6 +465,7 @@ class WorkflowState(BaseModel):
     task_id: str
     user_input: TaskInput
     scope_contract: TaskScopeContract                     # 对话式立项产物
+    report_language: str = "zh"                           # 报告目标语言（zh=简体中文）；采集多语，输出规范化
     raw_collections: dict[str, RawCollectionResult]       # competitor → result
     structured_profiles: dict[str, StructuredCompetitorProfile]  # 核心层产物
     extension_findings: list[ExtensionFinding]            # 扩展层产物

@@ -18,7 +18,10 @@ def build_report_html(report: Report) -> str:
 
     sections = [
         _masthead(title=title, subtitle=subtitle, summary=summary, created_at=created_at),
+        _quality_status(report),
         _metrics(report),
+        _data_gaps_banner(sc),
+        _field_gaps_banner(sc),
         _feature_matrix(sc),
         _pricing_table(sc),
         _persona_cards(sc),
@@ -175,6 +178,53 @@ def _metrics(report: Report) -> str:
     return f'<section class="metrics" aria-label="关键指标">{badges}</section>'
 
 
+def _quality_status(report: Report) -> str:
+    if report.qa_status != "issues":
+        return ""
+    return """
+<section class="quality-warning" role="alert" aria-label="质量门未通过">
+  <strong>草稿 / 待复核</strong>
+  <span>本报告未通过质量门，不可作为正式交付。请先处理阻塞问题并复核关键结论。</span>
+</section>
+"""
+
+
+def _data_gaps_banner(sc: JsonMapping) -> str:
+    gaps = [as_mapping(gap) for gap in as_list(sc.get("data_gaps"))]
+    gaps = [gap for gap in gaps if text_value(gap.get("competitor"))]
+    if not gaps:
+        return ""
+    items = "\n".join(
+        f"<li><b>{html_text(gap.get('competitor'))}</b>：数据采集失败，"
+        f"本报告不含其有效数据（{html_text(gap.get('reason') or '原因未知')}）</li>"
+        for gap in gaps
+    )
+    return f"""
+<section class="data-gaps" role="alert" aria-label="数据缺失警示">
+  <p>⚠️ 以下竞品的网络采集未获得可用来源，对应章节为空或不完整：</p>
+  <ul>{items}</ul>
+</section>
+"""
+
+
+def _field_gaps_banner(sc: JsonMapping) -> str:
+    gaps = [as_mapping(gap) for gap in as_list(sc.get("field_gaps"))]
+    gaps = [gap for gap in gaps if text_value(gap.get("message"))]
+    if not gaps:
+        return ""
+    items = "\n".join(
+        f"<li><b>{html_text(gap.get('competitor'))}</b> · "
+        f"{html_text(gap.get('message'))}</li>"
+        for gap in gaps
+    )
+    return f"""
+<section class="field-gaps" role="note" aria-label="字段缺口说明">
+  <p>以下字段缺少可验证证据，已保留为待复核缺口：</p>
+  <ul>{items}</ul>
+</section>
+"""
+
+
 def _feature_matrix(sc: JsonMapping) -> str:
     feature_tree = as_mapping(sc.get("feature_tree"))
     rows = as_list(feature_tree.get("rows"))
@@ -207,7 +257,14 @@ def _pricing_table(sc: JsonMapping) -> str:
     pricing = as_mapping(sc.get("pricing"))
     tiers = pricing_tiers(sc)
     if not tiers:
-        return ""
+        return _chapter(
+            2,
+            "定价模型",
+            (
+                '<p class="gap-note">定价模型：未找到可验证定价来源。'
+                "请补充官网、广告报价、商业化或创作者激励等来源后重新生成。</p>"
+            ),
+        )
     rows = [
         "<tr>"
         f"<td>{html_text(tier.get('competitor'))}</td>"
@@ -275,9 +332,19 @@ def _swot_blocks(sc: JsonMapping) -> str:
                 f"<div class=\"swot-grid\">{''.join(quadrants)}</div>"
                 "</article>"
             )
-    if not rendered:
+    gap_items = [
+        gap
+        for gap in as_list(sc.get("field_gaps"))
+        if text_value(as_mapping(gap).get("field_path")) == "swot"
+    ]
+    gap_note = ""
+    if gap_items:
+        gap_note = (
+            '<p class="gap-note">部分竞品 SWOT 缺少足够证据，已在字段缺口说明中标记。</p>'
+        )
+    if not rendered and not gap_note:
         return ""
-    body = _intro_paragraph(text_value(swot.get("intro"))) + "".join(rendered)
+    body = _intro_paragraph(text_value(swot.get("intro"))) + gap_note + "".join(rendered)
     return _chapter(4, "SWOT", body)
 
 
@@ -349,14 +416,30 @@ def _survey_insights(sc: JsonMapping, *, index: int) -> str:
 
 
 def _claims(report: Report, *, index: int) -> str:
-    items = [
-        f"<li>{html_text(claim.claim_text)}</li>"
-        for claim in report.claims
-        if claim.claim_text.strip()
-    ]
-    if not items:
+    sc = report_structured_content(report)
+    findings = _summary_findings(sc)
+    if not findings:
         return ""
+    items = [f"<li>{html_text(item)}</li>" for item in findings]
     return _chapter(index, "关键结论", f'<ul class="insight-list">{"".join(items)}</ul>')
+
+
+def _summary_findings(sc: JsonMapping) -> list[str]:
+    findings: list[str] = []
+    summary = text_value(sc.get("summary"))
+    if summary:
+        findings.append(summary)
+    cross_summary = text_value(as_mapping(sc.get("cross_analysis")).get("differentiation_summary"))
+    if cross_summary and cross_summary not in findings:
+        findings.append(cross_summary)
+    for gap in as_list(sc.get("field_gaps")):
+        message = text_value(as_mapping(gap).get("message"))
+        competitor = text_value(as_mapping(gap).get("competitor"))
+        if message:
+            findings.append(f"{competitor}：{message}" if competitor else message)
+        if len(findings) >= 6:
+            break
+    return findings[:6]
 
 
 def _sources(report: Report, *, index: int) -> str:
@@ -563,6 +646,49 @@ h4 { font-size: 12px; margin-bottom: 6px; }
 }
 .summary { max-width: 68ch; font-size: 12px; }
 .metrics { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 24px; }
+.quality-warning {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  border: 1px solid #c93a32;
+  border-left: 4px solid #c93a32;
+  border-radius: 4px;
+  background: #fff3f0;
+  color: #5d1713;
+  padding: 10px 14px;
+  margin: 0 0 16px;
+  font-size: 12px;
+}
+.quality-warning strong { white-space: nowrap; }
+.data-gaps {
+  border: 1px solid #e0b400;
+  border-left: 4px solid #e0b400;
+  border-radius: 4px;
+  background: #fffaeb;
+  padding: 10px 14px;
+  margin: 0 0 24px;
+  font-size: 12px;
+}
+.data-gaps p { margin: 0 0 6px; font-weight: 600; }
+.data-gaps ul { margin: 0; padding-left: 18px; }
+.field-gaps {
+  border: 1px solid #d9d9d9;
+  border-left: 4px solid #666666;
+  border-radius: 4px;
+  background: #f8f8f8;
+  padding: 10px 14px;
+  margin: 0 0 24px;
+  font-size: 12px;
+}
+.field-gaps p { margin: 0 0 6px; font-weight: 600; }
+.field-gaps ul { margin: 0; padding-left: 18px; }
+.gap-note {
+  border: 1px dashed #bdbdbd;
+  border-radius: 4px;
+  background: #fbfbfb;
+  color: #555555;
+  padding: 10px 12px;
+}
 .metric {
   border: 1px solid #d9d9d9;
   border-radius: 4px;

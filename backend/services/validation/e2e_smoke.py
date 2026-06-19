@@ -156,8 +156,8 @@ def _smoke_scopes() -> list[TaskScopeContract]:
         ),
         _scope(
             "ai_assistants",
-            "分析 ChatGPT、Claude、Gemini 在企业知识工作场景中的差异。",
-            ["ChatGPT", "Claude", "Gemini"],
+            "分析 ChatGPT、Claude、Perplexity 在企业知识工作场景中的差异。",
+            ["ChatGPT", "Claude", "Perplexity"],
         ),
         _scope(
             "short_video_platforms",

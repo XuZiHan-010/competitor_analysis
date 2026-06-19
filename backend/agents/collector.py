@@ -7,12 +7,13 @@ from uuid import UUID
 import structlog
 
 from graph.state import RawCollectionResult, WorkflowState
-from schemas.scope import ScopeDimension
+from schemas.scope import ScopeDimension, TaskScopeContract
 from schemas.source import SourceCitation
 from schemas.survey import SurveyResult
 from services.agents.decorators import traced_node
 from services.agents.wrappers import ToolError, run_tool_safely
-from services.llm import LLMClient
+from services.llm import LLMClient, provider_for_model
+from services.llm.usage import record_degradation
 from services.scraper import FetchResult, PageFetcher
 from services.search import AppReviewProvider, HybridSearch
 from services.search.providers import SearchProvider
@@ -23,7 +24,9 @@ from services.survey.existing_survey_finder import ExistingSurveyFinder
 from services.survey.tool import SurveyTool
 from settings import get_settings
 
-_COLLECTOR_TIMEOUT_S = 60
+_COLLECTOR_TIMEOUT_S = 120
+_QUERY_REWRITE_TIMEOUT_S = 20
+_MAX_FETCH_URLS_PER_COMPETITOR = 10
 
 logger = structlog.get_logger(__name__)
 
@@ -134,8 +137,23 @@ class CollectorAgent:
         _remap_survey_source_ids(survey, source_id_maps)
         return raw, survey
 
+    @staticmethod
+    def _domain_context(scope: TaskScopeContract) -> str:
+        """Short domain phrase appended to queries to disambiguate competitor names.
+
+        Bare names like ``Trae`` (a basketball player) or ``Cursor`` (a generic UI
+        term) return mostly off-topic results; the analysis brief carries the
+        category that resolves them to the product. Kept short — a long brief
+        pollutes the query rather than narrowing it.
+        """
+        brief = (scope.user_brief or "").strip()
+        return brief[:40].strip()
+
     def _build_dimension_queries(
-        self, competitor_name: str, dimensions: list[ScopeDimension]
+        self,
+        competitor_name: str,
+        dimensions: list[ScopeDimension],
+        domain_context: str = "",
     ) -> list[tuple[str, str]]:
         """Return (dimension_id, query) pairs for enabled dimensions."""
         queries: list[tuple[str, str]] = []
@@ -144,18 +162,55 @@ class CollectorAgent:
                 continue
             if dim.layer == "core":
                 if dim.id == "core.feature_tree":
-                    queries.append((dim.id, f"{competitor_name} features product capabilities"))
+                    queries.extend([
+                        (
+                            dim.id,
+                            f"{competitor_name} 官网 功能 产品介绍 帮助中心 应用商店",
+                        ),
+                        (
+                            dim.id,
+                            f"{competitor_name} product features official help center app store",
+                        ),
+                    ])
                 elif dim.id == "core.pricing":
-                    queries.append((dim.id, f"{competitor_name} pricing plans subscription"))
+                    queries.extend([
+                        (
+                            dim.id,
+                            f"{competitor_name} 官网 价格 套餐 定价 商业化 广告报价 创作者激励",
+                        ),
+                        (
+                            dim.id,
+                            f"{competitor_name} pricing plans subscription "
+                            "commercial ads creator monetization",
+                        ),
+                    ])
                 elif dim.id == "core.persona":
-                    queries.append((dim.id, f"{competitor_name} target users reviews who uses"))
+                    queries.extend([
+                        (
+                            dim.id,
+                            f"{competitor_name} 用户画像 用户行为 应用商店 评论 行业报告",
+                        ),
+                        (dim.id, f"{competitor_name} target users reviews who uses"),
+                    ])
                 elif dim.id == "core.swot":
-                    queries.append((dim.id, f"{competitor_name} strengths weaknesses analysis"))
+                    queries.extend([
+                        (
+                            dim.id,
+                            f"{competitor_name} 竞争优势 劣势 市场地位 行业报告 竞品分析",
+                        ),
+                        (
+                            dim.id,
+                            f"{competitor_name} strengths weaknesses "
+                            "market position industry report",
+                        ),
+                    ])
             else:
                 # Extension dim: use intent to rewrite query
                 queries.append((dim.id, f"{competitor_name} {dim.intent}"))
         if not queries:
             queries.append(("default", f"{competitor_name} pricing features user reviews"))
+        if domain_context:
+            queries = [(dim_id, f"{query} {domain_context}") for dim_id, query in queries]
         return queries
 
     def _build_feedback_queries(
@@ -163,9 +218,10 @@ class CollectorAgent:
         competitor_name: str,
         dimensions: list[ScopeDimension],
         failed_fields: list[str],
+        domain_context: str = "",
     ) -> list[tuple[str, str]]:
         """Augment base queries with targeted recovery queries for QA-reported failed fields."""
-        base = self._build_dimension_queries(competitor_name, dimensions)
+        base = self._build_dimension_queries(competitor_name, dimensions, domain_context)
         extra: list[tuple[str, str]] = []
         joined = " ".join(failed_fields).lower()
         if "pricing" in joined:
@@ -193,6 +249,8 @@ class CollectorAgent:
                 "core.persona",
                 f"{competitor_name} target customers user reviews who uses",
             ))
+        if domain_context:
+            extra = [(dim_id, f"{query} {domain_context}") for dim_id, query in extra]
         return base + extra
 
     async def _rewrite_queries(
@@ -200,6 +258,7 @@ class CollectorAgent:
         competitor_name: str,
         base_queries: list[tuple[str, str]],
         llm: LLMClient | None,
+        domain_context: str = "",
     ) -> list[tuple[str, str]]:
         """Rewrite static search queries with the collector LLM (PRD §五.X / §284).
 
@@ -207,11 +266,12 @@ class CollectorAgent:
         unavailable, so collection degrades gracefully rather than aborting.
         """
         settings = get_settings()
-        if llm is None or not llm.enabled or not settings.openai_api_key:
+        provider = provider_for_model(settings.collector_model)
+        if llm is None or not llm.enabled or not llm.supports_provider(provider):
             return base_queries
         try:
             payload = await llm.complete_json(
-                provider="openai",
+                provider=provider,
                 model=settings.collector_model,
                 messages=[
                     {
@@ -221,9 +281,14 @@ class CollectorAgent:
                             "maximize retrieval of high-signal public sources in the product's "
                             "likely market language. Prefer official sites, product pages, "
                             "app stores, pricing pages, credible reviews, and industry media. "
+                            "For Chinese consumer products, include Chinese queries using terms "
+                            "like 官网, 价格, 套餐, 功能, 帮助中心, 应用商店, 行业报告. "
                             "Explicitly avoid academic papers, satisfaction models, literature "
                             "reviews, and sources that only mention the product as a research "
-                            "sample. Preserve every dimension_id exactly. Return JSON "
+                            "sample. The competitor name may be ambiguous (a common word, a "
+                            "person, or an unrelated brand); use the analysis domain to "
+                            "disambiguate and add a product-category qualifier when it helps. "
+                            "Preserve every dimension_id exactly. Return JSON "
                             '{"queries": [{"dimension_id": str, "query": str}]}.'
                         ),
                     },
@@ -231,6 +296,7 @@ class CollectorAgent:
                         "role": "user",
                         "content": (
                             f"Competitor: {competitor_name}\n"
+                            f"Analysis domain: {domain_context or 'unspecified'}\n"
                             f"Queries: {[{'dimension_id': d, 'query': q} for d, q in base_queries]}"
                         ),
                     },
@@ -275,19 +341,47 @@ class CollectorAgent:
                 if issue.get("failed_field")
             ]
 
+        domain_context = self._domain_context(state.scope_contract)
+
         def _queries(competitor_name: str) -> list[tuple[str, str]]:
             if failed_fields:
                 return self._build_feedback_queries(
-                    competitor_name, state.scope_contract.dimensions, failed_fields
+                    competitor_name,
+                    state.scope_contract.dimensions,
+                    failed_fields,
+                    domain_context,
                 )
-            return self._build_dimension_queries(competitor_name, state.scope_contract.dimensions)
+            return self._build_dimension_queries(
+                competitor_name, state.scope_contract.dimensions, domain_context
+            )
 
         query_map: dict[str, list[tuple[str, str]]] = {}
-        for competitor in state.scope_contract.competitors:
-            base_queries = _queries(competitor.name)
-            query_map[competitor.name] = await self._rewrite_queries(
-                competitor.name, base_queries, llm
-            )
+        base_query_map = {
+            competitor.name: _queries(competitor.name)
+            for competitor in state.scope_contract.competitors
+        }
+        rewritten_results = await asyncio.gather(
+            *(
+                asyncio.wait_for(
+                    self._rewrite_queries(competitor_name, base_queries, llm, domain_context),
+                    timeout=_QUERY_REWRITE_TIMEOUT_S,
+                )
+                for competitor_name, base_queries in base_query_map.items()
+            ),
+            return_exceptions=True,
+        )
+        for (competitor_name, base_queries), rewritten in zip(
+            base_query_map.items(), rewritten_results, strict=True
+        ):
+            if isinstance(rewritten, BaseException):
+                logger.warning(
+                    "collector_query_rewrite_timeout",
+                    competitor=competitor_name,
+                    error_type=type(rewritten).__name__,
+                )
+                query_map[competitor_name] = base_queries
+            else:
+                query_map[competitor_name] = rewritten
 
         tasks = {
             competitor.name: asyncio.wait_for(
@@ -441,7 +535,11 @@ class CollectorAgent:
         # launching a browser per URL. A skip/fetch failure keeps the original
         # search citation (with its snippet) rather than dropping the source, so
         # robots-blocked or flaky pages can't starve the QA ≥5-sources floor.
-        fetch_urls = [str(source.url) for source in sources if source.url]
+        fetch_urls = [
+            str(source.url)
+            for source in sources
+            if source.url
+        ][:_MAX_FETCH_URLS_PER_COMPETITOR]
         fetched = await run_tool_safely("fetch_pages", partial(fetcher.fetch_pages, fetch_urls))
         if isinstance(fetched, ToolError):
             errors.append(f"fetch_pages: {fetched.error_content}")
@@ -483,6 +581,33 @@ class CollectorAgent:
             errors.extend(
                 f"dropped_irrelevant: {source.url or source.id}"
                 for source in post_fetch_relevance.dropped
+            )
+
+        dimension_source_counts = {
+            dimension_id: sum(
+                1 for source in enriched_sources if source.dimension_id == dimension_id
+            )
+            for dimension_id, _ in dimension_queries or []
+        }
+        for dimension_id, count in dimension_source_counts.items():
+            if dimension_id.startswith("core.") and count == 0:
+                errors.append(f"dimension_gap({dimension_id}): no relevant sources")
+
+        # A run can "succeed" with only content-free fallback stubs when every web
+        # search errored (e.g. SerpApi 429 / quota exhausted): the Analyst then has
+        # no evidence and silently emits empty profiles, so the report renders blank
+        # with no obvious cause. Surface it as a degradation so the real reason shows
+        # in the trace timeline instead of looking like a clean collection.
+        real_sources = [
+            s
+            for s in enriched_sources
+            if not s.provider.startswith("fallback") and (s.raw_content or s.snippet)
+        ]
+        if not real_sources:
+            record_degradation(
+                f"collector: no real sources for {competitor_name}; "
+                f"web search yielded nothing ({len(errors)} errors) — "
+                "report will be empty for this competitor"
             )
 
         completeness = min(len(enriched_sources) / 5, 1.0)

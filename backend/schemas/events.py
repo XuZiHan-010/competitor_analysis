@@ -12,6 +12,7 @@ class StreamEvent(BaseModel):
         "node.started",
         "node.succeeded",
         "node.failed",
+        "collector.degraded",
         "qa.blocker",
         "run.succeeded",
         "run.failed",

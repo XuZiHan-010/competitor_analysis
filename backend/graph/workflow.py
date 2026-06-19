@@ -21,9 +21,21 @@ def _trace_ctx(config: RunnableConfig) -> Any:
 # but must return JSON-serializable updates: the checkpointer serializes channel
 # writes via msgpack, which cannot encode raw Pydantic model instances.
 async def _collector_node(state: WorkflowState, config: RunnableConfig) -> dict[str, Any]:
+    trace_context = _trace_ctx(config)
     raw_collections, survey_results = await CollectorAgent().run(
-        state, trace_context=_trace_ctx(config)
+        state, trace_context=trace_context
     )
+    # A competitor with zero real sources means every downstream section for it
+    # will be empty; surface that on the live event stream now instead of letting
+    # the viewer discover a blank report minutes later.
+    publish = getattr(trace_context, "publish_event", None)
+    if publish is not None:
+        for name, collection in raw_collections.items():
+            if not collection.has_real_sources():
+                await publish(
+                    "collector.degraded",
+                    {"competitor": name, "errors": collection.errors},
+                )
     return {
         "raw_collections": {k: v.model_dump(mode="json") for k, v in raw_collections.items()},
         "survey_results": {k: v.model_dump(mode="json") for k, v in survey_results.items()},
@@ -49,14 +61,18 @@ async def _qa_node(state: WorkflowState, config: RunnableConfig) -> dict[str, An
     feedback_signals = dict(state.feedback_signals)
     field_verification_status = dict(state.field_verification_status)
     if qa_result and not qa_result.passed:
-        retry_counts["collector"] = retry_counts.get("collector", 0) + 1
         blocker_issues = [issue for issue in qa_result.issues if issue.severity == "blocker"]
-        feedback_signals["correction_detected"] = {
-            "target_agent": "CollectorAgent",
-            "retry_count": retry_counts["collector"],
-            "issues": [issue.model_dump(mode="json") for issue in blocker_issues],
-        }
-        if retry_counts["collector"] >= MAX_COLLECTOR_RETRIES:
+        retryable_blockers = [issue for issue in blocker_issues if issue.retryable]
+        # Only count and signal a retry when one can actually help; a blocker
+        # caused by exhausted search quota fails identically on every loop.
+        if retryable_blockers:
+            retry_counts["collector"] = retry_counts.get("collector", 0) + 1
+            feedback_signals["correction_detected"] = {
+                "target_agent": "CollectorAgent",
+                "retry_count": retry_counts["collector"],
+                "issues": [issue.model_dump(mode="json") for issue in retryable_blockers],
+            }
+        if not retryable_blockers or retry_counts["collector"] >= MAX_COLLECTOR_RETRIES:
             for issue in blocker_issues:
                 if not issue.target_competitor:
                     continue
@@ -78,13 +94,21 @@ async def _qa_node(state: WorkflowState, config: RunnableConfig) -> dict[str, An
 
 
 async def _writer_node(state: WorkflowState, config: RunnableConfig) -> dict[str, Any]:
-    report = await WriterAgent().run(state, trace_context=_trace_ctx(config))
+    report = await WriterAgent().run(
+        state, trace_context=_trace_ctx(config), language=state.report_language
+    )
     return {"report": report.model_dump(mode="json") if report else None}
 
 
 def _route_after_qa(state: WorkflowState) -> str:
-    retries = state.retry_counts.get("collector", 0)
-    if state.qa_result and not state.qa_result.passed and retries < MAX_COLLECTOR_RETRIES:
+    if state.qa_result is None or state.qa_result.passed:
+        return "write"
+    retryable_blockers = [
+        issue
+        for issue in state.qa_result.issues
+        if issue.severity == "blocker" and issue.retryable
+    ]
+    if retryable_blockers and state.retry_counts.get("collector", 0) < MAX_COLLECTOR_RETRIES:
         return "collect"
     return "write"
 

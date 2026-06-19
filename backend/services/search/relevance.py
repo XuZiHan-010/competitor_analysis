@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from schemas.source import SourceCitation
-from services.llm import LLMClient
+from services.llm import LLMClient, provider_for_model
 from settings import get_settings
 
 ACADEMIC_MARKERS = (
@@ -14,15 +14,26 @@ ACADEMIC_MARKERS = (
     "journal",
     "paper",
     "literature",
-    "model",
     "satisfaction",
     "研究",
-    "模型",
     "满意度",
     "文献",
     "综述",
     "论文",
     "期刊",
+)
+
+ACADEMIC_MODEL_PHRASES = (
+    "satisfaction model",
+    "acsi model",
+    "c-csi model",
+    "delone model",
+    "mclean model",
+    "literature model",
+    "research model",
+    "研究模型",
+    "满意度模型",
+    "模型研究",
 )
 
 PRODUCT_MARKERS = (
@@ -42,6 +53,12 @@ PRODUCT_MARKERS = (
     "应用商店",
     "用户评价",
 )
+
+HARD_FACT_DIMENSIONS = frozenset({
+    "core.feature_tree",
+    "core.pricing",
+    "core.swot",
+})
 
 
 @dataclass(frozen=True)
@@ -77,8 +94,8 @@ async def filter_relevant_sources(
         if _rule_says_irrelevant(source, include_raw_content=include_raw_content):
             dropped.append(source)
         else:
-            kept.append(source)
-    return RelevanceResult(kept=kept or sources, dropped=dropped if kept else [])
+            kept.append(_tag_academic_sample(source, include_raw_content=include_raw_content))
+    return RelevanceResult(kept=kept, dropped=dropped)
 
 
 async def _filter_with_llm(
@@ -89,7 +106,7 @@ async def _filter_with_llm(
     include_raw_content: bool,
 ) -> RelevanceResult:
     payload = await llm.complete_json(
-        provider="openai",
+        provider=provider_for_model(get_settings().collector_model),
         model=get_settings().collector_model,
         messages=[
             {
@@ -120,9 +137,13 @@ async def _filter_with_llm(
     if not decisions:
         raise ValueError("empty relevance decisions")
 
-    kept = [source for source in sources if decisions.get(source.id, True)]
+    kept = [
+        _tag_academic_sample(source, include_raw_content=include_raw_content)
+        for source in sources
+        if decisions.get(source.id, True)
+    ]
     dropped = [source for source in sources if not decisions.get(source.id, True)]
-    return RelevanceResult(kept=kept or sources, dropped=dropped if kept else [])
+    return RelevanceResult(kept=kept, dropped=dropped)
 
 
 def _source_payload(source: SourceCitation, include_raw_content: bool) -> dict[str, str]:
@@ -136,10 +157,37 @@ def _source_payload(source: SourceCitation, include_raw_content: bool) -> dict[s
 
 
 def _rule_says_irrelevant(source: SourceCitation, *, include_raw_content: bool) -> bool:
+    lowered = _source_text(source, include_raw_content=include_raw_content).lower()
+    has_academic = _has_academic_context(lowered)
+    has_product = any(marker in lowered for marker in PRODUCT_MARKERS)
+    if not has_academic:
+        return False
+    if source.dimension_id in HARD_FACT_DIMENSIONS:
+        return not has_product
+    return not has_product
+
+
+def _tag_academic_sample(
+    source: SourceCitation,
+    *,
+    include_raw_content: bool,
+) -> SourceCitation:
+    lowered = _source_text(source, include_raw_content=include_raw_content).lower()
+    has_academic = _has_academic_context(lowered)
+    has_product = any(marker in lowered for marker in PRODUCT_MARKERS)
+    if has_academic and not has_product:
+        return source.model_copy(update={"category": "academic_sample"})
+    return source
+
+
+def _has_academic_context(text: str) -> bool:
+    return any(marker in text for marker in ACADEMIC_MARKERS) or any(
+        phrase in text for phrase in ACADEMIC_MODEL_PHRASES
+    )
+
+
+def _source_text(source: SourceCitation, *, include_raw_content: bool) -> str:
     text = f"{source.title}\n{source.snippet}"
     if include_raw_content and source.raw_content:
         text = f"{text}\n{source.raw_content[:1500]}"
-    lowered = text.lower()
-    has_academic = any(marker in lowered for marker in ACADEMIC_MARKERS)
-    has_product = any(marker in lowered for marker in PRODUCT_MARKERS)
-    return has_academic and not has_product
+    return text

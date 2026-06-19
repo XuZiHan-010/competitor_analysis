@@ -46,6 +46,30 @@ def _safe_int(value: Any, default: int) -> int:
         return {"high": 3, "medium": 2, "low": 1}.get(text, default)
     return default
 
+
+def _safe_str_list(value: Any) -> list[str]:
+    """LLM 偶尔把 ``representative_quotes`` 返回成字符串而非数组（实测被截断的
+    '用户满'）；切片 ``[:3]`` 会得到前 3 个字符再塞进 ``list[str]`` 字段，触发
+    ValidationError。统一兜底为 ``list[str]``，避免整段 survey 降级。"""
+    if isinstance(value, str):
+        text = value.strip()
+        return [text] if text else []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return []
+
+
+def _safe_confidence(value: Any) -> Literal["high", "medium", "low"]:
+    """LLM 偶尔把 ``confidence`` 返回成 'Medium'/'高' 等；映射回 Literal 三档，
+    否则 Pydantic 校验失败导致整段 survey 降级。"""
+    text = str(value).strip().lower()
+    if text in {"high", "高"}:
+        return "high"
+    if text in {"medium", "中"}:
+        return "medium"
+    return "low"
+
+
 logger = structlog.get_logger(__name__)
 
 
@@ -258,17 +282,22 @@ class SurveyTool:
     ) -> list[SurveyEvidence]:
         if not responses:
             return []
-        response = responses[0]
-        return [
-            SurveyEvidence(
-                question_id=question.id,
-                source_type="ai_simulated",
-                source_id=f"ai_simulated:{response.id}:{question.id}",
-                raw_quote=response.answers.get(question.id, ""),
-                persona_inferred=response.persona.label,
+        # Rotate through all simulated respondents instead of pinning the first
+        # one, otherwise every question quotes the same answer text and the
+        # insights section reads as one line repeated N times.
+        evidence: list[SurveyEvidence] = []
+        for i, question in enumerate(questionnaire.questions):
+            response = responses[i % len(responses)]
+            evidence.append(
+                SurveyEvidence(
+                    question_id=question.id,
+                    source_type="ai_simulated",
+                    source_id=f"ai_simulated:{response.id}:{question.id}",
+                    raw_quote=response.answers.get(question.id, ""),
+                    persona_inferred=response.persona.label,
+                )
             )
-            for question in questionnaire.questions
-        ]
+        return evidence
 
     async def _aggregate_insights(
         self,
@@ -319,7 +348,9 @@ class SurveyTool:
                     "role": "system",
                     "content": (
                         "You are a user research analyst. Synthesize survey evidence into "
-                        "actionable insights. Return JSON: "
+                        "actionable insights for a Chinese report. Write every point and quote "
+                        "summary in Simplified Chinese, even if the source evidence is English. "
+                        "Return JSON: "
                         "{insights: [{question_id, point, frequency, representative_quotes, "
                         "evidence_ids, confidence}]}. "
                         "frequency must be an integer count of supporting evidence items. "
@@ -352,9 +383,9 @@ class SurveyTool:
                     question_id=str(item.get("question_id", "")),
                     point=str(item.get("point", "")),
                     frequency=_safe_int(item.get("frequency"), len(evidence_ids)),
-                    representative_quotes=item.get("representative_quotes", [])[:3],
+                    representative_quotes=_safe_str_list(item.get("representative_quotes"))[:3],
                     evidence_ids=evidence_ids,
-                    confidence=str(item.get("confidence", "low")),
+                    confidence=_safe_confidence(item.get("confidence")),
                 )
             )
         return insights if insights else self._aggregate_insights_fallback(evidence, questionnaire)
