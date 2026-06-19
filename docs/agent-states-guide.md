@@ -48,7 +48,7 @@ agent-states/
 ```json
 {
   "active_competitors": ["ChatGPT", "Claude"],
-  "pending_competitors": ["Gemini", "..."],
+  "pending_competitors": ["Perplexity", "..."],
   "data_sources": {
     "web": { "enabled": true, "method": "web scraping" },
     "api": { "enabled": false },
@@ -117,7 +117,7 @@ agent-states/
   "approval_status": {
     "passed": ["ChatGPT_report_v1"],
     "rejected_pending_rework": ["Claude_report_v1"],
-    "awaiting_review": ["Gemini_report_v1"]
+    "awaiting_review": ["Perplexity_report_v1"]
   },
   "quality_checks": {
     "fact_verification": {

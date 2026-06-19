@@ -18,10 +18,75 @@ function pct(v: number | null | undefined): string {
   return `${Math.round(v * 100)}%`;
 }
 
+const ISSUE_LABELS: Record<string, string> = {
+  pricing_missing: "缺少官网或商业来源支撑的可验证定价信息",
+  pricing_source_weak: "定价仅由弱来源支撑，需要官网或商业来源",
+  swot_incomplete: "SWOT 证据不足，竞争四象限不完整",
+  source_count_low: "独立来源数量不足",
+  source_irrelevant: "来源与产品事实不相关",
+  feature_tree_missing: "功能树缺少可比较字段",
+  feature_tree_sparse: "功能矩阵存在过多未验证字段",
+  citation_missing: "缺少引用来源",
+  core_citation_missing: "核心章节存在未引用字段",
+  persona_missing: "缺少用户画像",
+  survey_evidence_missing: "调研结果缺少证据",
+  survey_insight_evidence_missing: "调研洞察缺少证据编号",
+  survey_ai_simulated_only: "调研洞察仅由 AI 模拟证据支撑",
+  survey_ai_simulated_majority: "调研结果主要依赖 AI 模拟证据",
+  extension_citation_missing: "扩展维度缺少引用来源",
+  field_unverified: "字段未获充分证据支撑",
+};
+
+const FIELD_LABELS: Record<string, string> = {
+  "pricing": "定价",
+  "pricing.source_ids": "定价",
+  "pricing.entry_price": "定价",
+  "swot": "SWOT",
+  "feature_tree": "功能树",
+  "source_ids": "引用",
+  "sources": "来源",
+  "core.source_ids": "核心引用",
+  "user_personas": "用户画像",
+  "survey.evidence": "调研证据",
+  "survey.source_breakdown": "调研来源",
+};
+
+function textValue(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
 function issueText(issue: Record<string, unknown>): string {
-  const field = typeof issue.failed_field === "string" ? issue.failed_field : "quality";
-  const message = typeof issue.message === "string" ? issue.message : "需要人工复核";
-  return `${field}: ${message}`;
+  const competitor = textValue(issue.target_competitor);
+  const field = textValue(issue.failed_field);
+  const code = textValue(issue.code);
+  const fieldLabel = FIELD_LABELS[field] ?? field.replaceAll("_", " ") ?? "质量";
+  const message = ISSUE_LABELS[code] ?? textValue(issue.message) ?? "需要人工复核";
+  const prefix = [competitor, fieldLabel].filter(Boolean).join(" · ");
+  return prefix ? `${prefix}：${message}` : message;
+}
+
+function issueMeta(issue: Record<string, unknown>): string {
+  const severity = textValue(issue.severity);
+  const severityLabel = severity === "blocker" ? "阻塞" : "提醒";
+  const retryable = issue.retryable === true ? "可重试" : "需复核";
+  return `${severityLabel} · ${retryable}`;
+}
+
+function dedupeIssues(issues: Record<string, unknown>[]): Record<string, unknown>[] {
+  const seen = new Set<string>();
+  const result: Record<string, unknown>[] = [];
+  for (const issue of issues) {
+    const key = [
+      textValue(issue.target_competitor),
+      textValue(issue.failed_field),
+      textValue(issue.code),
+      textValue(issue.message),
+    ].join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(issue);
+  }
+  return result;
 }
 
 function metricIssues(metrics: ReportMetrics): Record<string, unknown>[] {
@@ -69,7 +134,7 @@ export function QualityPanel({
   const pendingReview = claims.filter((c) => c.review_status === "unreviewed").length;
   const editedCount = claims.filter((c) => c.edit_status === "edited").length;
   const integrityIssues = metricIssues(metrics);
-  const visibleIssues = [...qaIssues, ...integrityIssues].slice(0, 5);
+  const visibleIssues = dedupeIssues([...qaIssues, ...integrityIssues]).slice(0, 6);
   const hasIssues = qaStatus === "issues" || visibleIssues.length > 0;
   const reviewableClaims = reviewMode ? claims.slice(0, 6) : [];
 
@@ -84,7 +149,7 @@ export function QualityPanel({
             className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground"
             style={{ fontFamily: "var(--font-mono)" }}
           >
-            Quality Gate
+            质量门
           </p>
           {hasIssues && (
             <p className="mt-1.5 text-[12px] leading-snug text-destructive">
@@ -125,7 +190,7 @@ export function QualityPanel({
               className="text-[10px] uppercase tracking-[0.15em] text-destructive"
               style={{ fontFamily: "var(--font-mono)" }}
             >
-              Blocking Issues
+              阻塞问题
             </p>
             <ul className="space-y-1.5">
               {visibleIssues.map((issue, index) => (
@@ -133,7 +198,10 @@ export function QualityPanel({
                   key={`${issueText(issue)}-${index}`}
                   className="break-words text-[11px] leading-relaxed text-foreground/80"
                 >
-                  {issueText(issue)}
+                  <span className="block text-[10px] text-destructive/75">
+                    {issueMeta(issue)}
+                  </span>
+                  <span>{issueText(issue)}</span>
                 </li>
               ))}
             </ul>
