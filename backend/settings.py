@@ -15,7 +15,6 @@ class Settings(BaseSettings):
     jwt_secret: str | None = None
     mock_llm: bool = False
     openai_api_key: str | None = None
-    gemini_api_key: str | None = None
     deepseek_api_key: str | None = None
     tavily_api_key: str | None = None
     serpapi_api_key: str | None = None
@@ -28,6 +27,7 @@ class Settings(BaseSettings):
     writer_model: str = "deepseek-v4-pro"
     qa_model: str = "gpt-4o-mini"
     embedding_model: str = "text-embedding-3-small"
+    report_language: str = "zh"
 
     model_config = SettingsConfigDict(
         env_file=PROJECT_ROOT / ".env",

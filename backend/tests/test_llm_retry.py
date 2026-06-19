@@ -56,7 +56,7 @@ def test_openai_client_disables_sdk_retries() -> None:
         assert sdk.timeout == 150.0
 
 
-def test_is_transient_detects_gemini_server_error_and_timeout() -> None:
+def test_is_transient_detects_provider_server_error_and_timeout() -> None:
     class ServerError(Exception):
         ...
 

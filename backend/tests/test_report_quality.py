@@ -98,6 +98,36 @@ def test_relevance_drops_academic_sample_sources_with_rule_fallback() -> None:
     assert result.dropped == [academic]
 
 
+def test_relevance_drops_academic_sources_for_hard_fact_dimensions() -> None:
+    academic = _source(
+        "paper",
+        "Douyin ACSI satisfaction model",
+        "A journal paper uses Douyin as a research sample in a satisfaction model.",
+    ).model_copy(update={"dimension_id": "core.pricing"})
+
+    result = asyncio.run(
+        filter_relevant_sources("Douyin", [academic], _FailingLLM())  # type: ignore[arg-type]
+    )
+
+    assert result.kept == []
+    assert result.dropped == [academic]
+
+
+def test_relevance_keeps_product_pricing_model_for_hard_fact_dimensions() -> None:
+    pricing = _source(
+        "pricing",
+        "Douyin pricing model and creator monetization",
+        "Official product pricing model page for subscriptions, ads, and commercial plans.",
+    ).model_copy(update={"dimension_id": "core.pricing", "category": "commercial"})
+
+    result = asyncio.run(
+        filter_relevant_sources("Douyin", [pricing], _FailingLLM())  # type: ignore[arg-type]
+    )
+
+    assert result.kept == [pricing]
+    assert result.dropped == []
+
+
 def test_relevance_keeps_all_when_llm_and_rules_cannot_decide() -> None:
     source = _source("ambiguous", "Douyin ecosystem", "A brief mention with no academic markers.")
 
@@ -132,6 +162,10 @@ def test_qa_blocks_missing_core_schema_fields() -> None:
 
     assert {"feature_tree", "pricing", "user_personas", "swot"}.issubset(fields)
     assert not result.passed
+    issue_by_field = {issue.failed_field: issue for issue in result.issues}
+    assert issue_by_field["pricing"].code == "pricing_missing"
+    assert issue_by_field["swot"].code == "swot_incomplete"
+    assert "缺少" in issue_by_field["pricing"].message
 
 
 def _healthy_pricing_profile(pricing_source_id: str) -> StructuredCompetitorProfile:
@@ -199,6 +233,7 @@ def test_qa_blocks_pricing_backed_only_by_user_reviews() -> None:
         if issue.severity == "blocker" and issue.failed_field == "pricing.source_ids"
     ]
     assert len(pricing_blockers) == 1
+    assert pricing_blockers[0].code == "pricing_source_weak"
     assert not result.passed
 
 
@@ -313,6 +348,10 @@ def test_metrics_and_writer_treat_unverified_fields_as_uncovered() -> None:
     assert report.metrics.field_coverage_rate < 1.0
     assert report.qa_status == "issues"
     assert report.metrics.ai_self_assessment["needs_human_review"] is True
+    assert any(
+        gap["field_path"] == "pricing"
+        for gap in report.structured_content["field_gaps"]
+    )
 
 
 def test_metrics_reports_full_coverage_for_filled_core_fields() -> None:

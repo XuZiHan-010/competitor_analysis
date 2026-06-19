@@ -56,6 +56,26 @@ def _canonical_feature_cell(cell: Mapping[str, object], competitor: str) -> dict
     }
 
 
+def _collection_gaps(state: WorkflowState) -> list[dict[str, str]]:
+    """Competitors whose collection yielded no real sources, with the reason.
+
+    Rendered as a report-header warning: without it a quota-exhausted search run
+    produces a structurally complete report whose empty competitors look like an
+    analysis result rather than a collection failure.
+    """
+    gaps: list[dict[str, str]] = []
+    for name, result in state.raw_collections.items():
+        if result.has_real_sources():
+            continue
+        gaps.append(
+            {
+                "competitor": name,
+                "reason": "; ".join(result.errors) or "网络搜索未返回可用来源",
+            }
+        )
+    return gaps
+
+
 class WriterAgent:
     @traced_node(
         agent_name="WriterAgent",
@@ -250,6 +270,8 @@ class WriterAgent:
             "summary": f"本报告分析了 {', '.join(competitors)} 的竞争格局。",
             "language": language,
             "competitors": competitors,
+            "data_gaps": _collection_gaps(state),
+            "field_gaps": _field_gaps(state, competitors, all_tiers, swot_blocks),
             "feature_tree": {"intro": intros.get("feature_tree", ""), "rows": ft_rows},
             "pricing": {"intro": intros.get("pricing", ""), "tiers": all_tiers},
             "user_personas": {"intro": intros.get("user_personas", ""), "personas": all_personas},
@@ -274,6 +296,13 @@ class WriterAgent:
         summary = str(structured_content.get("summary") or "").strip()
         if summary:
             lines.extend(["## Executive Summary", summary, ""])
+
+        for gap in _list_of_mappings(structured_content.get("data_gaps")):
+            gap_name = str(gap.get("competitor") or "")
+            gap_reason = str(gap.get("reason") or "")
+            lines.append(f"> ⚠️ **{gap_name}**：数据采集失败，本报告不含其有效数据（{gap_reason}）")
+        if _list_of_mappings(structured_content.get("data_gaps")):
+            lines.append("")
 
         feature_tree = _mapping(structured_content.get("feature_tree"))
         feature_rows = _list_of_mappings(feature_tree.get("rows"))
@@ -549,8 +578,62 @@ def _field_status_issues(field_status: dict[str, object]) -> list[dict]:
             "failed_field": item.get("field_path"),
             "message": item.get("reason", "字段未获充分证据支撑。"),
             "retryable": False,
+            "code": "field_unverified",
         })
     return issues
+
+
+def _field_gaps(
+    state: WorkflowState,
+    competitors: list[str],
+    pricing_tiers: list[dict],
+    swot_blocks: list[dict],
+) -> list[dict[str, object]]:
+    gaps: list[dict[str, object]] = []
+    pricing_competitors = {
+        str(tier.get("competitor"))
+        for tier in pricing_tiers
+        if isinstance(tier, Mapping) and tier.get("competitor")
+    }
+    swot_complete = {
+        str(block.get("competitor"))
+        for block in swot_blocks
+        if isinstance(block, Mapping)
+        and any(block.get(key) for key in ("strengths", "weaknesses", "opportunities", "threats"))
+    }
+    for competitor in competitors:
+        if competitor not in pricing_competitors:
+            gaps.append({
+                "competitor": competitor,
+                "field_path": "pricing",
+                "code": "pricing_missing",
+                "message": "定价模型：未找到官网或商业来源支撑的可验证定价信息。",
+            })
+        if competitor not in swot_complete:
+            gaps.append({
+                "competitor": competitor,
+                "field_path": "swot",
+                "code": "swot_incomplete",
+                "message": "SWOT：未找到足够证据填充该竞品的竞争四象限。",
+            })
+    for item in state.field_verification_status.values():
+        if not isinstance(item, Mapping):
+            continue
+        gaps.append({
+            "competitor": item.get("competitor"),
+            "field_path": item.get("field_path"),
+            "code": "field_unverified",
+            "message": item.get("reason", "字段未获充分证据支撑。"),
+        })
+    deduped: dict[tuple[str, str, str], dict[str, object]] = {}
+    for gap in gaps:
+        key = (
+            str(gap.get("competitor") or ""),
+            str(gap.get("field_path") or ""),
+            str(gap.get("code") or ""),
+        )
+        deduped.setdefault(key, gap)
+    return list(deduped.values())
 
 
 def _field_level_core_claims(
@@ -566,11 +649,16 @@ def _field_level_core_claims(
     claims: list[ReportClaim] = []
 
     def _add(path: str, text: str, source_ids: list[str], layer: str) -> None:
+        # An empty field (e.g. an extension bullet whose points never arrived)
+        # is not a claim; emitting the path as text leaked literal strings like
+        # "extensions[0].bullets[0]" into the report's key-findings section.
+        if not text.strip():
+            return
         ids = list(dict.fromkeys(source_ids))
         claims.append(
             ReportClaim(
                 claim_path=path,
-                claim_text=text.strip() or path,
+                claim_text=text.strip(),
                 layer=layer,
                 field_type="structured",
                 source_ids=ids,

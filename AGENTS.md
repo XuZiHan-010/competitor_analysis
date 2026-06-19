@@ -90,9 +90,11 @@ competitor_analysis/
 | **写 Python / TypeScript 代码（每次）** | **[docs/code-style.md](docs/code-style.md)** — 拿满代码风格分必读 |
 | 提交代码 / 创建 PR / 管理分支 | [docs/git-workflow.md](docs/git-workflow.md) — Conventional Commits |
 | 部署 / 配 LangSmith 等生产环境变量 | [docs/deployment.md](docs/deployment.md)（骨架，随部署补全） |
+| 准备交付技术材料 / 数据库 ER 图 | [docs/database-er-diagram.md](docs/database-er-diagram.md) |
 | 写测试 | [docs/testing.md](docs/testing.md) |
 | 准备访谈 / 找演示案例 | [docs/collaboration-hankel.md](docs/collaboration-hankel.md) |
-| 准备答辩 / 整理 AI 协作证据 | [docs/ai-collaboration.md](docs/ai-collaboration.md) |
+| 准备答辩 / 查评分维度与材料清单 | [docs/defense-requirements.md](docs/defense-requirements.md) — 答辩流程 + 5 维度评分卡 + 材料清单 |
+| 整理 AI 协作证据 | [docs/ai-collaboration.md](docs/ai-collaboration.md) |
 
 ### 项目内部状态文件（**不是 Claude Code 的工作记忆**）
 

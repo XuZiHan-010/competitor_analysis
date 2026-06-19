@@ -126,7 +126,10 @@ class PageFetcher:
         page = await browser.new_page(  # type: ignore[attr-defined]
             extra_http_headers={"User-Agent": "CompetitorAnalysisBot"}
         )
-        await page.goto(url, timeout=_GOTO_TIMEOUT_MS, wait_until="domcontentloaded")
-        title = await page.title()
-        content = await page.inner_text("body")
-        return FetchResult(url=url, title=title, content=content[:8000])
+        try:
+            await page.goto(url, timeout=_GOTO_TIMEOUT_MS, wait_until="domcontentloaded")
+            title = await page.title()
+            content = await page.inner_text("body")
+            return FetchResult(url=url, title=title, content=content[:8000])
+        finally:
+            await page.close()

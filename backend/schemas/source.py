@@ -22,6 +22,7 @@ SourceCategory = Literal[
     "user_feedback",
     "tech_community",
     "commercial",
+    "academic_sample",
     "unknown",
 ]
 

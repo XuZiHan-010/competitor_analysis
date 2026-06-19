@@ -93,7 +93,7 @@ def test_cross_fill_applies_classification_backed_by_competitor_sources() -> Non
         }
     )
     enriched = asyncio.run(
-        agent._enrich_cross_matrix(cross, _profiles(), _raw_collections(), llm)  # type: ignore[arg-type]
+        agent._enrich_cross_matrix(cross, _profiles(), _raw_collections(), llm, "zh")  # type: ignore[arg-type]
     )
 
     assert _cell_status(enriched, "Group Chat", "B") == "supported"
@@ -121,7 +121,7 @@ def test_cross_fill_rejects_classification_without_valid_evidence() -> None:
         }
     )
     enriched = asyncio.run(
-        agent._enrich_cross_matrix(cross, _profiles(), _raw_collections(), llm)  # type: ignore[arg-type]
+        agent._enrich_cross_matrix(cross, _profiles(), _raw_collections(), llm, "zh")  # type: ignore[arg-type]
     )
     assert _cell_status(enriched, "Group Chat", "B") == "unknown"
 
@@ -132,6 +132,6 @@ def test_cross_fill_keeps_unknown_when_llm_fails() -> None:
 
     llm = _FakeLLM(error=RuntimeError("deepseek down"))
     enriched = asyncio.run(
-        agent._enrich_cross_matrix(cross, _profiles(), _raw_collections(), llm)  # type: ignore[arg-type]
+        agent._enrich_cross_matrix(cross, _profiles(), _raw_collections(), llm, "zh")  # type: ignore[arg-type]
     )
     assert _cell_status(enriched, "Group Chat", "B") == "unknown"

@@ -167,6 +167,9 @@ class RunTraceContext:
             trace.model_dump(mode="json"),
         )
 
+    async def publish_event(self, event: str, data: dict[str, Any]) -> None:
+        await self._bridge.publish(str(self.run_id), event, data)
+
 
 class RunManager:
     def __init__(
@@ -265,6 +268,7 @@ class RunManager:
             task_id=scope_contract.id,
             run_id=record.id,
             scope_contract=scope_contract,
+            report_language=get_settings().report_language,
             uploaded_survey_evidence=list(self._store.survey_uploads.get(scope_contract.id, [])),
             feedback_signals={"force_pricing_blocker": force_feedback_demo},
         )

@@ -57,6 +57,23 @@ def _source_for_prompt(source: SourceCitation) -> dict[str, Any]:
     return payload
 
 
+def _language_instruction(language: str) -> str:
+    """Force the extractor to normalize human-readable output to the target language.
+
+    Collection stays multilingual to keep authoritative sources (many dev-tool
+    pricing/docs are English-only), so without this the model echoes whatever
+    language the sources use. Brand/plan names, numbers, and source_ids stay verbatim.
+    """
+    label = "简体中文 (Simplified Chinese)" if language == "zh" else language
+    return (
+        f" Write all human-readable text (feature names, descriptions, notes, pricing "
+        f"tiers and highlights, persona labels/needs/pain points, SWOT text, summaries, "
+        f"and bullets) in {label}. Keep product and brand names, plan names, and numbers "
+        f"with their units verbatim. source_ids must still be copied verbatim from the "
+        f"provided sources."
+    )
+
+
 def _sources_for_prompt(sources: list[SourceCitation]) -> list[dict[str, Any]]:
     payloads = [_source_for_prompt(source) for source in sources]
     remaining = _MAX_COMPETITOR_RAW_CONTENT_CHARS
@@ -103,6 +120,34 @@ def _coerce_personas(value: Any) -> list[dict[str, Any]]:
 
 def _canonical_feature_status(value: object) -> str:
     return _FEATURE_STATUS_ALIASES.get(str(value or "").strip().lower(), "unknown")
+
+
+def _cited_source_ids(
+    feature_tree: dict[str, Any],
+    pricing: dict[str, Any],
+    personas: list[dict[str, Any]],
+    swot: dict[str, Any],
+    collected_ids: set[str],
+) -> list[str]:
+    """Union of the source ids the LLM actually cited, restricted to real ones.
+
+    Stamping the profile with every collected source id let parametric-knowledge
+    output sail past QA's "no citations" blocker; ids the LLM invented are
+    dropped for the same reason.
+    """
+    items: list[Any] = list(feature_tree.get("rows") or [])
+    items += list(pricing.get("tiers") or [])
+    items += personas
+    for quadrant in ("strengths", "weaknesses", "opportunities", "threats"):
+        items += list(swot.get(quadrant) or [])
+    cited = [
+        str(source_id)
+        for item in items
+        if isinstance(item, dict)
+        for source_id in (item.get("source_ids") or [])
+        if str(source_id) in collected_ids
+    ]
+    return list(dict.fromkeys(cited))
 
 
 def _canonical_feature_cell(cell: dict[str, Any], competitor: str) -> dict[str, Any]:
@@ -153,6 +198,8 @@ class AnalystAgent:
         CrossCompetitorAnalysis | None,
     ]:
         settings = get_settings()
+        language = state.report_language
+        lang_directive = _language_instruction(language)
         structured_profiles: dict[str, StructuredCompetitorProfile] = {}
         extension_findings: list[ExtensionFinding] = []
 
@@ -176,13 +223,21 @@ class AnalystAgent:
                         "content": (
                             "You are AnalystAgent (core extractor). Return JSON with "
                             "feature_tree, pricing, user_personas, swot. "
+                            "The root object must contain only those four keys. "
                             "Every source_ids value must be copied from the provided sources. "
+                            "Do not use academic_sample, satisfaction-model, literature review, "
+                            "or research-sample sources to support hard product facts such as "
+                            "pricing tiers, product capabilities, SWOT, monetization, or creator "
+                            "incentives. If only those sources exist for a field, leave that "
+                            "field empty. "
                             "Do not output placeholder text such as 需验证, 待确认, 标准版, "
                             "unknown, TBD, or needs verification. If evidence is missing, "
                             "leave the specific list empty instead of inventing a placeholder. "
                             "description, note, evidence, highlights, and SWOT text must "
                             "contain concrete evidence such as numbers, version names, quoted "
                             "phrases, pricing rules, or clearly attributed product facts. "
+                            "Keep output compact: at most 8 feature rows, 5 pricing tiers, "
+                            "3 personas, and 4 items per SWOT quadrant; omit weaker points. "
                             'Return exactly this shape: {"feature_tree":{"rows":[{"feature":'
                             '"Real feature name","description":"Evidence-backed detail",'
                             '"cells":[{"competitor":"Competitor name","status":"supported",'
@@ -196,6 +251,7 @@ class AnalystAgent:
                             '"source_ids":["src_id"]}],"swot":{"strengths":[{"text":"Strength",'
                             '"source_ids":["src_id"]}],"weaknesses":[],"opportunities":[],'
                             '"threats":[]}}.'
+                            + lang_directive
                         ),
                     },
                     {
@@ -207,15 +263,22 @@ class AnalystAgent:
                         ),
                     },
                 ],
+                expected_shape='{"feature_tree":{},"pricing":{},"user_personas":[],"swot":{}}',
             )
             source_ids = [s.id for s in result.sources]
+            feature_tree = _coerce_mapping(core_payload.get("feature_tree"))
+            pricing = _coerce_mapping(core_payload.get("pricing"))
+            user_personas = _coerce_personas(core_payload.get("user_personas"))
+            swot = _coerce_mapping(core_payload.get("swot"))
             structured_profiles[name] = StructuredCompetitorProfile(
                 competitor_name=name,
-                feature_tree=_coerce_mapping(core_payload.get("feature_tree")),
-                pricing=_coerce_mapping(core_payload.get("pricing")),
-                user_personas=_coerce_personas(core_payload.get("user_personas")),
-                swot=_coerce_mapping(core_payload.get("swot")),
-                source_ids=source_ids,
+                feature_tree=feature_tree,
+                pricing=pricing,
+                user_personas=user_personas,
+                swot=swot,
+                source_ids=_cited_source_ids(
+                    feature_tree, pricing, user_personas, swot, set(source_ids)
+                ),
             )
 
             # Extension layer: generic extractor per dimension with intent injected
@@ -235,6 +298,7 @@ class AnalystAgent:
                                 "evidence such as numbers, version names, quoted phrases, or "
                                 "specific product facts. Do not output 需验证, 待确认, 标准版, "
                                 "unknown, TBD, or needs verification; omit unsupported points."
+                                + lang_directive
                             ),
                         },
                         {
@@ -260,7 +324,7 @@ class AnalystAgent:
 
         cross = self._build_cross_analysis(structured_profiles)
         cross = await self._enrich_cross_matrix(
-            cross, structured_profiles, state.raw_collections, llm
+            cross, structured_profiles, state.raw_collections, llm, language
         )
         return structured_profiles, extension_findings, cross
 
@@ -399,6 +463,7 @@ class AnalystAgent:
         profiles: dict[str, StructuredCompetitorProfile],
         raw_collections: dict[str, RawCollectionResult],
         llm: LLMClient,
+        language: str,
     ) -> CrossCompetitorAnalysis:
         """Fill ``unknown`` matrix cells via a second, *evidence-gated* LLM pass.
 
@@ -449,6 +514,7 @@ class AnalystAgent:
                                 "provided sources. If a feature has no supporting evidence in "
                                 "these sources, OMIT it entirely — never guess from prior "
                                 "knowledge, never output unknown/TBD/需验证."
+                                + _language_instruction(language)
                             ),
                         },
                         {

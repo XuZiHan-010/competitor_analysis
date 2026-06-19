@@ -41,7 +41,6 @@ async def check_platform_readiness() -> PlatformReadiness:
         "REDIS_URL": bool(settings.redis_url),
         "JWT_SECRET": bool(settings.jwt_secret),
         "OPENAI_API_KEY": bool(settings.openai_api_key),
-        "GEMINI_API_KEY": bool(settings.gemini_api_key),
         "DEEPSEEK_API_KEY": bool(settings.deepseek_api_key),
         "TAVILY_API_KEY": bool(settings.tavily_api_key),
         "SERPAPI_API_KEY": bool(settings.serpapi_api_key),

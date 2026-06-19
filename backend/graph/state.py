@@ -16,6 +16,19 @@ class RawCollectionResult(BaseModel):
     skipped_urls: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
 
+    def has_real_sources(self) -> bool:
+        """True when at least one source carries actual web content.
+
+        Fallback stubs (provider ``fallback_*``) and content-free citations don't
+        count: the Analyst can extract nothing from them, so downstream layers
+        treat such a competitor as a collection gap, not a usable collection.
+        """
+        return any(
+            not source.provider.startswith("fallback")
+            and bool(source.raw_content or source.snippet)
+            for source in self.sources
+        )
+
 
 class ExtensionFinding(BaseModel):
     dimension_id: str
@@ -49,6 +62,7 @@ class QAIssue(BaseModel):
     failed_field: str
     message: str
     retryable: bool = True
+    code: str = "quality_issue"
 
 
 class QAResult(BaseModel):
@@ -60,6 +74,9 @@ class WorkflowState(BaseModel):
     task_id: UUID
     run_id: UUID
     scope_contract: TaskScopeContract
+    # Target language for all human-readable report content (zh=简体中文). Collection
+    # stays multilingual to keep authoritative sources; Analyst/Writer normalize output.
+    report_language: str = "zh"
     # PRD §六: keyed by competitor_name for O(1) lookup and unambiguous routing
     raw_collections: dict[str, RawCollectionResult] = Field(default_factory=dict)
     structured_profiles: dict[str, StructuredCompetitorProfile] = Field(default_factory=dict)

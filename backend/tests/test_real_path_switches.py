@@ -5,6 +5,7 @@ from agents.collector import CollectorAgent
 from graph.state import WorkflowState
 from schemas.scope import CompetitorCandidate, ScopeDimension, TaskScopeContract
 from schemas.source import SourceCitation
+from services.llm import provider_for_model
 from services.scraper import FetchResult
 from settings import get_settings
 
@@ -70,8 +71,8 @@ def test_collector_real_collection_uses_search_and_app_reviews() -> None:
         CollectorAgent()._run_real_collection(state, search, app_reviews, fetcher)
     )
     assert len(results) == 3
-    # 1 enabled dimension × 3 competitors = 3 search calls
-    assert search.search.call_count == 3
+    # 1 enabled dimension × 2 localized queries × 3 competitors = 6 search calls
+    assert search.search.call_count == 6
     assert app_reviews.fetch_reviews.call_count == 3
     # Pages are fetched in one batched call per competitor (3 competitors)
     assert fetcher.fetch_pages.call_count == 3
@@ -86,9 +87,14 @@ def test_collector_real_collection_uses_search_and_app_reviews() -> None:
         for source_id in all_source_ids
     )
     first_result = next(iter(results.values()))
-    assert len(first_result.sources) == 2
+    assert len(first_result.sources) == 3
 
 
 def test_settings_cache_can_be_cleared_for_env_switches() -> None:
     get_settings.cache_clear()
     assert get_settings() is get_settings()
+
+
+def test_collector_model_provider_is_inferred_from_model_name() -> None:
+    assert provider_for_model("gpt-4o-mini") == "openai"
+    assert provider_for_model("deepseek-v4-pro") == "deepseek"
