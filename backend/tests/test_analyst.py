@@ -6,6 +6,7 @@ from agents.analyst import AnalystAgent, _canonical_feature_status
 from graph.state import RawCollectionResult, StructuredCompetitorProfile, WorkflowState
 from schemas.scope import CompetitorCandidate, ScopeDimension, TaskScopeContract
 from schemas.source import SourceCitation
+from services.report_integrity import assert_report_sources_resolvable, source_ids_from_payload
 
 
 def _source(sid: str, dimension_id: str | None = None) -> SourceCitation:
@@ -203,6 +204,82 @@ def test_extension_source_fallback_uses_dimension_sources_only() -> None:
 
     assert len(extension_findings) == 1
     assert extension_findings[0].source_ids == ["src_ext"]
+
+
+def test_run_llm_drops_hallucinated_nested_source_ids() -> None:
+    """Nested source_ids the model invents must be stripped before they reach the
+    Writer's integrity gate (the root cause of 'unresolved report source ids')."""
+    scope = TaskScopeContract(
+        user_brief="Compare coding tools",
+        intent_mode="list",
+        competitors=[CompetitorCandidate(name="A", source="nl_extracted")],
+        dimensions=[
+            ScopeDimension(
+                id="core.feature_tree",
+                title="Feature tree",
+                intent="Compare features",
+                layer="core",
+                order=1,
+            ),
+        ],
+    )
+    state = WorkflowState(
+        task_id=scope.id,
+        run_id=scope.id,
+        scope_contract=scope,
+        raw_collections={
+            "A": RawCollectionResult(
+                competitor_name="A",
+                sources=[_source("src_a_001", "core.feature_tree")],
+            )
+        },
+    )
+    llm = _FakeLLM(
+        {
+            "feature_tree": {
+                "rows": [
+                    {
+                        "feature": "Group Chat",
+                        "cells": [{"competitor": "A", "status": "supported", "note": "Has it"}],
+                        "source_ids": ["src_a_001", "src_hallucinated_999"],
+                    }
+                ]
+            },
+            "pricing": {
+                "tiers": [
+                    {
+                        "competitor": "A",
+                        "tier": "Free",
+                        "price": "$0",
+                        "highlights": [],
+                        "source_ids": ["src_ghost_000"],
+                    }
+                ]
+            },
+            "user_personas": [],
+            "swot": {},
+        }
+    )
+
+    profiles, _, cross = asyncio.run(AnalystAgent()._run_llm(state, llm))  # type: ignore[arg-type]
+    assert cross is not None
+
+    profile = profiles["A"]
+    assert profile.feature_tree["rows"][0]["source_ids"] == ["src_a_001"]
+    assert profile.pricing["tiers"][0]["source_ids"] == []
+    assert "src_hallucinated_999" not in source_ids_from_payload(profile.model_dump(mode="json"))
+    assert "src_ghost_000" not in source_ids_from_payload(cross.model_dump(mode="json"))
+
+    # End to end: the cleaned content passes the Writer's integrity gate.
+    assert_report_sources_resolvable(
+        sources=[_source("src_a_001")],
+        claims=[],
+        structured_content={
+            "feature_tree": profile.feature_tree,
+            "pricing": profile.pricing,
+            "cross_analysis": cross.model_dump(mode="json"),
+        },
+    )
 
 
 def test_cross_analysis_builds_positioning_map_points() -> None:
