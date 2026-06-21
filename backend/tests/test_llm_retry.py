@@ -56,11 +56,33 @@ def test_openai_client_disables_sdk_retries() -> None:
         assert sdk.timeout == 150.0
 
 
-def test_is_transient_detects_provider_server_error_and_timeout() -> None:
+def test_is_transient_detects_server_error_but_not_timeout() -> None:
     class ServerError(Exception):
         ...
 
     assert _is_transient(ServerError("503 UNAVAILABLE"))
-    assert _is_transient(TimeoutError())
     assert _is_transient(_Transient())
+    # A length-bound timeout must NOT retry: the per-attempt budget is sized to the
+    # output, so an identical retry just times out again at double the cost.
+    assert not _is_transient(TimeoutError())
     assert not _is_transient(_Permanent())
+
+
+def test_timeout_not_retried() -> None:
+    calls = {"n": 0}
+
+    async def call() -> str:
+        calls["n"] += 1
+        raise TimeoutError()
+
+    with pytest.raises(TimeoutError):
+        asyncio.run(_client()._call_with_retries(call))
+    assert calls["n"] == 1
+
+
+def test_call_timeout_scales_with_output_budget() -> None:
+    small = LLMClient(get_settings(), max_output_tokens=2048)
+    large = LLMClient(get_settings(), max_output_tokens=16384)
+    assert large._call_timeout_s > small._call_timeout_s
+    # A full-length generation must fit within the per-attempt budget.
+    assert large._call_timeout_s >= 16384 / 50

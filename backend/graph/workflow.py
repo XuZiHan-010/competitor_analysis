@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any
 
 from langchain_core.runnables import RunnableConfig
@@ -10,7 +11,17 @@ from agents.qa import QAAgent
 from agents.writer import WriterAgent
 from graph.state import WorkflowState
 
-MAX_COLLECTOR_RETRIES = 3
+# Each retry re-runs the full collect→analyze→qa cycle (re-paying the whole Analyst
+# DeepSeek cost). The threshold is compared after the per-qa increment, so this
+# permits MAX-1 retries: 2 ⇒ at most one retry. One retry absorbs a transient
+# collection gap (and drives the demo feedback loop); beyond that the same blocker
+# almost always recurs, so we stop instead of paying the Analyst cost again.
+MAX_COLLECTOR_RETRIES = 2
+
+# Hard wall-clock ceiling for one run. A backstop so no single run can hang for an
+# hour: on expiry the graph is cancelled and the run is reported as failed instead
+# of silently burning provider quota forever.
+WORKFLOW_DEADLINE_S = 1500.0
 
 
 def _trace_ctx(config: RunnableConfig) -> Any:
@@ -144,7 +155,9 @@ async def run_workflow(
             "trace_context": trace_context,
         }
     }
-    result: Any = await graph.ainvoke(state, config=config)
+    result: Any = await asyncio.wait_for(
+        graph.ainvoke(state, config=config), timeout=WORKFLOW_DEADLINE_S
+    )
     if isinstance(result, WorkflowState):
         return result
     return WorkflowState.model_validate(result)

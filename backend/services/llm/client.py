@@ -27,9 +27,18 @@ _TRANSIENT_NAME_HINTS = (
     "serviceunavailable",
     "unavailable",
     "overloaded",
-    "timeout",
     "apiconnection",
 )
+
+# deepseek-v4-pro emits structured JSON at ~50 tok/s; size the per-attempt timeout
+# from the output budget so a full-length generation fits with headroom. A ceiling
+# shorter than the generation time makes every large call time out and (because a
+# timeout used to count as transient) retry into the same wall, burning tokens.
+_OUTPUT_TOKENS_PER_SEC = 50.0
+
+
+def _timeout_for_output(max_output_tokens: int) -> float:
+    return max(60.0, max_output_tokens / _OUTPUT_TOKENS_PER_SEC * 1.6 + 30.0)
 
 
 def provider_for_model(model: str) -> Provider:
@@ -40,9 +49,15 @@ def provider_for_model(model: str) -> Provider:
 
 
 def _is_transient(exc: BaseException) -> bool:
-    """Whether a provider error is worth retrying (overload / rate limit / network)."""
+    """Whether a provider error is worth retrying (overload / rate limit / network).
+
+    A timeout is deliberately NOT transient: the per-attempt budget is sized to the
+    output length (``_timeout_for_output``), so exceeding it means the request is
+    genuinely too slow/large and an identical retry would just time out again at
+    double the cost. Only true overload / rate-limit / connection blips retry.
+    """
     if isinstance(exc, asyncio.TimeoutError | TimeoutError):
-        return True
+        return False
     status = getattr(exc, "status_code", None)
     if not isinstance(status, int):
         status = getattr(exc, "code", None)
@@ -128,10 +143,10 @@ class LLMClient:
         *,
         max_attempts: int = 3,
         retry_base_delay_s: float = 0.5,
-        # deepseek-v4-pro generates large structured JSON at ~50 tok/s; a single
-        # core-profile extraction (~3.5k out tokens) runs ~70s, so the old 60s
-        # ceiling timed the node out. 150s fits a full profile with headroom.
-        call_timeout_s: float = 150.0,
+        # Per-attempt timeout. When omitted it is derived from ``max_output_tokens``
+        # so a full-length generation fits (see ``_timeout_for_output``); pass an
+        # explicit value only to override that sizing.
+        call_timeout_s: float | None = None,
         # Guardrail against runaway generation (the model can emit up to its 384K
         # output ceiling). Kept generous so it never truncates a real profile —
         # a tight cap returns empty/partial JSON and triggers spurious retries.
@@ -140,8 +155,10 @@ class LLMClient:
         self._settings = settings
         self._max_attempts = max(1, max_attempts)
         self._retry_base_delay_s = retry_base_delay_s
-        self._call_timeout_s = call_timeout_s
         self._max_output_tokens = max_output_tokens
+        self._call_timeout_s = (
+            call_timeout_s if call_timeout_s is not None else _timeout_for_output(max_output_tokens)
+        )
 
     async def _call_with_retries(self, call: Callable[[], Awaitable[T]]) -> T:
         """Run a provider call with a per-attempt timeout and exponential backoff

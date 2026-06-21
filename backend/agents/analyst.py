@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any
 
 import structlog
@@ -24,6 +25,10 @@ logger = structlog.get_logger(__name__)
 _MAX_RAW_CONTENT_CHARS = 5000
 _MAX_COMPETITOR_RAW_CONTENT_CHARS = 24000
 _DEFAULT_POSITIONING_SCORE = 50.0
+# Competitors are extracted independently, so their LLM calls are run concurrently;
+# the bound keeps in-flight DeepSeek requests modest (each competitor still issues
+# its core + per-extension calls sequentially inside its own coroutine).
+_MAX_COMPETITOR_CONCURRENCY = 4
 _FEATURE_STATUS_ALIASES = {
     "supported": "supported",
     "support": "supported",
@@ -208,6 +213,32 @@ def _cited_source_ids(
     return list(dict.fromkeys(cited))
 
 
+def _sanitize_source_ids(value: Any, valid_ids: set[str]) -> Any:
+    """Drop every nested ``source_ids`` entry that isn't a real collected id.
+
+    The model occasionally pattern-completes plausible-looking ids (e.g. an extra
+    ``src_tavily_<task>_NNN``) that were never in the prompt. Only the profile-level
+    ``source_ids`` was filtered before (via ``_cited_source_ids``); a stray id left
+    inside feature_tree/pricing/swot/persona rows reaches the Writer's integrity
+    gate and fails the whole run. This filters every nested occurrence too.
+    """
+    if isinstance(value, dict):
+        cleaned: dict[str, Any] = {}
+        for key, item in value.items():
+            if key == "source_ids" and isinstance(item, list):
+                cleaned[key] = list(
+                    dict.fromkeys(
+                        sid for sid in item if isinstance(sid, str) and sid in valid_ids
+                    )
+                )
+            else:
+                cleaned[key] = _sanitize_source_ids(item, valid_ids)
+        return cleaned
+    if isinstance(value, list):
+        return [_sanitize_source_ids(item, valid_ids) for item in value]
+    return value
+
+
 def _canonical_feature_cell(cell: dict[str, Any], competitor: str) -> dict[str, Any]:
     return {
         **cell,
@@ -258,132 +289,169 @@ class AnalystAgent:
         settings = get_settings()
         language = state.report_language
         lang_directive = language_instruction(language)
-        structured_profiles: dict[str, StructuredCompetitorProfile] = {}
-        extension_findings: list[ExtensionFinding] = []
 
         core_dims = [d for d in state.scope_contract.dimensions if d.layer == "core" and d.enabled]
         ext_dims = [
             d for d in state.scope_contract.dimensions if d.layer == "extension" and d.enabled
         ]
 
-        for name, result in state.raw_collections.items():
-            sources_payload = _sources_for_prompt(result.sources)
+        # Each competitor is independent; run them concurrently (bounded) instead of
+        # one slow sequential chain of C×(1+E) DeepSeek calls.
+        semaphore = asyncio.Semaphore(_MAX_COMPETITOR_CONCURRENCY)
 
-            # Core layer: fixed schema extractors for all 4 core dimensions at once
-            core_dim_ids = {d.id for d in core_dims}
-            core_sources = [s for s in result.sources if s.dimension_id in core_dim_ids]
-            core_payload = await llm.complete_json(
-                provider="deepseek",
-                model=settings.analyst_model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are AnalystAgent (core extractor). Return JSON with "
-                            "feature_tree, pricing, user_personas, swot. "
-                            "The root object must contain only those four keys. "
-                            "Every source_ids value must be copied from the provided sources. "
-                            "Do not use academic_sample, satisfaction-model, literature review, "
-                            "or research-sample sources to support hard product facts such as "
-                            "pricing tiers, product capabilities, SWOT, monetization, or creator "
-                            "incentives. If only those sources exist for a field, leave that "
-                            "field empty. "
-                            "Do not output placeholder text such as 需验证, 待确认, 标准版, "
-                            "unknown, TBD, or needs verification. If evidence is missing, "
-                            "leave the specific list empty instead of inventing a placeholder. "
-                            "description, note, evidence, highlights, and SWOT text must "
-                            "contain concrete evidence such as numbers, version names, quoted "
-                            "phrases, pricing rules, or clearly attributed product facts. "
-                            "Keep output compact: at most 8 feature rows, 5 pricing tiers, "
-                            "3 personas, and 4 items per SWOT quadrant; omit weaker points. "
-                            'Return exactly this shape: {"feature_tree":{"rows":[{"feature":'
-                            '"Real feature name","description":"Evidence-backed detail",'
-                            '"cells":[{"competitor":"Competitor name","status":"supported",'
-                            '"note":"Specific evidence-backed note"}],"source_ids":["src_id"]}]},'
-                            '"pricing":{"tiers":[{"competitor":"Competitor name","tier":'
-                            '"Plan name","price":"Published price or pricing rule",'
-                            '"highlights":["Evidence-backed highlight"],"source_ids":["src_id"]}]},'
-                            '"user_personas":[{"competitor":"Competitor name","label":'
-                            '"Persona label","size":"majority","needs":["Need"],'
-                            '"pain_points":["Pain point"],"evidence":"Evidence summary",'
-                            '"source_ids":["src_id"]}],"swot":{"strengths":[{"text":"Strength",'
-                            '"source_ids":["src_id"]}],"weaknesses":[],"opportunities":[],'
-                            '"threats":[]}}.' + lang_directive
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": (
-                            f"Competitor: {name}\n"
-                            f"Core dimensions: {[d.model_dump() for d in core_dims]}\n"
-                            f"Sources: {_sources_for_prompt(core_sources) or sources_payload}"
-                        ),
-                    },
-                ],
-                expected_shape='{"feature_tree":{},"pricing":{},"user_personas":[],"swot":{}}',
-            )
-            source_ids = [s.id for s in result.sources]
-            feature_tree = _coerce_mapping(core_payload.get("feature_tree"))
-            pricing = _coerce_mapping(core_payload.get("pricing"))
-            user_personas = _coerce_personas(core_payload.get("user_personas"))
-            swot = _coerce_mapping(core_payload.get("swot"))
-            structured_profiles[name] = StructuredCompetitorProfile(
-                competitor_name=name,
-                feature_tree=feature_tree,
-                pricing=pricing,
-                user_personas=user_personas,
-                swot=swot,
-                source_ids=_cited_source_ids(
-                    feature_tree, pricing, user_personas, swot, set(source_ids)
-                ),
-            )
+        async def extract(name: str, result: RawCollectionResult) -> tuple[
+            str, StructuredCompetitorProfile, list[ExtensionFinding]
+        ]:
+            async with semaphore:
+                return await self._extract_competitor(
+                    name, result, core_dims, ext_dims, llm, settings, lang_directive
+                )
 
-            # Extension layer: generic extractor per dimension with intent injected
-            for dim in ext_dims:
-                dim_sources = [s for s in result.sources if s.dimension_id == dim.id]
-                ext_payload = await llm.complete_json(
-                    provider="deepseek",
-                    model=settings.analyst_model,
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": (
-                                "You are AnalystAgent (extension extractor). "
-                                "Return JSON with summary, bullets (list[str]), "
-                                "table_data (list[dict]), source_ids (list[str]). "
-                                "Every summary, bullet, and table note must include concrete "
-                                "evidence such as numbers, version names, quoted phrases, or "
-                                "specific product facts. Do not output 需验证, 待确认, 标准版, "
-                                "unknown, TBD, or needs verification; omit unsupported points."
-                                + lang_directive
-                            ),
-                        },
-                        {
-                            "role": "user",
-                            "content": (
-                                f"Competitor: {name}\n"
-                                f"Dimension intent: {dim.intent}\n"
-                                f"Sources: {_sources_for_prompt(dim_sources) or sources_payload}"
-                            ),
-                        },
-                    ],
-                )
-                extension_findings.append(
-                    ExtensionFinding(
-                        dimension_id=dim.id,
-                        competitor_name=name,
-                        summary=str(ext_payload.get("summary", "")),
-                        bullets=ext_payload.get("bullets") or [],
-                        table_data=ext_payload.get("table_data") or [],
-                        source_ids=ext_payload.get("source_ids") or [s.id for s in dim_sources],
-                    )
-                )
+        extracted = await asyncio.gather(
+            *(extract(name, result) for name, result in state.raw_collections.items())
+        )
+        structured_profiles: dict[str, StructuredCompetitorProfile] = {}
+        extension_findings: list[ExtensionFinding] = []
+        for name, profile, findings in extracted:
+            structured_profiles[name] = profile
+            extension_findings.extend(findings)
 
         cross = self._build_cross_analysis(structured_profiles)
         cross = await self._enrich_cross_matrix(
             cross, structured_profiles, state.raw_collections, llm, language
         )
         return structured_profiles, extension_findings, cross
+
+    async def _extract_competitor(
+        self,
+        name: str,
+        result: RawCollectionResult,
+        core_dims: list[Any],
+        ext_dims: list[Any],
+        llm: LLMClient,
+        settings: Any,
+        lang_directive: str,
+    ) -> tuple[str, StructuredCompetitorProfile, list[ExtensionFinding]]:
+        sources_payload = _sources_for_prompt(result.sources)
+        valid_ids = {s.id for s in result.sources}
+
+        # Core layer: fixed schema extractors for all 4 core dimensions at once
+        core_dim_ids = {d.id for d in core_dims}
+        core_sources = [s for s in result.sources if s.dimension_id in core_dim_ids]
+        core_payload = await llm.complete_json(
+            provider="deepseek",
+            model=settings.analyst_model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are AnalystAgent (core extractor). Return JSON with "
+                        "feature_tree, pricing, user_personas, swot. "
+                        "The root object must contain only those four keys. "
+                        "Every source_ids value must be copied from the provided sources. "
+                        "Do not use academic_sample, satisfaction-model, literature review, "
+                        "or research-sample sources to support hard product facts such as "
+                        "pricing tiers, product capabilities, SWOT, monetization, or creator "
+                        "incentives. If only those sources exist for a field, leave that "
+                        "field empty. "
+                        "Do not output placeholder text such as 需验证, 待确认, 标准版, "
+                        "unknown, TBD, or needs verification. If evidence is missing, "
+                        "leave the specific list empty instead of inventing a placeholder. "
+                        "description, note, evidence, highlights, and SWOT text must "
+                        "contain concrete evidence such as numbers, version names, quoted "
+                        "phrases, pricing rules, or clearly attributed product facts. "
+                        "Keep output compact: at most 8 feature rows, 5 pricing tiers, "
+                        "3 personas, and 4 items per SWOT quadrant; omit weaker points. "
+                        'Return exactly this shape: {"feature_tree":{"rows":[{"feature":'
+                        '"Real feature name","description":"Evidence-backed detail",'
+                        '"cells":[{"competitor":"Competitor name","status":"supported",'
+                        '"note":"Specific evidence-backed note"}],"source_ids":["src_id"]}]},'
+                        '"pricing":{"tiers":[{"competitor":"Competitor name","tier":'
+                        '"Plan name","price":"Published price or pricing rule",'
+                        '"highlights":["Evidence-backed highlight"],"source_ids":["src_id"]}]},'
+                        '"user_personas":[{"competitor":"Competitor name","label":'
+                        '"Persona label","size":"majority","needs":["Need"],'
+                        '"pain_points":["Pain point"],"evidence":"Evidence summary",'
+                        '"source_ids":["src_id"]}],"swot":{"strengths":[{"text":"Strength",'
+                        '"source_ids":["src_id"]}],"weaknesses":[],"opportunities":[],'
+                        '"threats":[]}}.' + lang_directive
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Competitor: {name}\n"
+                        f"Core dimensions: {[d.model_dump() for d in core_dims]}\n"
+                        f"Sources: {_sources_for_prompt(core_sources) or sources_payload}"
+                    ),
+                },
+            ],
+            expected_shape='{"feature_tree":{},"pricing":{},"user_personas":[],"swot":{}}',
+        )
+        # Filter every nested source_ids down to ids actually collected for this
+        # competitor before they propagate into the cross matrix and the report.
+        feature_tree = _sanitize_source_ids(
+            _coerce_mapping(core_payload.get("feature_tree")), valid_ids
+        )
+        pricing = _sanitize_source_ids(_coerce_mapping(core_payload.get("pricing")), valid_ids)
+        user_personas = _sanitize_source_ids(
+            _coerce_personas(core_payload.get("user_personas")), valid_ids
+        )
+        swot = _sanitize_source_ids(_coerce_mapping(core_payload.get("swot")), valid_ids)
+        profile = StructuredCompetitorProfile(
+            competitor_name=name,
+            feature_tree=feature_tree,
+            pricing=pricing,
+            user_personas=user_personas,
+            swot=swot,
+            source_ids=_cited_source_ids(feature_tree, pricing, user_personas, swot, valid_ids),
+        )
+
+        # Extension layer: generic extractor per dimension with intent injected
+        findings: list[ExtensionFinding] = []
+        for dim in ext_dims:
+            dim_sources = [s for s in result.sources if s.dimension_id == dim.id]
+            ext_payload = await llm.complete_json(
+                provider="deepseek",
+                model=settings.analyst_model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are AnalystAgent (extension extractor). "
+                            "Return JSON with summary, bullets (list[str]), "
+                            "table_data (list[dict]), source_ids (list[str]). "
+                            "Every summary, bullet, and table note must include concrete "
+                            "evidence such as numbers, version names, quoted phrases, or "
+                            "specific product facts. Do not output 需验证, 待确认, 标准版, "
+                            "unknown, TBD, or needs verification; omit unsupported points."
+                            + lang_directive
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Competitor: {name}\n"
+                            f"Dimension intent: {dim.intent}\n"
+                            f"Sources: {_sources_for_prompt(dim_sources) or sources_payload}"
+                        ),
+                    },
+                ],
+            )
+            ext_source_ids = [
+                sid for sid in (ext_payload.get("source_ids") or []) if sid in valid_ids
+            ] or [s.id for s in dim_sources]
+            findings.append(
+                ExtensionFinding(
+                    dimension_id=dim.id,
+                    competitor_name=name,
+                    summary=str(ext_payload.get("summary", "")),
+                    bullets=ext_payload.get("bullets") or [],
+                    table_data=_sanitize_source_ids(ext_payload.get("table_data") or [], valid_ids),
+                    source_ids=ext_source_ids,
+                )
+            )
+        return name, profile, findings
 
     def _run_fallback(self, state: WorkflowState) -> tuple[
         dict[str, StructuredCompetitorProfile],
@@ -541,6 +609,7 @@ class AnalystAgent:
             return cross
 
         settings = get_settings()
+        targets: list[tuple[str, list[str], RawCollectionResult]] = []
         for name in competitors:
             result = raw_collections.get(name)
             if result is None:
@@ -549,10 +618,12 @@ class AnalystAgent:
                 str(row.get("feature", "")) for row in rows if self._cell_is_unknown(row, name)
             ]
             gap_features = [f for f in gap_features if f]
-            if not gap_features:
-                continue
+            if gap_features:
+                targets.append((name, gap_features, result))
 
-            valid_ids = {s.id for s in result.sources}
+        async def classify(
+            name: str, gap_features: list[str], result: RawCollectionResult
+        ) -> tuple[str, RawCollectionResult, dict[str, Any] | None]:
             try:
                 payload = await llm.complete_json(
                     provider="deepseek",
@@ -586,8 +657,16 @@ class AnalystAgent:
             except Exception as exc:
                 logger.warning("analyst_cross_fill_failed", competitor=name, exc_info=True)
                 record_degradation(f"analyst_cross_fill: {type(exc).__name__}: {exc}")
-                continue
+                return name, result, None
+            return name, result, payload
 
+        # Fan the per-competitor gap-fill calls out concurrently, then apply the
+        # results sequentially so concurrent writes never race on shared rows.
+        fills = await asyncio.gather(*(classify(*target) for target in targets))
+        for name, result, payload in fills:
+            if payload is None:
+                continue
+            valid_ids = {s.id for s in result.sources}
             classified = self._accepted_classifications(payload.get("features"), valid_ids)
             for row in rows:
                 info = classified.get(str(row.get("feature", "")))
