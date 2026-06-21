@@ -17,6 +17,8 @@ class StreamBridge(Protocol):
         last_event_id: int | None = None,
     ) -> AsyncIterator[StreamEvent]: ...
 
+    async def cleanup(self, run_id: str) -> None: ...
+
 
 class InMemoryStreamBridge:
     def __init__(self) -> None:
@@ -33,6 +35,11 @@ class InMemoryStreamBridge:
         for queue in subscribers:
             await queue.put(stream_event)
         return stream_event
+
+    async def cleanup(self, run_id: str) -> None:
+        async with self._lock:
+            self._events.pop(run_id, None)
+            self._subscribers.pop(run_id, None)
 
     async def subscribe(
         self,
@@ -67,16 +74,27 @@ class InMemoryStreamBridge:
 
 
 class RedisStreamBridge:
-    def __init__(self, redis_url: str) -> None:
+    def __init__(
+        self,
+        redis_url: str,
+        *,
+        maxlen: int = 2000,
+        ttl_seconds: int = 86400,
+    ) -> None:
         from redis.asyncio import Redis
 
         self._redis: Redis = Redis.from_url(redis_url, decode_responses=True)
+        self._maxlen = maxlen
+        self._ttl_seconds = ttl_seconds
 
     async def publish(self, run_id: str, event: str, data: dict) -> StreamEvent:
-        sequence_key = f"task-run:{run_id}:events:sequence"
+        sequence_key = self._sequence_key(run_id)
         stream_key = self._stream_key(run_id)
         event_id = int(await self._redis.incr(sequence_key))
         stream_event = StreamEvent(id=event_id, run_id=run_id, event=event, data=data)
+        # maxlen+TTL keep the per-run event log bounded; without them every run's
+        # stream accrues forever and eventually exhausts Redis maxmemory, which a
+        # noeviction instance answers by rejecting all writes (OutOfMemoryError).
         await self._redis.xadd(
             stream_key,
             {
@@ -86,8 +104,15 @@ class RedisStreamBridge:
                 "created_at": stream_event.created_at.isoformat(),
             },
             id=f"{event_id}-0",
+            maxlen=self._maxlen,
+            approximate=True,
         )
+        await self._redis.expire(stream_key, self._ttl_seconds)
+        await self._redis.expire(sequence_key, self._ttl_seconds)
         return stream_event
+
+    async def cleanup(self, run_id: str) -> None:
+        await self._redis.delete(self._stream_key(run_id), self._sequence_key(run_id))
 
     async def subscribe(
         self,
@@ -121,3 +146,6 @@ class RedisStreamBridge:
 
     def _stream_key(self, run_id: str) -> str:
         return f"task-run:{run_id}:events"
+
+    def _sequence_key(self, run_id: str) -> str:
+        return f"task-run:{run_id}:events:sequence"

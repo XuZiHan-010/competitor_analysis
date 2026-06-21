@@ -446,11 +446,15 @@ def _sources(report: Report, *, index: int) -> str:
     items = []
     for source in report.sources:
         title = text_value(source.title) or text_value(source.url) or source.id
-        snippet = text_value(source.snippet)
+        url = text_value(source.url)
+        link = (
+            f'<a href="{html_text(url)}">{html_text(title)}</a>'
+            if url
+            else html_text(title)
+        )
         items.append(
             "<li>"
-            f"<strong>{html_text(source.id)}</strong> {html_text(title)}"
-            f"{f'<small>{html_text(snippet)}</small>' if snippet else ''}"
+            f"<strong>{html_text(source.id)}</strong> {link}"
             "</li>"
         )
     if not items:

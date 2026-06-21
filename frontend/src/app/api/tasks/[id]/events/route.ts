@@ -15,16 +15,16 @@ const backendUrl =
   process.env.NEXT_PUBLIC_API_BASE_URL ||
   "http://127.0.0.1:8000";
 
-function streamFailureEvent(runId: string, message: string): Response {
+function streamProxyErrorEvent(runId: string, message: string): Response {
   const event = {
     id: 0,
     run_id: runId,
-    event: "run.failed",
+    event: "stream.error",
     data: { message },
     created_at: new Date().toISOString(),
   };
 
-  return new Response(`event: run.failed\ndata: ${JSON.stringify(event)}\n\n`, {
+  return new Response(`event: stream.error\ndata: ${JSON.stringify(event)}\n\n`, {
     status: 200,
     headers: {
       "content-type": "text/event-stream; charset=utf-8",
@@ -62,12 +62,18 @@ export async function GET(
     if (error instanceof Error && error.name === "AbortError") {
       return new Response(null, { status: 204 });
     }
-    return streamFailureEvent(id, "事件流连接中断，请刷新任务状态或重试。");
+    return streamProxyErrorEvent(
+      id,
+      "事件流连接中断，任务仍可能在后台运行；页面将继续刷新任务状态。",
+    );
   }
 
   if (!upstream.ok || !upstream.body) {
     if (upstream.status >= 500 || !upstream.body) {
-      return streamFailureEvent(id, "事件流暂时不可用，请刷新任务状态或重试。");
+      return streamProxyErrorEvent(
+        id,
+        "事件流暂时不可用，任务仍可能在后台运行；页面将继续刷新任务状态。",
+      );
     }
     return new Response(await upstream.text(), { status: upstream.status });
   }

@@ -1,6 +1,10 @@
+import argparse
 import asyncio
+import subprocess
 import sys
 from collections.abc import Iterable
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, cast
 
 from schemas.report import Report
@@ -34,7 +38,7 @@ def export_markdown(report: Report) -> bytes:
 
 async def render_report_pdf(report: Report) -> bytes:
     html = build_report_html(report)
-    return await asyncio.to_thread(_render_pdf_sync, html)
+    return await _render_pdf_subprocess(html)
 
 
 def render_report_markdown(report: Report) -> str:
@@ -65,41 +69,93 @@ def render_report_markdown(report: Report) -> str:
     return "\n".join(lines) + "\n"
 
 
+async def _render_pdf_subprocess(html: str) -> bytes:
+    with TemporaryDirectory(prefix="report-pdf-") as tmpdir:
+        html_path = Path(tmpdir) / "report.html"
+        pdf_path = Path(tmpdir) / "report.pdf"
+        html_path.write_text(html, encoding="utf-8")
+
+        try:
+            completed = await asyncio.to_thread(
+                subprocess.run,
+                [
+                    sys.executable,
+                    "-m",
+                    "services.exporter",
+                    "--render-pdf-child",
+                    str(html_path),
+                    str(pdf_path),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=30,
+                cwd=Path(__file__).resolve().parents[1],
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise PdfRenderError("PDF 渲染子进程超时（>30s）。") from exc
+        if completed.returncode != 0:
+            message = (completed.stderr or completed.stdout).decode(
+                "utf-8", errors="replace"
+            ).strip()
+            raise PdfRenderError(message or "PDF 渲染子进程失败。")
+        if not pdf_path.exists():
+            raise PdfRenderError("PDF 渲染子进程未生成输出文件。")
+        return pdf_path.read_bytes()
+
+
 def _render_pdf_sync(html: str) -> bytes:
     from playwright.sync_api import Error as PlaywrightError
     from playwright.sync_api import sync_playwright
 
-    previous_policy = None
     if sys.platform == "win32":
-        previous_policy = asyncio.get_event_loop_policy()
         asyncio_module = cast(Any, asyncio)
         asyncio.set_event_loop_policy(
             asyncio_module.WindowsProactorEventLoopPolicy()
         )
 
+    with sync_playwright() as playwright:
+        browser = _launch_pdf_browser(playwright, PlaywrightError)
+        try:
+            page = browser.new_page()
+            page.set_content(html, wait_until="load", timeout=15_000)
+            page.emulate_media(media="print")
+            return page.pdf(
+                format="A4",
+                print_background=True,
+                margin={
+                    "top": "18mm",
+                    "right": "16mm",
+                    "bottom": "18mm",
+                    "left": "16mm",
+                },
+                prefer_css_page_size=True,
+            )
+        finally:
+            browser.close()
+
+
+def _render_pdf_child(html_path: Path, pdf_path: Path) -> int:
     try:
-        with sync_playwright() as playwright:
-            browser = _launch_pdf_browser(playwright, PlaywrightError)
-            try:
-                page = browser.new_page()
-                page.set_content(html, wait_until="load", timeout=15_000)
-                page.emulate_media(media="print")
-                return page.pdf(
-                    format="A4",
-                    print_background=True,
-                    margin={
-                        "top": "18mm",
-                        "right": "16mm",
-                        "bottom": "18mm",
-                        "left": "16mm",
-                    },
-                    prefer_css_page_size=True,
-                )
-            finally:
-                browser.close()
-    finally:
-        if previous_policy is not None:
-            asyncio.set_event_loop_policy(previous_policy)
+        pdf_path.write_bytes(_render_pdf_sync(html_path.read_text(encoding="utf-8")))
+    except Exception as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--render-pdf-child", action="store_true")
+    parser.add_argument("html_path", nargs="?")
+    parser.add_argument("pdf_path", nargs="?")
+    args = parser.parse_args(argv)
+
+    if args.render_pdf_child:
+        if not args.html_path or not args.pdf_path:
+            parser.error("--render-pdf-child requires html_path and pdf_path")
+        return _render_pdf_child(Path(args.html_path), Path(args.pdf_path))
+    parser.error("unsupported exporter command")
+    return 2
 
 
 def _launch_pdf_browser(playwright: Any, error_type: type[Exception]) -> Any:
@@ -277,3 +333,7 @@ def _append_table(lines: list[str], headers: Iterable[object]) -> None:
 
 def _append_table_row(lines: list[str], values: Iterable[object]) -> None:
     lines.append("| " + " | ".join(markdown_cell(value) for value in values) + " |")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -71,6 +71,21 @@ export default function ScopingPage() {
       ...draftContract,
       frozen_at: new Date().toISOString(),
     };
+    const enabledDimensions = frozenContract.dimensions
+      .filter((dimension) => dimension.enabled)
+      .map((dimension) => ({
+        id: dimension.id,
+        title: dimension.title,
+        layer: dimension.layer,
+        source: dimension.source,
+      }));
+    if (process.env.NODE_ENV !== "production") {
+      console.info("[scoping] frozen scope", {
+        task_id: frozenContract.task_id,
+        competitors: frozenContract.competitors,
+        enabled_dimensions: enabledDimensions,
+      });
+    }
     setDraftContract(frozenContract);
 
     try {

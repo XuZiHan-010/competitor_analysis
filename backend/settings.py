@@ -12,12 +12,15 @@ class Settings(BaseSettings):
     backend_cors_origins: str = "http://localhost:3000"
     database_url: str | None = None
     redis_url: str | None = None
+    redis_event_stream_maxlen: int = 2000
+    redis_event_stream_ttl_seconds: int = 86400
     jwt_secret: str | None = None
     mock_llm: bool = False
     openai_api_key: str | None = None
     deepseek_api_key: str | None = None
     tavily_api_key: str | None = None
     serpapi_api_key: str | None = None
+    duckduckgo_enabled: bool = True
     langchain_tracing_v2: bool = False
     langchain_api_key: str | None = None
     langchain_project: str = "competitor-analysis"

@@ -41,6 +41,7 @@ const STREAM_EVENT_NAMES = [
   "qa.blocker",
   "run.succeeded",
   "run.failed",
+  "stream.error",
 ];
 
 export default function TaskRunPage() {
@@ -51,6 +52,7 @@ export default function TaskRunPage() {
   const [connectionState, setConnectionState] =
     useState<ConnectionState>("connecting");
   const [error, setError] = useState<string | null>(null);
+  const [streamWarning, setStreamWarning] = useState<string | null>(null);
   const [reportTaskId, setReportTaskId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -68,12 +70,15 @@ export default function TaskRunPage() {
         setTraces(next);
         if (run.status === "succeeded" && run.task_id) {
           setReportTaskId(run.task_id);
+          setError(null);
+          setStreamWarning(null);
           terminal = true;
           source.close();
           setConnectionState("closed");
         }
         if (run.status === "failed") {
-          setError("任务运行失败，请查看后端日志或重试。");
+          setError(formatRunFailure(run.error_summary));
+          setStreamWarning(null);
           terminal = true;
           source.close();
           setConnectionState("closed");
@@ -103,9 +108,15 @@ export default function TaskRunPage() {
         void refreshTimeline();
       }
       if (event.event === "run.failed") {
-        setError("任务运行失败，请查看后端日志或重试。");
+        setError(formatRunFailure(event.data));
+        setStreamWarning(null);
         void refreshTimeline();
         terminal = true;
+        source.close();
+        setConnectionState("closed");
+      }
+      if (event.event === "stream.error") {
+        setStreamWarning(formatStreamWarning(event.data));
         source.close();
         setConnectionState("closed");
       }
@@ -115,7 +126,9 @@ export default function TaskRunPage() {
     const interval = window.setInterval(refreshTimeline, 1500);
 
     source.onopen = () => {
-      if (mounted) setConnectionState("open");
+      if (!mounted) return;
+      setConnectionState("open");
+      setStreamWarning(null);
     };
     source.onerror = () => {
       if (!mounted) return;
@@ -217,9 +230,24 @@ export default function TaskRunPage() {
       </section>
 
       {error && (
-        <div className="mb-6 flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          <AlertTriangle className="h-4 w-4" />
+        <div
+          role="alert"
+          aria-live="polite"
+          className="mb-6 flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        >
+          <AlertTriangle className="h-4 w-4" aria-hidden="true" />
           {error}
+        </div>
+      )}
+
+      {streamWarning && !error && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="mb-6 flex items-center gap-2 rounded-md border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-200"
+        >
+          <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+          {streamWarning}
         </div>
       )}
 
@@ -403,6 +431,27 @@ function parseStreamEvent(data: string): StreamEvent | null {
   } catch {
     return null;
   }
+}
+
+function formatRunFailure(errorSummary: Record<string, unknown> | null): string {
+  const message = errorSummary?.message;
+  const exceptionClass = errorSummary?.exception_class;
+  if (typeof message === "string" && message) {
+    if (typeof exceptionClass === "string" && exceptionClass) {
+      return `任务运行失败：${exceptionClass} - ${message}`;
+    }
+    return `任务运行失败：${message}`;
+  }
+  if (typeof exceptionClass === "string" && exceptionClass) {
+    return `任务运行失败：${exceptionClass}`;
+  }
+  return "任务运行失败，请查看后端日志或重试。";
+}
+
+function formatStreamWarning(data: Record<string, unknown>): string {
+  const message = data.message;
+  if (typeof message === "string" && message) return message;
+  return "事件流连接中断，任务仍可能在后台运行；页面将继续刷新任务状态。";
 }
 
 function summarizeEventData(data: Record<string, unknown>): string {

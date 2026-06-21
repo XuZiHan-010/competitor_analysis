@@ -285,13 +285,14 @@ class ScopingDraft(BaseModel):
 **职责**: 把"产品/竞品名"变成结构化原始数据
 
 **工具集**:
-- `web_search(query, max_results=5)` — **HybridSearch Provider 模式**，对 CollectorAgent 透明（一句调用，拿到 `list[SourceCitation]`）；内部实现：
-  - `SearchProvider` Protocol 抽象：`TavilyProvider`（主）→ `SerpApiProvider`（备）
-  - **降级策略**：Tavily 失败（429 / timeout / 500 / 空结果）→ 自动切换 SerpApi，每次降级写入 `trace_log`（`stage="search.fallback"`）
+- `web_search(query, max_results=5)` — **HybridSearch 分层 Provider 模式**，对 CollectorAgent 透明（一句调用，拿到 `list[SourceCitation]`）；内部实现：
+  - `SearchProvider` Protocol 抽象，按**层（tier）**组织：主层 `TavilyProvider` + `DuckDuckGoProvider`（DuckDuckGo 免 key、`ddgs` 库、线程池执行），兜底层 `SerpApiProvider`
+  - **分层策略**：同一层内的 provider 并行查询 + 结果合并去重（按 URL）；**首个有结果的层即返回，下层不触碰**——主层（Tavily+DuckDuckGo）命中时绝不消耗 SerpApi 的稀缺配额
+  - **并发限流 + 配额熔断**：全局 `asyncio.Semaphore` 限制同时在飞的搜索请求数（防 429 洪泛）；某 provider 返回永久配额错误（Tavily 432 / `PermanentProviderError`）后，本次分析后续所有查询直接跳过它（跨层生效）
   - **全失败**：抛 `SearchUnavailableError`，LangGraph CollectorAgent 节点走 retry（最多 3 次）
-  - **启动时探测**：按 `TAVILY_API_KEY` / `SERPAPI_API_KEY` 可用性自动构建 provider 顺序；无任何 key 时明确报错
+  - **启动时探测**：按 `TAVILY_API_KEY` / `SERPAPI_API_KEY` 可用性与 `duckduckgo_enabled` 开关自动构建分层；任一层非空即可工作（DuckDuckGo 免 key，故无任何付费 key 时仍可真实采集）
   - 返回的每条 `SourceCitation` 含 `provider` 字段（记录实际使用的 provider 实现名）
-  - 代码路径：`backend/services/search/`（`providers/base.py` / `providers/tavily.py` / `providers/serpapi.py` / `hybrid.py`）
+  - 代码路径：`backend/services/search/`（`providers.py` / `tavily.py` / `duckduckgo.py` / `serpapi.py` / `hybrid.py`）
 - `fetch_page(url)` / `fetch_pages(urls)` — Playwright 抓取。**单浏览器复用 + 有界并发**：一次采集只启动一个 Chromium 实例，所有 URL 经同一 browser 并发抓取（`asyncio.Semaphore` 限流），单页 8s goto 超时 + 12s 总预算；导航失败（如 `net::ERR_ABORTED`）只记 `skip_reason="fetch_error"` 不做二次兜底。**抓取失败/被 robots 拒绝时保留搜索阶段返回的原始 `SourceCitation`（含 snippet）而非丢弃**，避免把竞品来源数压到 QA `≥5` 门槛以下导致假闭环重采
 - `app_review_fetch(app_name)` — 应用商店评论真实抓取（P1 答辩前必达）：优先抓 App Store / Google Play / Product Hunt 等公开评论；失败时降级到 `web_search` 用户反馈或 `ai_simulated` 兜底，必须在 `SourceCitation.type/source_type/provider` 中明确标识真实来源或模拟来源
 - `SurveyTool(competitor, dimension_intent, collected_sources, user_research_plan)` — 用户研究子工作流（方案 C 混合），四层级联：
@@ -1319,10 +1320,11 @@ survey_uploads (
 
 ```
 CollectorAgent
-  ├── web_search()            → SearchProvider（Protocol）
-  │     ├── TavilyProvider          ← 主，AI 优化的搜索
-  │     └── SerpApiProvider         ← 备，Google 搜索 fallback
-  │         降级策略：Tavily 429/超时 → 自动切 SerpApi
+  ├── web_search()            → SearchProvider（Protocol），分层编排
+  │     ├── 主层：TavilyProvider + DuckDuckGoProvider  ← 并行查询 + 合并去重
+  │     └── 兜底层：SerpApiProvider                    ← 仅主层零结果时触发
+  │         分层策略：首个有结果的层即返回，下层不触碰（省 SerpApi 配额）
+  │         并发限流（Semaphore）+ 配额熔断（432/PermanentProviderError 跨层跳过）
   │         全失败：抛 SearchUnavailableError → LangGraph 节点 retry
   │
   ├── fetch_page()            → (内置，Playwright；非 Provider)
@@ -1343,13 +1345,13 @@ CollectorAgent
 
 ```python
 class SearchProvider(Protocol):
-    name: str                                          # "tavily" / "serpapi"
+    name: str                                          # "tavily" / "duckduckgo" / "serpapi"
     def search(self, query: str, max_results: int = 5) -> list[SourceCitation]: ...
     def is_available(self) -> bool: ...                # 按 env key + 依赖库探测
 ```
 
-- `HybridSearchTool` 编排器按 `[TavilyProvider, SerpApiProvider]` 顺序串行降级
-- 每次降级写入 `trace_log`（`stage="search.fallback"`，含 failed_provider / reason / next_provider）
+- `HybridSearch` 编排器按层组织 `[[TavilyProvider, DuckDuckGoProvider], [SerpApiProvider]]`：层内并行合并、层间顺序兜底
+- 层内 provider 失败/空结果写入 `trace_log`（`stage="search.fallback"`，含 failed_provider / reason）；配额永久失败写 `search.provider_exhausted`
 - 返回的每条 `SourceCitation` 自带 `provider` 字段，溯源面板可显示"该证据来自哪个 search provider"
 - CollectorAgent 调用方式不变：`results = web_search(query, max_results=5)`
 
@@ -1374,13 +1376,13 @@ class KnowledgeBaseProvider(Protocol):  # 本期不实现
 生产环境中，CollectorAgent 可通过 `internal_kb_search()` 将企业内部知识（Confluence、SharePoint、历史报告、付费数据库）与公开 web search 并列形成混合检索结果，统一写入 `SourceCitation` 溯源体系。
 
 **答辩话术建议**：
-> "我们用 Provider 模式统一了所有外部数据采集能力。演示中 `web_search` 内部走 `SearchProvider` 抽象——Tavily 主、SerpApi 备，失败自动降级，每条溯源都标记来自哪个 provider；`SurveyDistributor` 同样的形态，`SimulatedDistributor` 是 MVP 实现，替换为 Typeform 零改动。再加上 `KnowledgeBaseProvider` 占位，未来企业 Confluence、SharePoint、付费数据库可以以同一形态接入，让公开调研、用户声音、内部知识并列进溯源体系。"
+> "我们用 Provider 模式统一了所有外部数据采集能力。演示中 `web_search` 内部走分层 `SearchProvider` 抽象——主层 Tavily + DuckDuckGo 并行合并，SerpApi 仅在主层零结果时兜底，既提升召回又省下稀缺配额；配并发限流和配额熔断防 429 洪泛，每条溯源都标记来自哪个 provider；`SurveyDistributor` 同样的形态，`SimulatedDistributor` 是 MVP 实现，替换为 Typeform 零改动。再加上 `KnowledgeBaseProvider` 占位，未来企业 Confluence、SharePoint、付费数据库可以以同一形态接入，让公开调研、用户声音、内部知识并列进溯源体系。"
 
 **本期硬约束（不得违反）**：
 - 主流程 / 报告页 / API **不**暴露企业 KB 上传入口
 - Settings 页**不**加"数据源管理"功能
 - 演示中**不**暗示 KB 接入已实现（只讲架构可插拔）
-- HybridSearch 不做"并发查多源 + 结果融合"，只做串行降级（future work）
+- HybridSearch 主层做"并发查多源 + 结果融合"（Tavily + DuckDuckGo），层间仍是顺序兜底；不做跨层结果融合
 
 ---
 

@@ -10,6 +10,7 @@
 
 # Claude Code local state
 .claude/
+.codex/
 .superpowers/
 
 # Editor caches

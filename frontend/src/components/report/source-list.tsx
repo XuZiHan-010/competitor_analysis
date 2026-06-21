@@ -57,9 +57,6 @@ function SourceItem({ s, globalIndex }: { s: ReportSource; globalIndex: number }
         >
           {s.id}
         </p>
-        {s.snippet && (
-          <p className="text-muted-foreground/85 mt-1 break-words">{s.snippet}</p>
-        )}
       </div>
     </li>
   );
