@@ -173,8 +173,33 @@ def test_collection_gaps_lists_empty_competitors_with_reason() -> None:
 
     gaps = _collection_gaps(state)
 
-    assert [gap["competitor"] for gap in gaps] == ["抖音"]
+    assert [gap["competitor"] for gap in gaps] == ["抖音", "快手"]
     assert "429" in gaps[0]["reason"]
+    assert "仅采集到 1 条来源" in gaps[1]["reason"]
+
+
+def test_collection_gaps_explains_rate_limited_partial_sources() -> None:
+    scope = _scope("Trae")
+    state = WorkflowState(
+        task_id=scope.id,
+        run_id=scope.id,
+        scope_contract=scope,
+        raw_collections={
+            "Trae": RawCollectionResult(
+                competitor_name="Trae",
+                sources=[_source("s1")],
+                errors=["tavily 432", "serpapi 429"],
+            )
+        },
+    )
+
+    gaps = _collection_gaps(state)
+
+    assert [gap["competitor"] for gap in gaps] == ["Trae"]
+    assert "搜索服务限流/失败" in gaps[0]["reason"]
+    assert "432" in gaps[0]["reason"]
+    assert "429" in gaps[0]["reason"]
+    assert "仅采集到 1 条来源" in gaps[0]["reason"]
 
 
 def test_cited_source_ids_keeps_only_collected_and_cited() -> None:
@@ -211,3 +236,4 @@ def test_report_html_renders_data_gap_banner() -> None:
     assert "data-gaps" in html
     assert "抖音" in html
     assert "数据采集失败" in html
+

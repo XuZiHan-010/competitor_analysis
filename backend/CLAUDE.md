@@ -3,7 +3,7 @@
 Read the repository root `AGENTS.md` first. Backend implementation follows:
 
 - Source directory: `backend/`
-- Run API locally: `uvicorn main:app --reload`
+- Run API locally: `python run.py` (selects a psycopg-compatible event loop per-platform). Plain `uvicorn main:app --reload` works on Linux; on Windows it must be `uvicorn main:app --reload --loop main:selector_event_loop`, otherwise psycopg fails with `Psycopg cannot use the 'ProactorEventLoop'`.
 - Lint: `ruff check .`
 - Format: `black .`
 - Type check: `mypy .`

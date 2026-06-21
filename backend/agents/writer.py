@@ -6,12 +6,15 @@ import structlog
 from graph.state import WorkflowState
 from schemas.report import Report, ReportClaim
 from services.agents.decorators import traced_node
+from services.agents.language import language_instruction
 from services.llm import LLMClient
 from services.llm.usage import record_degradation
 from services.metrics import calculate_report_metrics
 from services.report_integrity import (
     assert_report_sources_resolvable,
     placeholder_issues,
+    prune_report_sources_to_references,
+    remap_markdown_source_ids,
 )
 from settings import get_settings
 
@@ -57,24 +60,26 @@ def _canonical_feature_cell(cell: Mapping[str, object], competitor: str) -> dict
 
 
 def _collection_gaps(state: WorkflowState) -> list[dict[str, str]]:
-    """Competitors whose collection yielded no real sources, with the reason.
-
-    Rendered as a report-header warning: without it a quota-exhausted search run
-    produces a structurally complete report whose empty competitors look like an
-    analysis result rather than a collection failure.
-    """
+    """Competitors with missing or degraded collection evidence."""
     gaps: list[dict[str, str]] = []
     for name, result in state.raw_collections.items():
-        if result.has_real_sources():
+        errors = [error for error in result.errors if error]
+        if result.has_real_sources() and not errors and len(result.sources) >= 5:
             continue
+        reason_parts = []
+        if errors:
+            reason_parts.append("搜索服务限流/失败导致部分来源缺失：" + "; ".join(errors))
+        if len(result.sources) < 5:
+            reason_parts.append(f"仅采集到 {len(result.sources)} 条来源，少于质量门要求的 5 条")
+        if not result.has_real_sources():
+            reason_parts.append("网络搜索未返回可用来源")
         gaps.append(
             {
                 "competitor": name,
-                "reason": "; ".join(result.errors) or "网络搜索未返回可用来源",
+                "reason": "；".join(dict.fromkeys(reason_parts)) or "网络搜索未返回可用来源",
             }
         )
     return gaps
-
 
 class WriterAgent:
     @traced_node(
@@ -133,6 +138,7 @@ class WriterAgent:
                         "标准版, unknown, TBD, or needs verification. For any survey insight "
                         "backed only by AI-simulated evidence, prefix the text with "
                         "'⚠️ [AI模拟] '."
+                        + language_instruction(language)
                     ),
                 },
                 {
@@ -234,19 +240,24 @@ class WriterAgent:
                 "threats": swot.get("threats") or [],
             })
 
+        enabled_extension_dims = {
+            d.id: d
+            for d in state.scope_contract.dimensions
+            if d.layer == "extension" and d.enabled
+        }
+
         # extensions: group extension_findings by dimension_id
         ext_by_dim: dict[str, dict] = {}
         for finding in state.extension_findings:
             did = finding.dimension_id
-            dim = next(
-                (d for d in state.scope_contract.dimensions if d.id == did),
-                None,
-            )
+            dim = enabled_extension_dims.get(did)
+            if dim is None:
+                continue
             if did not in ext_by_dim:
                 ext_by_dim[did] = {
                     "dimension_id": did,
-                    "title": dim.title if dim else did,
-                    "intent": dim.intent if dim else "",
+                    "title": dim.title,
+                    "intent": dim.intent,
                     "summary": finding.summary,
                     "bullets": [],
                 }
@@ -432,6 +443,12 @@ class WriterAgent:
             structured_content=structured_content,
             markdown_content=markdown,
         )
+        sources, claims, structured_content, id_mapping = prune_report_sources_to_references(
+            sources=sources,
+            claims=claims,
+            structured_content=structured_content,
+        )
+        markdown = remap_markdown_source_ids(markdown, id_mapping)
         assert_report_sources_resolvable(
             sources=sources,
             claims=claims,
@@ -443,7 +460,16 @@ class WriterAgent:
             structured_content=structured_content,
             field_verification_status=state.field_verification_status,
             rerun_count=sum(state.retry_counts.values()),
-            module_count=max(len(state.scope_contract.dimensions), 1),
+            module_count=max(
+                len(
+                    [
+                        dimension
+                        for dimension in state.scope_contract.dimensions
+                        if dimension.enabled
+                    ]
+                ),
+                1,
+            ),
             ai_self_assessment={
                 "confidence": "needs_review",
                 "needs_human_review": bool(integrity_issues)

@@ -195,6 +195,34 @@ class RunManager:
         owner = await self.get_task_owner(task_id)
         if owner is not None and owner != user_id:
             raise PermissionError("task belongs to another user")
+        enabled_dimensions = [
+            {
+                "id": dimension.id,
+                "title": dimension.title,
+                "layer": dimension.layer,
+                "source": dimension.source,
+            }
+            for dimension in scope_contract.dimensions
+            if dimension.enabled
+        ]
+        # Full dimension table (incl. disabled) so a missing/disabled extension
+        # dimension can be told apart from one the frontend silently re-sent.
+        all_dimensions = [
+            {
+                "id": dimension.id,
+                "title": dimension.title,
+                "layer": dimension.layer,
+                "enabled": dimension.enabled,
+            }
+            for dimension in scope_contract.dimensions
+        ]
+        logger.info(
+            "task_scope_frozen",
+            task_id=task_id,
+            competitors=competitor_names_from_scope(scope_contract),
+            enabled_dimensions=enabled_dimensions,
+            all_dimensions=all_dimensions,
+        )
         self._store.task_scopes[task_id] = scope_contract
         self._store.task_owner[task_id] = user_id
         if self._persistence is not None:
@@ -245,6 +273,10 @@ class RunManager:
         for sibling_id in [rid for rid, r in self._runs.items() if r.task_id == task_id]:
             self._runs.pop(sibling_id, None)
             self._store.traces_by_run.pop(sibling_id, None)
+            try:
+                await self._bridge.cleanup(str(sibling_id))
+            except Exception:
+                logger.warning("stream_cleanup_failed", run_id=sibling_id, exc_info=True)
         self._store.task_scopes.pop(task_id, None)
         self._store.task_owner.pop(task_id, None)
         self._store.task_reports.pop(task_id, None)
@@ -413,6 +445,12 @@ class RunManager:
                     checkpointer=checkpointer,
                 )
         except Exception as exc:
+            logger.exception(
+                "run_failed",
+                run_id=run_id,
+                task_id=record.task_id,
+                exception_class=exc.__class__.__name__,
+            )
             record.status = "failed"
             record.error_summary = {
                 "exception_class": exc.__class__.__name__,

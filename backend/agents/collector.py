@@ -16,6 +16,7 @@ from services.llm import LLMClient, provider_for_model
 from services.llm.usage import record_degradation
 from services.scraper import FetchResult, PageFetcher
 from services.search import AppReviewProvider, HybridSearch
+from services.search.duckduckgo import DuckDuckGoProvider
 from services.search.providers import SearchProvider
 from services.search.relevance import filter_relevant_sources
 from services.search.serpapi import SerpApiProvider
@@ -107,13 +108,19 @@ class CollectorAgent:
         trace_context: object | None = None,
     ) -> tuple[dict[str, RawCollectionResult], dict]:
         settings = get_settings()
-        providers: list[SearchProvider] = []
+        # Primary tier (Tavily + DuckDuckGo) is merged and tried first; SerpAPI is a
+        # fallback tier hit only when the primary yields nothing, conserving its quota.
+        primary: list[SearchProvider] = []
+        fallback: list[SearchProvider] = []
         if not settings.mock_llm and settings.tavily_api_key:
-            providers.append(TavilyProvider(settings.tavily_api_key))
+            primary.append(TavilyProvider(settings.tavily_api_key))
+        if not settings.mock_llm and settings.duckduckgo_enabled:
+            primary.append(DuckDuckGoProvider())
         if not settings.mock_llm and settings.serpapi_api_key:
-            providers.append(SerpApiProvider(settings.serpapi_api_key))
-        if providers:
-            search = HybridSearch(providers)
+            fallback.append(SerpApiProvider(settings.serpapi_api_key))
+        tiers = [tier for tier in (primary, fallback) if tier]
+        if tiers:
+            search = HybridSearch(tiers)
             llm = LLMClient(settings)
             raw = await self._run_real_collection(state, search, llm=llm)
             _normalize_raw_source_ids(raw, state.task_id)

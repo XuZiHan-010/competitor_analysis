@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 import httpx
 
 from schemas.source import SourceCitation
-from services.search.providers import SearchProvider
+from services.search.providers import PermanentProviderError, SearchProvider
 
 
 class TavilyProvider(SearchProvider):
@@ -23,7 +23,18 @@ class TavilyProvider(SearchProvider):
                     "search_depth": "basic",
                 },
             )
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                # 432 is Tavily's "usage limit reached" code, covering BOTH the plan
+                # credit cap and per-minute rate limits. The response body distinguishes
+                # them, so surface it instead of assuming the credit balance is zero.
+                if exc.response.status_code == 432:
+                    detail = exc.response.text[:300].strip()
+                    raise PermanentProviderError(
+                        f"Tavily usage limit reached (432): {detail}"
+                    ) from exc
+                raise
         payload = response.json()
         results = payload.get("results", [])
         return [

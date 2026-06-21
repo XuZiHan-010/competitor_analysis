@@ -1,10 +1,16 @@
+import subprocess
 from uuid import uuid4
 
 import pytest
 
 from schemas.report import Report, ReportClaim, ReportMetrics
 from schemas.source import SourceCitation
-from services.exporter import export_markdown, render_report_markdown, render_report_pdf
+from services.exporter import (
+    PdfRenderError,
+    export_markdown,
+    render_report_markdown,
+    render_report_pdf,
+)
 from services.report_html import build_report_html
 
 
@@ -54,7 +60,8 @@ def test_build_report_html_renders_ui_like_sections_without_field_leaks() -> Non
     assert "SWOT" in html
     assert "生态强" in html
     assert "中文摘要" in html
-    assert "中文来源片段" in html
+    assert "中文来源片段" not in html
+    assert '<a href="https://example.com/a">来源 A</a>' in html
     assert "{'text'" not in html
     assert "source_ids:" not in html
     assert "background: #ffffff" in html
@@ -130,6 +137,17 @@ def test_export_markdown_has_body_not_just_title() -> None:
     assert "中文摘要" in body
     assert "Notion 的模板生态领先竞品。" in body
     assert "占位标题" not in body
+
+
+@pytest.mark.asyncio
+async def test_render_report_pdf_wraps_child_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.CompletedProcess(args=[], returncode=1, stderr=b"child failed")
+
+    monkeypatch.setattr("services.exporter.subprocess.run", fake_run)
+
+    with pytest.raises(PdfRenderError, match="child failed"):
+        await render_report_pdf(_report())
 
 
 @pytest.mark.asyncio

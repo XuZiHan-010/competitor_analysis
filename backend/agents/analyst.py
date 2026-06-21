@@ -11,6 +11,7 @@ from graph.state import (
 )
 from schemas.source import SourceCitation
 from services.agents.decorators import traced_node
+from services.agents.language import language_instruction
 from services.llm import LLMClient
 from services.llm.usage import record_degradation
 from settings import get_settings
@@ -55,23 +56,6 @@ def _source_for_prompt(source: SourceCitation) -> dict[str, Any]:
     if isinstance(raw, str) and len(raw) > _MAX_RAW_CONTENT_CHARS:
         payload["raw_content"] = raw[:_MAX_RAW_CONTENT_CHARS] + "…[truncated]"
     return payload
-
-
-def _language_instruction(language: str) -> str:
-    """Force the extractor to normalize human-readable output to the target language.
-
-    Collection stays multilingual to keep authoritative sources (many dev-tool
-    pricing/docs are English-only), so without this the model echoes whatever
-    language the sources use. Brand/plan names, numbers, and source_ids stay verbatim.
-    """
-    label = "简体中文 (Simplified Chinese)" if language == "zh" else language
-    return (
-        f" Write all human-readable text (feature names, descriptions, notes, pricing "
-        f"tiers and highlights, persona labels/needs/pain points, SWOT text, summaries, "
-        f"and bullets) in {label}. Keep product and brand names, plan names, and numbers "
-        f"with their units verbatim. source_ids must still be copied verbatim from the "
-        f"provided sources."
-    )
 
 
 def _sources_for_prompt(sources: list[SourceCitation]) -> list[dict[str, Any]]:
@@ -199,7 +183,7 @@ class AnalystAgent:
     ]:
         settings = get_settings()
         language = state.report_language
-        lang_directive = _language_instruction(language)
+        lang_directive = language_instruction(language)
         structured_profiles: dict[str, StructuredCompetitorProfile] = {}
         extension_findings: list[ExtensionFinding] = []
 
@@ -514,7 +498,7 @@ class AnalystAgent:
                                 "provided sources. If a feature has no supporting evidence in "
                                 "these sources, OMIT it entirely — never guess from prior "
                                 "knowledge, never output unknown/TBD/需验证."
-                                + _language_instruction(language)
+                                + language_instruction(language)
                             ),
                         },
                         {

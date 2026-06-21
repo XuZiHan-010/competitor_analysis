@@ -1,6 +1,7 @@
 import asyncio
+import sys
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol, cast
 from urllib.parse import urlparse
 from urllib.robotparser import RobotFileParser
 
@@ -93,6 +94,20 @@ class PageFetcher:
         return [by_url[url] for url in urls]
 
     async def _fetch_allowed(self, urls: list[str]) -> list[FetchResult]:
+        # Windows forces a SelectorEventLoop for psycopg (run.py), but Playwright
+        # launches Chromium via a subprocess, which SelectorEventLoop cannot create
+        # (raises NotImplementedError). Run the fetch on a dedicated
+        # ProactorEventLoop in a worker thread so the main loop stays selector-based.
+        if sys.platform == "win32":
+            return await asyncio.to_thread(self._fetch_allowed_on_proactor, urls)
+        return await self._fetch_allowed_async(urls)
+
+    def _fetch_allowed_on_proactor(self, urls: list[str]) -> list[FetchResult]:
+        asyncio_module = cast(Any, asyncio)
+        with asyncio.Runner(loop_factory=asyncio_module.ProactorEventLoop) as runner:
+            return runner.run(self._fetch_allowed_async(urls))
+
+    async def _fetch_allowed_async(self, urls: list[str]) -> list[FetchResult]:
         from playwright.async_api import async_playwright
 
         semaphore = asyncio.Semaphore(self._max_concurrency)

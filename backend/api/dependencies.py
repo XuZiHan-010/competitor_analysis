@@ -8,7 +8,11 @@ def _build_stream_bridge() -> StreamBridge:
     settings = get_settings()
     if settings.redis_dsn:
         try:
-            return RedisStreamBridge(settings.redis_dsn)
+            return RedisStreamBridge(
+                settings.redis_dsn,
+                maxlen=settings.redis_event_stream_maxlen,
+                ttl_seconds=settings.redis_event_stream_ttl_seconds,
+            )
         except (ImportError, ValueError):
             return InMemoryStreamBridge()
     return InMemoryStreamBridge()

@@ -1,9 +1,11 @@
 import asyncio
+import sys
+import threading
 from collections.abc import Iterable
 
 import pytest
 
-from services.scraper import PageFetcher
+from services.scraper import FetchResult, PageFetcher
 
 
 class DenyRobots:
@@ -29,6 +31,9 @@ class _FakePage:
 
     async def inner_text(self, _selector: str) -> str:
         return "fake body content"
+
+    async def close(self) -> None:
+        return None
 
 
 class _FakeBrowser:
@@ -108,3 +113,25 @@ def test_fetch_pages_does_not_launch_browser_when_all_robots_denied(
 
     assert counter["launch"] == 0  # never spin up Chromium if nothing is allowed
     assert all(r.skipped and r.skip_reason == "robots.txt" for r in results)
+
+
+def test_fetch_offloads_to_worker_thread_on_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    # On Windows the fetch must run on a dedicated ProactorEventLoop in a worker
+    # thread (the main loop is SelectorEventLoop, which cannot spawn Chromium);
+    # elsewhere it stays inline on the running loop.
+    fetcher = PageFetcher(AllowRobots())
+    seen_thread: dict[str, threading.Thread] = {}
+
+    async def fake_fetch_allowed_async(urls: list[str]) -> list[FetchResult]:
+        seen_thread["thread"] = threading.current_thread()
+        return [FetchResult(url=url, title="t", content="c") for url in urls]
+
+    monkeypatch.setattr(fetcher, "_fetch_allowed_async", fake_fetch_allowed_async)
+
+    results = asyncio.run(fetcher.fetch_pages(["https://example.com/a"]))
+
+    assert [r.url for r in results] == ["https://example.com/a"]
+    if sys.platform == "win32":
+        assert seen_thread["thread"] is not threading.main_thread()
+    else:
+        assert seen_thread["thread"] is threading.main_thread()

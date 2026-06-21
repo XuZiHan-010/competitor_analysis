@@ -1,5 +1,4 @@
 import asyncio
-import sys
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,11 +15,16 @@ from api.routes.validation import router as validation_router
 from services.observability import configure_langsmith
 from settings import get_settings
 
-# psycopg's async driver cannot run on Windows' default ProactorEventLoop; the
-# SelectorEventLoop is required for any psycopg connection to succeed. Must run
-# before uvicorn instantiates the event loop.
-if sys.platform == "win32":
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+def selector_event_loop() -> asyncio.AbstractEventLoop:
+    """Build a SelectorEventLoop for uvicorn on Windows.
+
+    psycopg's async driver refuses to run on the ProactorEventLoop. uvicorn
+    (>=0.36) builds its loop via a loop_factory and ignores the global event-loop
+    policy, so on Windows the loop must be supplied explicitly via
+    ``--loop main:selector_event_loop`` (see run.py / backend/CLAUDE.md).
+    """
+    return asyncio.SelectorEventLoop()
 
 
 def create_app() -> FastAPI:

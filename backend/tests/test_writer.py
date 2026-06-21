@@ -3,7 +3,12 @@ import asyncio
 import pytest
 
 from agents.writer import WriterAgent
-from graph.state import RawCollectionResult, StructuredCompetitorProfile, WorkflowState
+from graph.state import (
+    ExtensionFinding,
+    RawCollectionResult,
+    StructuredCompetitorProfile,
+    WorkflowState,
+)
 from schemas.scope import CompetitorCandidate, ScopeDimension, TaskScopeContract
 from schemas.source import SourceCitation
 from schemas.survey import (
@@ -15,7 +20,19 @@ from schemas.survey import (
     SurveyResult,
     TargetPersona,
 )
+from services.agents.language import language_instruction
 from services.report_integrity import assert_report_sources_resolvable
+
+
+def test_language_instruction_zh_covers_extraction_and_translation() -> None:
+    directive = language_instruction("zh")
+    assert "简体中文" in directive
+    # Analyst extraction fields must stay covered after the move out of analyst.py.
+    for field in ("feature names", "pricing tiers", "SWOT", "source_ids"):
+        assert field in directive
+    # Brand/plan names and numbers stay verbatim; prose gets translated.
+    assert "verbatim" in directive
+    assert "translate" in directive.lower()
 
 
 def test_writer_survey_claims_reference_report_sources() -> None:
@@ -260,6 +277,70 @@ def test_writer_llm_consumes_markdown_and_section_intros() -> None:
     )
 
 
+def test_writer_llm_system_prompt_forces_chinese() -> None:
+    """English sources must be translated: the Writer prompt carries the shared
+    Chinese normalization directive, not just a weak 'requested language' hint."""
+    source = SourceCitation(
+        id="src_tavily_deadbeef_001",
+        type="media",
+        category="media",
+        title="Source",
+        snippet="Evidence.",
+        provider="tavily",
+    )
+    scope = TaskScopeContract(
+        user_brief="Compare AI coding tools",
+        intent_mode="list",
+        competitors=[CompetitorCandidate(name="Trae", source="nl_extracted")],
+        dimensions=[
+            ScopeDimension(
+                id="core.feature_tree",
+                title="Feature tree",
+                intent="Compare features",
+                layer="core",
+                order=1,
+            )
+        ],
+    )
+    state = WorkflowState(
+        task_id=scope.id,
+        run_id=scope.id,
+        scope_contract=scope,
+        raw_collections={
+            "Trae": RawCollectionResult(
+                competitor_name="Trae",
+                sources=[source],
+                completeness_score=1.0,
+            )
+        },
+        structured_profiles={
+            "Trae": StructuredCompetitorProfile(
+                competitor_name="Trae",
+                feature_tree={},
+                pricing={},
+                user_personas=[],
+                swot={},
+                source_ids=[source.id],
+            )
+        },
+    )
+
+    captured: dict[str, object] = {}
+
+    class _CapturingLLM:
+        async def complete_json(self, **kwargs: object) -> dict:
+            captured["messages"] = kwargs["messages"]
+            return {"markdown": "# 报告", "summary": "摘要", "section_intros": {}, "claims": []}
+
+    asyncio.run(WriterAgent()._run_llm(state, _CapturingLLM(), language="zh"))  # type: ignore[arg-type]
+
+    messages = captured["messages"]
+    assert isinstance(messages, list)
+    system_prompt = messages[0]["content"]
+    assert "简体中文" in system_prompt
+    assert "translate" in system_prompt.lower()
+
+
 def test_writer_normalizes_feature_matrix_status_values() -> None:
     source = SourceCitation(
         id="src_tavily_deadbeef_001",
@@ -362,3 +443,106 @@ def test_report_source_integrity_rejects_duplicate_and_unresolved_ids() -> None:
             claims=[],
             structured_content={"feature_tree": {"rows": [{"source_ids": ["missing"]}]}},
         )
+
+
+def test_writer_filters_disabled_extension_findings_and_metrics() -> None:
+    source = SourceCitation(
+        id="src_tavily_deadbeef_001",
+        type="media",
+        category="media",
+        title="Source",
+        snippet="Evidence.",
+        provider="tavily",
+    )
+    scope = TaskScopeContract(
+        user_brief="Compare AI coding tools",
+        intent_mode="list",
+        competitors=[CompetitorCandidate(name="Trae", source="nl_extracted")],
+        dimensions=[
+            ScopeDimension(
+                id="core.feature_tree",
+                title="Feature tree",
+                intent="Compare features",
+                layer="core",
+                order=1,
+            ),
+            ScopeDimension(
+                id="ext.enabled",
+                title="Enabled extension",
+                intent="Current scope extension",
+                layer="extension",
+                order=5,
+                source="ai_suggested",
+            ),
+            ScopeDimension(
+                id="ext.deleted",
+                title="Enterprise pricing strategy",
+                intent="Deleted by user",
+                layer="extension",
+                order=6,
+                enabled=False,
+                source="ai_suggested",
+            ),
+        ],
+    )
+    state = WorkflowState(
+        task_id=scope.id,
+        run_id=scope.id,
+        scope_contract=scope,
+        raw_collections={
+            "Trae": RawCollectionResult(
+                competitor_name="Trae",
+                sources=[source],
+                completeness_score=1.0,
+            )
+        },
+        structured_profiles={
+            "Trae": StructuredCompetitorProfile(
+                competitor_name="Trae",
+                feature_tree={
+                    "rows": [
+                        {
+                            "feature": "AI completion",
+                            "cells": [
+                                {
+                                    "competitor": "Trae",
+                                    "status": "supported",
+                                    "note": "Has evidence",
+                                }
+                            ],
+                            "source_ids": [source.id],
+                        }
+                    ]
+                },
+                pricing={},
+                user_personas=[],
+                swot={},
+                source_ids=[source.id],
+            )
+        },
+        extension_findings=[
+            ExtensionFinding(
+                dimension_id="ext.enabled",
+                competitor_name="Trae",
+                summary="Enabled summary",
+                bullets=["Enabled finding"],
+                source_ids=[source.id],
+            ),
+            ExtensionFinding(
+                dimension_id="ext.deleted",
+                competitor_name="Trae",
+                summary="Deleted summary",
+                bullets=["Deleted finding"],
+                source_ids=[source.id],
+            ),
+        ],
+        retry_counts={"collector": 1},
+    )
+
+    report = WriterAgent()._run_fallback(state, language="zh")
+
+    extensions = report.structured_content["extensions"]
+    assert [extension["dimension_id"] for extension in extensions] == ["ext.enabled"]
+    assert "Enterprise pricing strategy" not in report.markdown_content
+    assert "Deleted finding" not in str(report.structured_content)
+    assert report.metrics.rerun_rate == 0.5
