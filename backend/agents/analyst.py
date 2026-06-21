@@ -23,6 +23,7 @@ logger = structlog.get_logger(__name__)
 # evidence-grounded extraction without sending whole articles.
 _MAX_RAW_CONTENT_CHARS = 5000
 _MAX_COMPETITOR_RAW_CONTENT_CHARS = 24000
+_DEFAULT_POSITIONING_SCORE = 50.0
 _FEATURE_STATUS_ALIASES = {
     "supported": "supported",
     "support": "supported",
@@ -47,6 +48,79 @@ _FEATURE_STATUS_ALIASES = {
     "unchecked": "unknown",
     "": "unknown",
 }
+
+
+def _clamp_position(value: float) -> float:
+    return min(max(value, 0.0), 100.0)
+
+
+def _lowest_price_score(profile: StructuredCompetitorProfile) -> float:
+    prices: list[float] = []
+    for tier in profile.pricing.get("tiers") or []:
+        if not isinstance(tier, dict):
+            continue
+        price_text = " ".join(
+            str(tier.get(key) or "") for key in ("price", "price_text", "tier", "plan_name")
+        ).lower()
+        if any(token in price_text for token in ("free", "$0", "usd 0", "0 usd")):
+            prices.append(0.0)
+            continue
+        normalized = price_text.replace(",", "")
+        for prefix in ("$", "usd", "rmb", "cny"):
+            normalized = normalized.replace(prefix, " ")
+        for token in normalized.split():
+            try:
+                prices.append(float(token))
+            except ValueError:
+                continue
+    if not prices:
+        return _DEFAULT_POSITIONING_SCORE
+    return _clamp_position(min(prices))
+
+
+def _build_positioning_map(
+    cross: CrossCompetitorAnalysis,
+    profiles: dict[str, StructuredCompetitorProfile],
+) -> dict[str, Any]:
+    competitors = cross.feature_matrix.get("competitors") or list(profiles.keys())
+    rows = cross.feature_matrix.get("rows") or []
+    breadth_counts = dict.fromkeys((str(name) for name in competitors), 0.0)
+    for row in rows:
+        for cell in row.get("cells") or []:
+            competitor = str(cell.get("competitor") or "")
+            status = _canonical_feature_status(cell.get("status"))
+            if competitor not in breadth_counts:
+                continue
+            if status == "supported":
+                breadth_counts[competitor] += 1.0
+            elif status == "partial":
+                breadth_counts[competitor] += 0.5
+
+    max_breadth = max(breadth_counts.values(), default=0.0)
+    points: list[dict[str, Any]] = []
+    for name in competitors:
+        competitor = str(name)
+        profile = profiles.get(competitor)
+        if profile is None:
+            continue
+        y = (
+            _DEFAULT_POSITIONING_SCORE
+            if max_breadth <= 0
+            else _clamp_position((breadth_counts[competitor] / max_breadth) * 100)
+        )
+        points.append(
+            {
+                "id": competitor,
+                "x": _lowest_price_score(profile),
+                "y": y,
+                "label": competitor,
+            }
+        )
+    return {
+        "x_axis": "Cost, higher is more expensive",
+        "y_axis": "Feature breadth, higher is stronger",
+        "competitors": points,
+    }
 
 
 def _source_for_prompt(source: SourceCitation) -> dict[str, Any]:
@@ -234,8 +308,7 @@ class AnalystAgent:
                             '"pain_points":["Pain point"],"evidence":"Evidence summary",'
                             '"source_ids":["src_id"]}],"swot":{"strengths":[{"text":"Strength",'
                             '"source_ids":["src_id"]}],"weaknesses":[],"opportunities":[],'
-                            '"threats":[]}}.'
-                            + lang_directive
+                            '"threats":[]}}.' + lang_directive
                         ),
                     },
                     {
@@ -302,7 +375,7 @@ class AnalystAgent:
                         summary=str(ext_payload.get("summary", "")),
                         bullets=ext_payload.get("bullets") or [],
                         table_data=ext_payload.get("table_data") or [],
-                        source_ids=ext_payload.get("source_ids") or source_ids,
+                        source_ids=ext_payload.get("source_ids") or [s.id for s in dim_sources],
                     )
                 )
 
@@ -312,9 +385,7 @@ class AnalystAgent:
         )
         return structured_profiles, extension_findings, cross
 
-    def _run_fallback(
-        self, state: WorkflowState
-    ) -> tuple[
+    def _run_fallback(self, state: WorkflowState) -> tuple[
         dict[str, StructuredCompetitorProfile],
         list[ExtensionFinding],
         CrossCompetitorAnalysis | None,
@@ -376,13 +447,14 @@ class AnalystAgent:
                 source_ids=source_ids,
             )
             for dim in ext_dims:
+                dim_source_ids = [s.id for s in result.sources if s.dimension_id == dim.id]
                 extension_findings.append(
                     ExtensionFinding(
                         dimension_id=dim.id,
                         competitor_name=name,
                         summary=f"Extension analysis for {name} on dimension: {dim.title}.",
-                        bullets=[f"Signal derived from {len(source_ids)} sources."],
-                        source_ids=source_ids,
+                        bullets=[f"Signal derived from {len(dim_source_ids)} sources."],
+                        source_ids=dim_source_ids,
                     )
                 )
 
@@ -422,17 +494,17 @@ class AnalystAgent:
                     source_ids.extend(row.get("source_ids") or [])
                 else:
                     cells.append({"competitor": name, "status": "unknown", "note": ""})
-            matrix_rows.append({
-                "feature": feat,
-                "cells": cells,
-                "source_ids": list(dict.fromkeys(source_ids)),
-            })
+            matrix_rows.append(
+                {
+                    "feature": feat,
+                    "cells": cells,
+                    "source_ids": list(dict.fromkeys(source_ids)),
+                }
+            )
 
-        pricing_comparison = {
-            name: profile.pricing for name, profile in profiles.items()
-        }
+        pricing_comparison = {name: profile.pricing for name, profile in profiles.items()}
         competitors = list(profiles.keys())
-        return CrossCompetitorAnalysis(
+        cross = CrossCompetitorAnalysis(
             feature_matrix={"rows": matrix_rows, "competitors": competitors},
             pricing_comparison=pricing_comparison,
             differentiation_summary=(
@@ -440,6 +512,8 @@ class AnalystAgent:
                 "features, pricing, personas, and SWOT."
             ),
         )
+        cross.positioning_map = _build_positioning_map(cross, profiles)
+        return cross
 
     async def _enrich_cross_matrix(
         self,
@@ -472,9 +546,7 @@ class AnalystAgent:
             if result is None:
                 continue
             gap_features = [
-                str(row.get("feature", ""))
-                for row in rows
-                if self._cell_is_unknown(row, name)
+                str(row.get("feature", "")) for row in rows if self._cell_is_unknown(row, name)
             ]
             gap_features = [f for f in gap_features if f]
             if not gap_features:
@@ -528,6 +600,7 @@ class AnalystAgent:
                 row["source_ids"] = list(
                     dict.fromkeys([*(row.get("source_ids") or []), *info["source_ids"]])
                 )
+        cross.positioning_map = _build_positioning_map(cross, profiles)
         return cross
 
     @staticmethod
@@ -539,9 +612,7 @@ class AnalystAgent:
         )
 
     @staticmethod
-    def _accepted_classifications(
-        items: Any, valid_ids: set[str]
-    ) -> dict[str, dict[str, Any]]:
+    def _accepted_classifications(items: Any, valid_ids: set[str]) -> dict[str, dict[str, Any]]:
         """Keep only classifications that name a real status AND cite the
         competitor's own sources — the evidence gate against hallucination."""
         accepted: dict[str, dict[str, Any]] = {}
