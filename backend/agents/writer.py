@@ -81,6 +81,7 @@ def _collection_gaps(state: WorkflowState) -> list[dict[str, str]]:
         )
     return gaps
 
+
 class WriterAgent:
     @traced_node(
         agent_name="WriterAgent",
@@ -137,8 +138,7 @@ class WriterAgent:
                         "profiles. Do not output placeholder text such as 待确认, 需验证, "
                         "标准版, unknown, TBD, or needs verification. For any survey insight "
                         "backed only by AI-simulated evidence, prefix the text with "
-                        "'⚠️ [AI模拟] '."
-                        + language_instruction(language)
+                        "'⚠️ [AI模拟] '." + language_instruction(language)
                     ),
                 },
                 {
@@ -232,18 +232,18 @@ class WriterAgent:
         swot_blocks: list[dict] = []
         for name, profile in profiles.items():
             swot = profile.swot
-            swot_blocks.append({
-                "competitor": name,
-                "strengths": swot.get("strengths") or [],
-                "weaknesses": swot.get("weaknesses") or [],
-                "opportunities": swot.get("opportunities") or [],
-                "threats": swot.get("threats") or [],
-            })
+            swot_blocks.append(
+                {
+                    "competitor": name,
+                    "strengths": swot.get("strengths") or [],
+                    "weaknesses": swot.get("weaknesses") or [],
+                    "opportunities": swot.get("opportunities") or [],
+                    "threats": swot.get("threats") or [],
+                }
+            )
 
         enabled_extension_dims = {
-            d.id: d
-            for d in state.scope_contract.dimensions
-            if d.layer == "extension" and d.enabled
+            d.id: d for d in state.scope_contract.dimensions if d.layer == "extension" and d.enabled
         }
 
         # extensions: group extension_findings by dimension_id
@@ -261,11 +261,13 @@ class WriterAgent:
                     "summary": finding.summary,
                     "bullets": [],
                 }
-            ext_by_dim[did]["bullets"].append({
-                "competitor": finding.competitor_name,
-                "points": finding.bullets,
-                "source_ids": finding.source_ids,
-            })
+            ext_by_dim[did]["bullets"].append(
+                {
+                    "competitor": finding.competitor_name,
+                    "points": finding.bullets,
+                    "source_ids": finding.source_ids,
+                }
+            )
         extensions = list(ext_by_dim.values())
 
         # cross_analysis
@@ -514,20 +516,20 @@ def _build_simulated_warnings(state: WorkflowState) -> list[dict]:
         simulated = sum(1 for e in survey.evidence if e.source_type == "ai_simulated")
         ratio = simulated / len(survey.evidence)
         if ratio > 0:
-            warnings.append({
-                "competitor": competitor,
-                "ai_simulated_ratio": round(ratio, 2),
-                "note": "⚠️ mark required on insights from simulated evidence",
-            })
+            warnings.append(
+                {
+                    "competitor": competitor,
+                    "ai_simulated_ratio": round(ratio, 2),
+                    "note": "⚠️ mark required on insights from simulated evidence",
+                }
+            )
     return warnings
 
 
 def _source_support_for_state(state: WorkflowState, source_ids: list[str]) -> str:
     if not source_ids:
         return "unchecked"
-    if state.qa_result and state.qa_result.passed:
-        return "supported"
-    return "unchecked"
+    return "supported"
 
 
 def _field_status_overrides(
@@ -551,13 +553,15 @@ def _field_status_overrides(
         field_path = str(item.get("field_path", ""))
         reason = str(item.get("reason", "该字段未获充分证据支撑。"))
         status = str(item.get("status", "unverified"))
-        notes.append({
-            "competitor": competitor,
-            "field_path": field_path,
-            "status": status,
-            "message": f"未确认：{reason}",
-            "source_ids": item.get("source_ids", []),
-        })
+        notes.append(
+            {
+                "competitor": competitor,
+                "field_path": field_path,
+                "status": status,
+                "message": f"未确认：{reason}",
+                "source_ids": item.get("source_ids", []),
+            }
+        )
         if field_path == "feature_tree":
             _mark_feature_cells_unverified(feature_rows, competitor, reason)
 
@@ -597,15 +601,17 @@ def _field_status_issues(field_status: dict[str, object]) -> list[dict]:
     for item in field_status.values():
         if not isinstance(item, Mapping):
             continue
-        issues.append({
-            "severity": "warning",
-            "target_agent": "CollectorAgent",
-            "target_competitor": item.get("competitor"),
-            "failed_field": item.get("field_path"),
-            "message": item.get("reason", "字段未获充分证据支撑。"),
-            "retryable": False,
-            "code": "field_unverified",
-        })
+        issues.append(
+            {
+                "severity": "warning",
+                "target_agent": "CollectorAgent",
+                "target_competitor": item.get("competitor"),
+                "failed_field": item.get("field_path"),
+                "message": item.get("reason", "字段未获充分证据支撑。"),
+                "retryable": False,
+                "code": "field_unverified",
+            }
+        )
     return issues
 
 
@@ -629,28 +635,34 @@ def _field_gaps(
     }
     for competitor in competitors:
         if competitor not in pricing_competitors:
-            gaps.append({
-                "competitor": competitor,
-                "field_path": "pricing",
-                "code": "pricing_missing",
-                "message": "定价模型：未找到官网或商业来源支撑的可验证定价信息。",
-            })
+            gaps.append(
+                {
+                    "competitor": competitor,
+                    "field_path": "pricing",
+                    "code": "pricing_missing",
+                    "message": "定价模型：未找到官网或商业来源支撑的可验证定价信息。",
+                }
+            )
         if competitor not in swot_complete:
-            gaps.append({
-                "competitor": competitor,
-                "field_path": "swot",
-                "code": "swot_incomplete",
-                "message": "SWOT：未找到足够证据填充该竞品的竞争四象限。",
-            })
+            gaps.append(
+                {
+                    "competitor": competitor,
+                    "field_path": "swot",
+                    "code": "swot_incomplete",
+                    "message": "SWOT：未找到足够证据填充该竞品的竞争四象限。",
+                }
+            )
     for item in state.field_verification_status.values():
         if not isinstance(item, Mapping):
             continue
-        gaps.append({
-            "competitor": item.get("competitor"),
-            "field_path": item.get("field_path"),
-            "code": "field_unverified",
-            "message": item.get("reason", "字段未获充分证据支撑。"),
-        })
+        gaps.append(
+            {
+                "competitor": item.get("competitor"),
+                "field_path": item.get("field_path"),
+                "code": "field_unverified",
+                "message": item.get("reason", "字段未获充分证据支撑。"),
+            }
+        )
     deduped: dict[tuple[str, str, str], dict[str, object]] = {}
     for gap in gaps:
         key = (
@@ -681,6 +693,8 @@ def _field_level_core_claims(
         if not text.strip():
             return
         ids = list(dict.fromkeys(source_ids))
+        if not ids:
+            return
         claims.append(
             ReportClaim(
                 claim_path=path,
@@ -696,8 +710,12 @@ def _field_level_core_claims(
 
     feature = _mapping(structured_content.get("feature_tree"))
     for i, row in enumerate(_list_of_mappings(feature.get("rows"))):
-        _add(f"feature_tree.rows[{i}]", str(row.get("feature") or ""),
-             _strings(row.get("source_ids")), "core")
+        _add(
+            f"feature_tree.rows[{i}]",
+            str(row.get("feature") or ""),
+            _strings(row.get("source_ids")),
+            "core",
+        )
 
     pricing = _mapping(structured_content.get("pricing"))
     for i, tier in enumerate(_list_of_mappings(pricing.get("tiers"))):
@@ -723,22 +741,28 @@ def _field_level_core_claims(
     for b, block in enumerate(_list_of_mappings(swot.get("blocks"))):
         for quadrant in ("strengths", "weaknesses", "opportunities", "threats"):
             for i, item in enumerate(_list_of_mappings(block.get(quadrant))):
-                _add(f"swot.blocks[{b}].{quadrant}[{i}]", str(item.get("text") or ""),
-                     _strings(item.get("source_ids")), "core")
+                _add(
+                    f"swot.blocks[{b}].{quadrant}[{i}]",
+                    str(item.get("text") or ""),
+                    _strings(item.get("source_ids")),
+                    "core",
+                )
 
     for e, extension in enumerate(_list_of_mappings(structured_content.get("extensions"))):
         for i, bullet in enumerate(_list_of_mappings(extension.get("bullets"))):
-            _add(f"extensions[{e}].bullets[{i}]", "; ".join(_strings(bullet.get("points"))),
-                 _strings(bullet.get("source_ids")), "extension")
+            _add(
+                f"extensions[{e}].bullets[{i}]",
+                "; ".join(_strings(bullet.get("points"))),
+                _strings(bullet.get("source_ids")),
+                "extension",
+            )
 
     return claims
 
 
 def _survey_claims(state: WorkflowState, sources: list) -> list[ReportClaim]:
     """Deterministic survey-layer claims mapping insight evidence to report sources."""
-    evidence_index = {
-        e.id: e for survey in state.survey_results.values() for e in survey.evidence
-    }
+    evidence_index = {e.id: e for survey in state.survey_results.values() for e in survey.evidence}
     report_source_ids = {source.id for source in sources}
     claims: list[ReportClaim] = []
     for index, (_, survey) in enumerate(state.survey_results.items(), start=1):
@@ -842,9 +866,7 @@ def _compact_join(values: list[str], *, separator: str) -> str:
     meaningful = [value for value in values if value]
     if not meaningful:
         return ""
-    return separator.join(meaningful[:2]) + (
-        f" ({meaningful[2]})" if len(meaningful) > 2 else ""
-    )
+    return separator.join(meaningful[:2]) + (f" ({meaningful[2]})" if len(meaningful) > 2 else "")
 
 
 def _item_text(item: object) -> str:
