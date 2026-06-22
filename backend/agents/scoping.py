@@ -153,12 +153,17 @@ class ScopingAgent:
             competitors, request, payload, intent_mode
         )
         # The 4 cores always ship; extension dimensions are the LLM's value-add.
-        # A weak model (debug-tier gpt-4o-mini) sometimes returns [] despite the
-        # prompt forbidding it — never let the outline ship without extensions:
+        # A weak model (debug-tier gpt-4o-mini) breaks STEP 4 two ways: returns []
+        # despite the prompt forbidding it, OR echoes the 4 cores back verbatim as
+        # "extensions". Drop any echoed core first, then — if nothing real is left —
         # give the model one forceful second chance, then a deterministic floor.
-        extension_raw = self._coerce_extension_list(payload.get("extension_dimensions"))
+        extension_raw = self._drop_core_duplicates(
+            self._coerce_extension_list(payload.get("extension_dimensions"))
+        )
         if not extension_raw:
-            extension_raw = await self._retry_extensions(request, llm)
+            extension_raw = self._drop_core_duplicates(
+                await self._retry_extensions(request, llm)
+            )
         if not extension_raw:
             extension_raw = self._floor_extensions()
         dimensions = self._core_dimensions()
@@ -220,6 +225,42 @@ class ScopingAgent:
     def _coerce_extension_list(value: object) -> list[Any]:
         return value if isinstance(value, list) else []
 
+    @staticmethod
+    def _normalize_label(value: object) -> str:
+        # Fold case/whitespace/punctuation so "功能树" == " 功能树 " == "Feature Tree"
+        # collide regardless of how the model spells the echoed core.
+        text = str(value).lower()
+        return "".join(ch for ch in text if ch.isalnum())
+
+    def _drop_core_duplicates(self, extension_raw: list[Any]) -> list[Any]:
+        # gpt-4o-mini ignores STEP 4 and returns the 4 fixed cores as "extensions".
+        # Anything whose title (or a couple of obvious aliases) matches a core, or
+        # whose intent is identical to a core's, is not a value-add — drop it so the
+        # outline never ships a fixed chapter twice. Core set is derived from
+        # _core_dimensions() so it can't drift from the source of truth.
+        cores = self._core_dimensions()
+        core_titles = {self._normalize_label(d.title) for d in cores}
+        core_titles.update(
+            {
+                self._normalize_label(alias)
+                for alias in ("feature tree", "pricing", "pricing model", "user persona")
+            }
+        )
+        core_intents = {self._normalize_label(d.intent) for d in cores}
+        kept: list[Any] = []
+        for item in extension_raw:
+            if isinstance(item, dict):
+                title = self._normalize_label(item.get("title") or item.get("name") or "")
+                intent = self._normalize_label(item.get("intent") or item.get("description") or "")
+            else:
+                title, intent = self._normalize_label(item), ""
+            if title and title in core_titles:
+                continue
+            if intent and intent in core_intents:
+                continue
+            kept.append(item)
+        return kept
+
     async def _retry_extensions(self, request: ScopingRequest, llm: LLMClient) -> list[Any]:
         settings = get_settings()
         payload = await llm.complete_json(
@@ -231,9 +272,11 @@ class ScopingAgent:
                 {
                     "role": "user",
                     "content": (
-                        "你上一次返回的 extension_dimensions 是空数组。请重新审视这组竞品"
-                        "与所在行业，像资深分析师那样给出 2-4 个量身定制、对决策有用的扩展维度，"
-                        "禁止返回空。只返回与之前相同 schema 的 JSON。"
+                        "你上一次返回的 extension_dimensions 不可用：要么是空数组，要么把固定"
+                        "核心维度（功能树 / 定价模型 / 用户画像 / SWOT）照抄成了扩展维度——这两种"
+                        "都是禁止项。请重新审视这组竞品与所在行业，像资深分析师那样给出 2-4 个"
+                        "量身定制、对决策有用、且与上述 4 个核心维度完全不同的新增维度。"
+                        "只返回与之前相同 schema 的 JSON。"
                     ),
                 },
             ],

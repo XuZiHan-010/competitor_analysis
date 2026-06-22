@@ -196,6 +196,49 @@ def test_empty_extension_dimensions_retry_succeeds() -> None:
     assert llm.complete_json.call_count == 2
 
 
+def test_echoed_core_dimensions_are_dropped_then_retried() -> None:
+    # The 抖音 quick-query failure mode: gpt-4o-mini ignores STEP 4 and returns the
+    # 4 fixed cores verbatim as "extensions". They must be dropped, the forced retry
+    # produces genuinely new dimensions, and no core title leaks into extensions.
+    echoed: dict[str, object] = {
+        "intent_mode": "list",
+        "competitors": [
+            {"name": "抖音", "source": "nl_extracted", "reason": "x"},
+            {"name": "快手", "source": "nl_extracted", "reason": "x"},
+        ],
+        "named_in_brief": ["抖音", "快手"],
+        "extension_dimensions": [
+            {"title": "功能树", "intent": "分析各产品的功能模块与特色"},
+            {"title": "定价模型", "intent": "比较各产品的付费策略"},
+            {"title": "用户画像", "intent": "识别目标用户"},
+            {"title": "SWOT", "intent": "总结优劣势"},
+        ],
+        "clarification_questions": [],
+        "rationale": "...",
+    }
+    retry: dict[str, object] = {
+        "extension_dimensions": [
+            {"title": "内容生态与创作者激励", "intent": "评估创作者供给与激励。"},
+            {"title": "算法推荐与分发", "intent": "对比推荐机制与流量分发。"},
+        ],
+    }
+    llm = _fake_llm_seq([echoed, retry])
+    request = ScopingRequest(
+        user_brief="对比 抖音、快手 的短视频生态",
+        known_competitors=["抖音", "快手"],
+    )
+    draft = asyncio.run(ScopingAgent()._run_llm(request, llm))
+
+    extensions = [d for d in draft.scope_contract.dimensions if d.layer == "extension"]
+    titles = [d.title for d in extensions]
+    core_titles = {"功能树", "定价模型", "用户画像", "SWOT"}
+    assert core_titles.isdisjoint(titles)
+    assert "内容生态与创作者激励" in titles
+    assert all(d.source == "ai_suggested" for d in extensions)
+    # echoed cores dropped → empty → forced retry fired
+    assert llm.complete_json.call_count == 2
+
+
 def test_empty_extension_dimensions_falls_back_to_floor() -> None:
     # Both the initial call and the retry return [] — the deterministic floor
     # must guarantee the outline still ships with extension dimensions.

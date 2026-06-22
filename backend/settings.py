@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     langchain_tracing_v2: bool = False
     langchain_api_key: str | None = None
     langchain_project: str = "competitor-analysis"
-    scoping_model: str = "gpt-4o-mini"
+    scoping_model: str = "gpt-4.1"
     collector_model: str = "gpt-4o-mini"
     analyst_model: str = "deepseek-v4-pro"
     writer_model: str = "deepseek-v4-pro"
