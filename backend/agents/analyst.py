@@ -3,6 +3,7 @@ from typing import Any
 
 import structlog
 
+from graph.retry_scope import has_retry_correction, retry_target_competitors
 from graph.state import (
     CrossCompetitorAnalysis,
     ExtensionFinding,
@@ -227,9 +228,7 @@ def _sanitize_source_ids(value: Any, valid_ids: set[str]) -> Any:
         for key, item in value.items():
             if key == "source_ids" and isinstance(item, list):
                 cleaned[key] = list(
-                    dict.fromkeys(
-                        sid for sid in item if isinstance(sid, str) and sid in valid_ids
-                    )
+                    dict.fromkeys(sid for sid in item if isinstance(sid, str) and sid in valid_ids)
                 )
             else:
                 cleaned[key] = _sanitize_source_ids(item, valid_ids)
@@ -296,26 +295,66 @@ class AnalystAgent:
         ]
 
         # Each competitor is independent; run them concurrently (bounded) instead of
-        # one slow sequential chain of C×(1+E) DeepSeek calls.
+        # one slow sequential chain of C×(1+E) DeepSeek calls. On QA retry, a precise
+        # target list lets us re-pay only the failed competitors and reuse prior work.
+        retry_targets = retry_target_competitors(state) if has_retry_correction(state) else None
+        raw_to_extract = {
+            name: result
+            for name, result in state.raw_collections.items()
+            if retry_targets is None or name in retry_targets
+        }
+
+        # On scoped retry, a competitor that never made it into structured_profiles
+        # (first run failed mid-gather) would be silently dropped at the filter below.
+        # Force-extract those competitors now so they aren't missing from the final report.
+        if retry_targets is not None:
+            already_have = (
+                set(state.structured_profiles.keys()) if state.structured_profiles else set()
+            )
+            all_scope = {c.name for c in state.scope_contract.competitors}
+            orphaned = all_scope - already_have - retry_targets
+            if orphaned:
+                logger.warning(
+                    "analyst_scoped_retry_orphaned_competitors", competitors=sorted(orphaned)
+                )
+                for name in orphaned:
+                    if name in state.raw_collections and name not in raw_to_extract:
+                        raw_to_extract[name] = RawCollectionResult.model_validate(
+                            state.raw_collections[name]
+                        )
+
         semaphore = asyncio.Semaphore(_MAX_COMPETITOR_CONCURRENCY)
 
-        async def extract(name: str, result: RawCollectionResult) -> tuple[
-            str, StructuredCompetitorProfile, list[ExtensionFinding]
-        ]:
+        async def extract(
+            name: str, result: RawCollectionResult
+        ) -> tuple[str, StructuredCompetitorProfile, list[ExtensionFinding]]:
             async with semaphore:
                 return await self._extract_competitor(
                     name, result, core_dims, ext_dims, llm, settings, lang_directive
                 )
 
         extracted = await asyncio.gather(
-            *(extract(name, result) for name, result in state.raw_collections.items())
+            *(extract(name, result) for name, result in raw_to_extract.items())
         )
-        structured_profiles: dict[str, StructuredCompetitorProfile] = {}
-        extension_findings: list[ExtensionFinding] = []
+        combined_profiles = dict(state.structured_profiles) if retry_targets is not None else {}
+        extension_findings = (
+            [
+                finding
+                for finding in state.extension_findings
+                if finding.competitor_name not in retry_targets
+            ]
+            if retry_targets is not None
+            else []
+        )
         for name, profile, findings in extracted:
-            structured_profiles[name] = profile
+            combined_profiles[name] = profile
             extension_findings.extend(findings)
 
+        structured_profiles = {
+            competitor.name: combined_profiles[competitor.name]
+            for competitor in state.scope_contract.competitors
+            if competitor.name in combined_profiles
+        }
         cross = self._build_cross_analysis(structured_profiles)
         cross = await self._enrich_cross_matrix(
             cross, structured_profiles, state.raw_collections, llm, language
@@ -458,13 +497,29 @@ class AnalystAgent:
         list[ExtensionFinding],
         CrossCompetitorAnalysis | None,
     ]:
-        structured_profiles: dict[str, StructuredCompetitorProfile] = {}
-        extension_findings: list[ExtensionFinding] = []
+        retry_targets = retry_target_competitors(state) if has_retry_correction(state) else None
+        structured_profiles: dict[str, StructuredCompetitorProfile] = (
+            dict(state.structured_profiles) if retry_targets is not None else {}
+        )
+        extension_findings: list[ExtensionFinding] = (
+            [
+                finding
+                for finding in state.extension_findings
+                if finding.competitor_name not in retry_targets
+            ]
+            if retry_targets is not None
+            else []
+        )
         ext_dims = [
             d for d in state.scope_contract.dimensions if d.layer == "extension" and d.enabled
         ]
 
-        for name, result in state.raw_collections.items():
+        raw_to_extract = {
+            name: result
+            for name, result in state.raw_collections.items()
+            if retry_targets is None or name in retry_targets
+        }
+        for name, result in raw_to_extract.items():
             source_ids = [s.id for s in result.sources]
             structured_profiles[name] = StructuredCompetitorProfile(
                 competitor_name=name,
@@ -526,6 +581,11 @@ class AnalystAgent:
                     )
                 )
 
+        structured_profiles = {
+            competitor.name: structured_profiles[competitor.name]
+            for competitor in state.scope_contract.competitors
+            if competitor.name in structured_profiles
+        }
         cross = self._build_cross_analysis(structured_profiles)
         return structured_profiles, extension_findings, cross
 

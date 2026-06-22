@@ -9,7 +9,7 @@ import structlog
 from pydantic import BaseModel, Field
 
 from graph.state import WorkflowState
-from graph.workflow import run_workflow
+from graph.workflow import WORKFLOW_DEADLINE_S, run_workflow
 from schemas.report import Report, ReportSearchBackendResult
 from schemas.scope import ScopingDraft, TaskScopeContract
 from schemas.survey import SurveyEvidence
@@ -23,13 +23,39 @@ from settings import get_settings
 logger = structlog.get_logger(__name__)
 
 
+def _stage_hint_from_traces(traces: list[AgentTrace]) -> str:
+    if not traces:
+        return "workflow"
+    latest = max(traces, key=lambda trace: trace.sequence_no)
+    if latest.agent_name == "QAAgent" and latest.status == "succeeded":
+        return "write"
+    if latest.agent_name == "AnalystAgent" and latest.status == "succeeded":
+        return "qa_check"
+    if latest.agent_name == "CollectorAgent" and latest.status == "succeeded":
+        return "analyze"
+    if latest.agent_name == "WriterAgent":
+        return "write"
+    return latest.node_name
+
+
+def _timeout_error_summary(exc: BaseException, traces: list[AgentTrace]) -> dict[str, Any]:
+    stage_hint = _stage_hint_from_traces(traces)
+    minutes = round(WORKFLOW_DEADLINE_S / 60)
+    return {
+        "exception_class": exc.__class__.__name__,
+        "message": f"运行超过 {minutes} 分钟预算，最后已知阶段：{stage_hint}。",
+        "stage_hint": stage_hint,
+        "deadline_seconds": WORKFLOW_DEADLINE_S,
+    }
+
+
 async def _open_postgres_saver(dsn: str) -> tuple[Any, Any] | None:
     """Open a liveness-checked pool + AsyncPostgresSaver, or None on setup failure.
 
     Uses a connection pool rather than ``from_conn_string``'s single bare
     connection: workflow nodes idle for tens of seconds between checkpoint
     writes while LLMs run, long enough for Neon's pooler to recycle a lone
-    connection — the next ``aput_writes`` then hits "the connection is closed".
+    connection - the next ``aput_writes`` then hits "the connection is closed".
     The pool re-checks liveness on checkout and reconnects. ``prepare_threshold=
     None`` is required because pgbouncer transaction pooling can't keep psycopg's
     prepared statements alive.
@@ -67,27 +93,43 @@ async def _open_postgres_saver(dsn: str) -> tuple[Any, Any] | None:
 
 @asynccontextmanager
 async def _checkpointer_ctx() -> AsyncIterator[Any]:
-    """Yield an AsyncPostgresSaver when DATABASE_URL is configured, else MemorySaver.
+    """Yield the configured LangGraph checkpointer for one live workflow run.
 
-    A configured-but-unreachable Postgres is logged as a warning (the run still
-    proceeds on an in-memory checkpointer, but state will not survive a restart);
-    an unconfigured DATABASE_URL is the expected dev path and stays silent. The
-    ``yield`` sits outside the setup try/except on purpose: a run-time failure
-    must propagate, not get swallowed and re-yielded (which would raise
-    "generator didn't stop").
+    Memory is the default because final workflow states can contain large scraped
+    payloads; Postgres checkpointing is opt-in for debugging/resume work after
+    the checkpoint state is trimmed.
     """
     settings = get_settings()
-    opened = await _open_postgres_saver(settings.database_url) if settings.database_url else None
+    if settings.workflow_checkpointer != "postgres" or not settings.database_url:
+        from langgraph.checkpoint.memory import MemorySaver
+
+        logger.info(
+            "workflow_checkpointer_memory",
+            configured=settings.workflow_checkpointer,
+            database_configured=bool(settings.database_url),
+        )
+        yield MemorySaver()
+        return
+
+    opened = await _open_postgres_saver(settings.database_url)
     if opened is None:
         from langgraph.checkpoint.memory import MemorySaver
 
+        logger.info("workflow_checkpointer_fallback_memory")
         yield MemorySaver()
         return
     pool, saver = opened
     try:
         yield saver
     finally:
-        await pool.close()
+        try:
+            await pool.close()
+        except Exception:
+            # pool.close() can raise if a checkpoint write was in-flight when the
+            # workflow was cancelled (e.g. asyncio.wait_for timeout).  Log and
+            # swallow so the original TimeoutError is not masked by a secondary
+            # connection-already-closed error.
+            logger.warning("checkpointer_pool_close_on_cancel", exc_info=True)
 
 
 class RunRecord(BaseModel):
@@ -250,8 +292,8 @@ class RunManager:
     async def execute_run(self, run_id: UUID, state: WorkflowState) -> None:
         # Register the running task so a delete can cancel an in-flight DAG.
         # current_task() is captured here (rather than via create_task) so the
-        # FastAPI BackgroundTasks scheduling — which the test suite relies on for
-        # synchronous completion — stays intact.
+        # FastAPI BackgroundTasks scheduling - which the test suite relies on for
+        # synchronous completion - stays intact.
         current = asyncio.current_task()
         if current is not None:
             self._tasks[run_id] = current
@@ -444,6 +486,12 @@ class RunManager:
                     ),
                     checkpointer=checkpointer,
                 )
+                logger.info(
+                    "workflow_returned",
+                    run_id=run_id,
+                    task_id=record.task_id,
+                    has_report=result.report is not None,
+                )
         except Exception as exc:
             logger.exception(
                 "run_failed",
@@ -452,17 +500,24 @@ class RunManager:
                 exception_class=exc.__class__.__name__,
             )
             record.status = "failed"
-            record.error_summary = {
-                "exception_class": exc.__class__.__name__,
-                "message": str(exc),
-            }
+            traces = await self.get_timeline(run_id)
+            record.error_summary = (
+                _timeout_error_summary(exc, traces)
+                if isinstance(exc, TimeoutError)
+                else {
+                    "exception_class": exc.__class__.__name__,
+                    "message": str(exc),
+                }
+            )
             record.completed_at = datetime.now(UTC)
             if self._persistence is not None:
                 try:
                     await self._persist_traces(run_id)
                     await self._persistence.update_run(record)
                 except Exception:
-                    logger.warning("db_unavailable_persist_failed_run", run_id=run_id, exc_info=True)  # noqa: E501
+                    logger.warning(
+                        "db_unavailable_persist_failed_run", run_id=run_id, exc_info=True
+                    )  # noqa: E501
             await self._bridge.publish(str(run_id), "run.failed", record.error_summary)
             return
         if result.qa_result and not result.qa_result.passed:
@@ -479,9 +534,21 @@ class RunManager:
                 record.completed_at - (record.started_at or record.completed_at)
             ).total_seconds()
             self._store.task_reports[result.task_id] = result.report
+            logger.info(
+                "report_saved_memory",
+                run_id=run_id,
+                task_id=result.task_id,
+                report_id=result.report.id,
+            )
             if self._persistence is not None:
                 try:
                     await self._persistence.save_report(result.report, result.task_id)
+                    logger.info(
+                        "report_saved_db",
+                        run_id=run_id,
+                        task_id=result.task_id,
+                        report_id=result.report.id,
+                    )
                 except Exception:
                     logger.warning("db_unavailable_save_report", run_id=run_id, exc_info=True)
         if self._persistence is not None:
@@ -497,6 +564,12 @@ class RunManager:
                 "task_id": str(result.task_id),
                 "report_id": str(result.report.id if result.report else ""),
             },
+        )
+        logger.info(
+            "run_terminal_published",
+            run_id=run_id,
+            task_id=result.task_id,
+            status=record.status,
         )
 
     async def _persist_traces(self, run_id: UUID) -> None:

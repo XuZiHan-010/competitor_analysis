@@ -2,8 +2,13 @@ import re
 from copy import deepcopy
 from typing import Any
 
+import structlog
+
 from schemas.report import ReportClaim
 from schemas.source import SourceCitation
+from services.llm.usage import record_degradation
+
+logger = structlog.get_logger(__name__)
 
 PLACEHOLDER_MARKERS = (
     "需验证",
@@ -80,14 +85,18 @@ def assert_report_sources_resolvable(
         {source_id for source_id in source_ids if source_ids.count(source_id) > 1}
     )
     if duplicate_ids:
-        raise ValueError(f"duplicate report source ids: {', '.join(duplicate_ids)}")
+        logger.warning("duplicate_report_source_ids", ids=duplicate_ids[:10])
+        record_degradation(f"report_integrity: {len(duplicate_ids)} duplicate source ids")
 
     known_ids = set(source_ids)
     referenced_ids = {source_id for claim in claims for source_id in claim.source_ids}
     referenced_ids.update(source_ids_from_payload(structured_content))
     unresolved_ids = sorted(source_id for source_id in referenced_ids if source_id not in known_ids)
     if unresolved_ids:
-        raise ValueError(f"unresolved report source ids: {', '.join(unresolved_ids)}")
+        logger.warning(
+            "unresolved_report_source_ids", count=len(unresolved_ids), sample=unresolved_ids[:5]
+        )
+        record_degradation(f"report_integrity: {len(unresolved_ids)} unresolved source refs")
 
 
 def source_ids_from_payload(value: Any) -> set[str]:

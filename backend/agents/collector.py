@@ -6,6 +6,7 @@ from uuid import UUID
 
 import structlog
 
+from graph.retry_scope import has_retry_correction, retry_target_competitors
 from graph.state import RawCollectionResult, WorkflowState
 from schemas.scope import ScopeDimension, TaskScopeContract
 from schemas.source import SourceCitation
@@ -123,23 +124,41 @@ class CollectorAgent:
             search = HybridSearch(tiers)
             llm = LLMClient(settings)
             raw = await self._run_real_collection(state, search, llm=llm)
-            _normalize_raw_source_ids(raw, state.task_id)
-            survey = await SurveyTool(
+            scoped_retry_targets = (
+                retry_target_competitors(state) if has_retry_correction(state) else None
+            )
+            survey_raw = (
+                {name: raw[name] for name in scoped_retry_targets if name in raw}
+                if scoped_retry_targets is not None
+                else raw
+            )
+            survey_updates = await SurveyTool(
                 existing_survey_finder=ExistingSurveyFinder(search),
                 llm_client=llm,
             ).run(
-                state.model_copy(update={"raw_collections": raw}),
+                state.model_copy(update={"raw_collections": survey_raw}),
                 trace_context=trace_context,
             )
+            survey = dict(state.survey_results) if scoped_retry_targets is not None else {}
+            survey.update(survey_updates)
             source_id_maps = _normalize_raw_source_ids(raw, state.task_id)
             _remap_survey_source_ids(survey, source_id_maps)
             return raw, survey
         raw = await self._run_fallback_collection(state)
-        _normalize_raw_source_ids(raw, state.task_id)
-        survey = await SurveyTool().run(
-            state.model_copy(update={"raw_collections": raw}),
+        scoped_retry_targets = (
+            retry_target_competitors(state) if has_retry_correction(state) else None
+        )
+        survey_raw = (
+            {name: raw[name] for name in scoped_retry_targets if name in raw}
+            if scoped_retry_targets is not None
+            else raw
+        )
+        survey_updates = await SurveyTool().run(
+            state.model_copy(update={"raw_collections": survey_raw}),
             trace_context=trace_context,
         )
+        survey = dict(state.survey_results) if scoped_retry_targets is not None else {}
+        survey.update(survey_updates)
         source_id_maps = _normalize_raw_source_ids(raw, state.task_id)
         _remap_survey_source_ids(survey, source_id_maps)
         return raw, survey
@@ -169,48 +188,59 @@ class CollectorAgent:
                 continue
             if dim.layer == "core":
                 if dim.id == "core.feature_tree":
-                    queries.extend([
-                        (
-                            dim.id,
-                            f"{competitor_name} 官网 功能 产品介绍 帮助中心 应用商店",
-                        ),
-                        (
-                            dim.id,
-                            f"{competitor_name} product features official help center app store",
-                        ),
-                    ])
+                    queries.extend(
+                        [
+                            (
+                                dim.id,
+                                f"{competitor_name} 官网 功能 产品介绍 帮助中心 应用商店",
+                            ),
+                            (
+                                dim.id,
+                                (
+                                    f"{competitor_name} product features official "
+                                    "help center app store"
+                                ),
+                            ),
+                        ]
+                    )
                 elif dim.id == "core.pricing":
-                    queries.extend([
-                        (
-                            dim.id,
-                            f"{competitor_name} 官网 价格 套餐 定价 商业化 广告报价 创作者激励",
-                        ),
-                        (
-                            dim.id,
-                            f"{competitor_name} pricing plans subscription "
-                            "commercial ads creator monetization",
-                        ),
-                    ])
+                    queries.extend(
+                        [
+                            (
+                                dim.id,
+                                f"{competitor_name} 官网 价格 套餐 定价 商业化 广告报价 创作者激励",
+                            ),
+                            (
+                                dim.id,
+                                f"{competitor_name} pricing plans subscription "
+                                "commercial ads creator monetization",
+                            ),
+                        ]
+                    )
                 elif dim.id == "core.persona":
-                    queries.extend([
-                        (
-                            dim.id,
-                            f"{competitor_name} 用户画像 用户行为 应用商店 评论 行业报告",
-                        ),
-                        (dim.id, f"{competitor_name} target users reviews who uses"),
-                    ])
+                    queries.extend(
+                        [
+                            (
+                                dim.id,
+                                f"{competitor_name} 用户画像 用户行为 应用商店 评论 行业报告",
+                            ),
+                            (dim.id, f"{competitor_name} target users reviews who uses"),
+                        ]
+                    )
                 elif dim.id == "core.swot":
-                    queries.extend([
-                        (
-                            dim.id,
-                            f"{competitor_name} 竞争优势 劣势 市场地位 行业报告 竞品分析",
-                        ),
-                        (
-                            dim.id,
-                            f"{competitor_name} strengths weaknesses "
-                            "market position industry report",
-                        ),
-                    ])
+                    queries.extend(
+                        [
+                            (
+                                dim.id,
+                                f"{competitor_name} 竞争优势 劣势 市场地位 行业报告 竞品分析",
+                            ),
+                            (
+                                dim.id,
+                                f"{competitor_name} strengths weaknesses "
+                                "market position industry report",
+                            ),
+                        ]
+                    )
             else:
                 # Extension dim: use intent to rewrite query
                 queries.append((dim.id, f"{competitor_name} {dim.intent}"))
@@ -232,30 +262,40 @@ class CollectorAgent:
         extra: list[tuple[str, str]] = []
         joined = " ".join(failed_fields).lower()
         if "pricing" in joined:
-            extra.append((
-                "core.pricing",
-                f"{competitor_name} pricing cost subscription fee plans 2024",
-            ))
+            extra.append(
+                (
+                    "core.pricing",
+                    f"{competitor_name} pricing cost subscription fee plans 2024",
+                )
+            )
         if "feature" in joined or "feature_tree" in joined:
-            extra.append((
-                "core.feature_tree",
-                f"{competitor_name} product features capabilities detailed comparison",
-            ))
+            extra.append(
+                (
+                    "core.feature_tree",
+                    f"{competitor_name} product features capabilities detailed comparison",
+                )
+            )
         if "source_ids" in joined or "sources" in joined:
-            extra.append((
-                "default",
-                f"{competitor_name} official site product overview documentation",
-            ))
+            extra.append(
+                (
+                    "default",
+                    f"{competitor_name} official site product overview documentation",
+                )
+            )
         if "swot" in joined:
-            extra.append((
-                "core.swot",
-                f"{competitor_name} strengths weaknesses market position analysis",
-            ))
+            extra.append(
+                (
+                    "core.swot",
+                    f"{competitor_name} strengths weaknesses market position analysis",
+                )
+            )
         if "persona" in joined or "user_personas" in joined:
-            extra.append((
-                "core.persona",
-                f"{competitor_name} target customers user reviews who uses",
-            ))
+            extra.append(
+                (
+                    "core.persona",
+                    f"{competitor_name} target customers user reviews who uses",
+                )
+            )
         if domain_context:
             extra = [(dim_id, f"{query} {domain_context}") for dim_id, query in extra]
         return base + extra
@@ -338,19 +378,31 @@ class CollectorAgent:
         app_reviews = app_reviews or AppReviewProvider()
         fetcher = fetcher or PageFetcher()
 
-        # When QA detected blockers, re-run with targeted recovery queries
+        # When QA detected blockers, re-run with targeted recovery queries.
         correction = state.feedback_signals.get("correction_detected")
-        failed_fields: list[str] = []
+        failed_fields_by_competitor: dict[str, list[str]] = {}
+        global_failed_fields: list[str] = []
         if correction and isinstance(correction, dict):
-            failed_fields = [
-                issue.get("failed_field", "")
-                for issue in correction.get("issues", [])
-                if issue.get("failed_field")
-            ]
+            for issue in correction.get("issues", []):
+                if not isinstance(issue, dict) or not issue.get("failed_field"):
+                    continue
+                field = str(issue["failed_field"])
+                target = issue.get("target_competitor")
+                if isinstance(target, str) and target:
+                    failed_fields_by_competitor.setdefault(target, []).append(field)
+                else:
+                    global_failed_fields.append(field)
 
         domain_context = self._domain_context(state.scope_contract)
+        retry_targets = retry_target_competitors(state) if correction else None
+        competitors = [
+            competitor
+            for competitor in state.scope_contract.competitors
+            if retry_targets is None or competitor.name in retry_targets
+        ]
 
         def _queries(competitor_name: str) -> list[tuple[str, str]]:
+            failed_fields = failed_fields_by_competitor.get(competitor_name, global_failed_fields)
             if failed_fields:
                 return self._build_feedback_queries(
                     competitor_name,
@@ -363,10 +415,7 @@ class CollectorAgent:
             )
 
         query_map: dict[str, list[tuple[str, str]]] = {}
-        base_query_map = {
-            competitor.name: _queries(competitor.name)
-            for competitor in state.scope_contract.competitors
-        }
+        base_query_map = {competitor.name: _queries(competitor.name) for competitor in competitors}
         rewritten_results = await asyncio.gather(
             *(
                 asyncio.wait_for(
@@ -402,17 +451,22 @@ class CollectorAgent:
                 ),
                 timeout=_COLLECTOR_TIMEOUT_S,
             )
-            for competitor in state.scope_contract.competitors
+            for competitor in competitors
         }
         results = await asyncio.gather(*tasks.values(), return_exceptions=True)
-        output: dict[str, RawCollectionResult] = {}
+        output: dict[str, RawCollectionResult] = (
+            dict(state.raw_collections) if retry_targets is not None else {}
+        )
         for name, result in zip(tasks.keys(), results, strict=False):
             if isinstance(result, BaseException):
-                output[name] = RawCollectionResult(
-                    competitor_name=name,
-                    sources=[],
-                    errors=[f"collection_timeout_or_error: {result}"],
-                )
+                existing = output.get(name)
+                if existing is None or not existing.has_real_sources():
+                    output[name] = RawCollectionResult(
+                        competitor_name=name,
+                        sources=[],
+                        errors=[f"collection_timeout_or_error: {result}"],
+                    )
+                # else: keep first-pass sources — transient retry failure must not destroy them
             else:
                 output[name] = result
         _normalize_raw_source_ids(output, state.task_id)
@@ -542,11 +596,9 @@ class CollectorAgent:
         # launching a browser per URL. A skip/fetch failure keeps the original
         # search citation (with its snippet) rather than dropping the source, so
         # robots-blocked or flaky pages can't starve the QA ≥5-sources floor.
-        fetch_urls = [
-            str(source.url)
-            for source in sources
-            if source.url
-        ][:_MAX_FETCH_URLS_PER_COMPETITOR]
+        fetch_urls = [str(source.url) for source in sources if source.url][
+            :_MAX_FETCH_URLS_PER_COMPETITOR
+        ]
         fetched = await run_tool_safely("fetch_pages", partial(fetcher.fetch_pages, fetch_urls))
         if isinstance(fetched, ToolError):
             errors.append(f"fetch_pages: {fetched.error_content}")
@@ -632,15 +684,22 @@ class CollectorAgent:
         recovery_mode = bool(state.feedback_signals.get("correction_detected")) or (
             state.retry_counts.get("collector", 0) > 0
         )
+        retry_targets = retry_target_competitors(state) if has_retry_correction(state) else None
+        competitors = [
+            competitor
+            for competitor in state.scope_contract.competitors
+            if retry_targets is None or competitor.name in retry_targets
+        ]
         tasks = [
             (
                 self._collect_feedback_fallback_competitor(competitor.name)
                 if recovery_mode
                 else self._collect_fallback_competitor(competitor.name)
             )
-            for competitor in state.scope_contract.competitors
+            for competitor in competitors
         ]
         results = await asyncio.gather(*tasks)
-        raw = {r.competitor_name: r for r in results}
+        raw = dict(state.raw_collections) if retry_targets is not None else {}
+        raw.update({r.competitor_name: r for r in results})
         _normalize_raw_source_ids(raw, state.task_id)
         return raw
