@@ -224,7 +224,7 @@ export async function fetchReportMetrics(taskId: string): Promise<ReportMetrics>
 export async function correctSection(
   taskId: string,
   payload: {
-    claim_id: string;
+    claim_id: string | null;
     field_path: string;
     new_value: string;
     correction_type: CorrectionType;

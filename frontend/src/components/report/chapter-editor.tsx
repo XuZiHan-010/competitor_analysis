@@ -15,9 +15,9 @@ const CORRECTION_OPTIONS: { value: CorrectionType; label: string }[] = [
 interface ChapterEditorProps {
   initialContent: string;
   fieldPath: string;
-  claimId: string;
+  claimId: string | null;
   onSave: (payload: {
-    claimId: string;
+    claimId: string | null;
     fieldPath: string;
     newValue: string;
     correctionType: CorrectionType;

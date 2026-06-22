@@ -84,7 +84,7 @@ class ReportSearchBackendResult(BaseModel):
 
 
 class FieldCorrectionRequest(BaseModel):
-    claim_id: UUID
+    claim_id: UUID | None = None
     field_path: str
     new_value: Any
     correction_type: CorrectionType

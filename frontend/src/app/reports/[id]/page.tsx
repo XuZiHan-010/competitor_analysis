@@ -32,17 +32,10 @@ import {
 interface EditState {
   chapterIndex: number;
   fieldPath: string;
-  claimId: string;
+  claimId: string | null;
   initialContent: string;
 }
 
-// Paths for editable intro fields in core chapters
-const CHAPTER_PATHS: Record<number, string> = {
-  1: "feature_tree.intro",
-  2: "pricing.intro",
-  3: "user_personas.intro",
-  4: "swot.intro",
-};
 
 export default function ReportPage() {
   const params = useParams<{ id: string }>();
@@ -73,7 +66,15 @@ export default function ReportPage() {
   function handleEdit(chapterIndex: number) {
     if (!report) return;
     const sc = report.structured_content;
-    const path = CHAPTER_PATHS[chapterIndex];
+    const crossIdx = 5 + sc.extensions.length;
+    const chapterPaths: Record<number, string> = {
+      1: "feature_tree.intro",
+      2: "pricing.intro",
+      3: "user_personas.intro",
+      4: "swot.intro",
+      [crossIdx]: "cross_analysis.differentiation_summary",
+    };
+    const path = chapterPaths[chapterIndex];
     if (!path) return;
 
     const contentMap: Record<string, string> = {
@@ -81,18 +82,20 @@ export default function ReportPage() {
       "pricing.intro": sc.pricing.intro,
       "user_personas.intro": sc.user_personas.intro,
       "swot.intro": sc.swot.intro,
+      "cross_analysis.differentiation_summary":
+        sc.cross_analysis.differentiation_summary ?? "",
     };
     const claim = report.claims.find((c) => c.claim_path === path);
     setEditState({
       chapterIndex,
       fieldPath: path,
-      claimId: claim?.id ?? "",
+      claimId: claim?.id ?? null,
       initialContent: contentMap[path] ?? "",
     });
   }
 
   async function handleSaveEdit(payload: {
-    claimId: string;
+    claimId: string | null;
     fieldPath: string;
     newValue: string;
     correctionType: CorrectionType;
@@ -357,12 +360,15 @@ export default function ReportPage() {
               <Chapter
                 index={5 + sc.extensions.length}
                 title="跨竞品总结"
+                onEdit={handleEdit}
+                edited={editedChapters.has(5 + sc.extensions.length)}
               >
                 {sc.cross_analysis.differentiation_summary && (
                   <p className="text-[15.5px] leading-[1.85] text-foreground/90 mb-6">
                     {sc.cross_analysis.differentiation_summary}
                   </p>
                 )}
+                {editorFor(5 + sc.extensions.length)}
                 <div className="flex flex-col gap-8">
                   {crossMatrix && (
                     <FeatureMatrix
