@@ -18,11 +18,11 @@
 | 前端 | Next.js 16 + React 19 + Tailwind v4 + shadcn/ui | Railway 部署 |
 | 后端 API | FastAPI + Pydantic v2 | Railway 部署 |
 | 编排引擎 | LangGraph（PostgresCheckpointer，MemorySaver 兜底） | State 驱动 DAG + 反馈闭环 |
-| LLM | gpt-4o-mini / DeepSeek V4 Pro | 按 Agent 分配，见 [PRD §五.X](PRD.md#五x-模型选型决策表) |
+| LLM | gpt-4.1 / gpt-4o-mini / DeepSeek V4 Pro（+ text-embedding-3-small 向量） | 按 Agent 分配，见 [PRD §五.X](PRD.md#五x-模型选型决策表) |
 | 搜索 | HybridSearch 分层：主层 Tavily + DuckDuckGo（合并去重）→ 兜底层 SerpApi | 主层有结果则不触碰 SerpApi，省配额；并发限流 + 配额熔断 |
 | 抓取 | Playwright | 强制 robots.txt 检查 |
-| 数据 | Neon Postgres（13 表 + pgvector） | 业务数据 + Trace + 向量检索 |
-| 缓存/队列 | Upstash Redis | 任务队列 + SSE StreamBridge |
+| 数据 | Neon Postgres（12 表 + pgvector 列） | 业务数据 + Trace + 向量检索 |
+| 缓存 | Upstash Redis | SSE StreamBridge 生产实现 |
 
 ---
 
@@ -55,14 +55,14 @@ flowchart TB
     end
 
     subgraph EXT["外部服务"]
-        LLM["LLM<br/>gpt-4o-mini /<br/>DeepSeek V4 Pro"]
+        LLM["LLM<br/>gpt-4.1 / gpt-4o-mini /<br/>DeepSeek V4 Pro<br/>(+ text-embedding-3-small)"]
         SRCH["HybridSearch<br/>主层 Tavily+DuckDuckGo<br/>→ 兜底 SerpApi"]
         SCR["Playwright 抓取<br/>（robots.txt 检查）"]
     end
 
     subgraph DATA["数据层"]
-        PG["Neon Postgres<br/>13 表 + pgvector"]
-        RD["Upstash Redis<br/>任务队列 + SSE bridge"]
+        PG["Neon Postgres<br/>12 表 + pgvector 列"]
+        RD["Upstash Redis<br/>SSE bridge"]
     end
 
     FE -->|REST + SSE| API
@@ -111,7 +111,7 @@ flowchart LR
 - **后端 API（FastAPI）**：auth（邮箱验证码 + JWT）、tasks/scoping（任务调度）、stream（SSE 推送）、reports/survey/demo（报告交互、问卷上传、演示回放）。
 - **LangGraph 编排引擎**：4-Agent DAG + 反馈闭环；`PostgresCheckpointer` 支持刷新页面后任务续跑（DB 不可用时降级 `MemorySaver`）；`@traced_node` 自动记录 token/cost/latency；`StreamBridge` 解耦生产/消费（MVP 内存，生产切 Redis）；`RunManager` 管任务生命周期。详见 [PRD §五.Y](PRD.md#五y-运行时可靠性保障)。
 - **外部服务**：LLM 按 Agent 分配（见 [PRD §五.X](PRD.md#五x-模型选型决策表)）；HybridSearch 分层检索（主层 Tavily + DuckDuckGo 合并，兜底层 SerpApi 仅在主层零结果时触发，配并发限流与配额熔断）；Playwright 抓取并强制检查 robots.txt。
-- **数据层**：Neon Postgres 存业务数据 + `agent_traces` + pgvector 向量；Upstash Redis 做任务队列与 SSE bridge。
+- **数据层**：Neon Postgres 存业务数据 + `agent_traces` + pgvector 向量（向量为 `source_citations`/`reports`/`report_claims` 三表的 `embedding` 列，非独立表）；Upstash Redis 做 SSE StreamBridge 的生产实现（任务调度本身是 `RunManager` 进程内 asyncio.Task，非 Redis 队列）。
 
 ---
 
@@ -123,7 +123,7 @@ flowchart LR
 | Backend (FastAPI) | Railway | Hobby ~$3-5/月 |
 | Postgres + pgvector | Neon | Free Forever (3GB) |
 | Redis | Upstash | Free (10K commands/天) |
-| LLM | gpt-4o-mini + DeepSeek V4 Pro（按 Agent 分配，见 [PRD §五.X](PRD.md#五x-模型选型决策表)） | 演示周约 $3 |
+| LLM | gpt-4.1 + gpt-4o-mini + DeepSeek V4 Pro + text-embedding-3-small（按 Agent 分配，见 [PRD §五.X](PRD.md#五x-模型选型决策表)） | 演示周约 $3 |
 | Search API | Tavily Free + DuckDuckGo（免 key）/ SerpApi Free 兜底 | 免费额度 |
 
 > 详细部署步骤（环境变量清单、Railway/Neon/Upstash 配置）见 `docs/deployment.md`（Week 2 部署后补）。
