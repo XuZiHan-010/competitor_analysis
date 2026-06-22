@@ -25,7 +25,7 @@ from services.survey.existing_survey_finder import ExistingSurveyFinder
 from services.survey.tool import SurveyTool
 from settings import get_settings
 
-_COLLECTOR_TIMEOUT_S = 120
+_COLLECTOR_TIMEOUT_S = 180
 _QUERY_REWRITE_TIMEOUT_S = 20
 _MAX_FETCH_URLS_PER_COMPETITOR = 10
 
