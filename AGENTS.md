@@ -52,6 +52,7 @@ competitor_analysis/
 ├── docs/           项目文档（PRD / 架构 / Schema / 部署等）
 ├── plans/          AI Agent plan 文件（gitignored）
 ├── agent-states/   被构建系统的运行时状态（应用层，非 Claude 记忆）
+├── USER_PREFERENCES.md  项目负责人长期协作偏好
 └── claude-progress.txt  项目开发进度日志
 ```
 
@@ -79,6 +80,7 @@ competitor_analysis/
 | [docs/PRD.md](docs/PRD.md) | 完整产品需求文档 —— 唯一事实源 |
 | [ai竞品分析要求.txt](ai竞品分析要求.txt) | 比赛官方课题与评分标准 |
 | [docs/security.md](docs/security.md) | 安全规则全文（红线之外的细则） |
+| [USER_PREFERENCES.md](USER_PREFERENCES.md) | 项目负责人长期协作偏好（语言、plan、GitHub 提交语义） |
 
 ### 按场景按需读取（just-in-time retrieval）
 
@@ -128,12 +130,13 @@ competitor_analysis/
 
 ## 五、工作规范（高阶原则）
 
-1. **PRD 是唯一事实源**：任何具体决策（功能 / Schema / 优先级 / 技术选型）以 [docs/PRD.md](docs/PRD.md) 为准，不要凭对话上下文猜需求
-2. **按需读取**：开始任务前从 §三 表格找到相关文档，**只读这次任务需要的那几个**，不要预加载全部
-3. **遇到歧义就停下来**：与其改错代码再回滚，不如先和项目负责人对齐——AskUserQuestion / 评论 / Issue 都行
-4. **小步提交**：单次改动控制在 1 个 feature 内，commit message 遵循 [docs/git-workflow.md](docs/git-workflow.md)
-5. **维护项目状态**：完成一个 Agent 任务 → 更新对应 `agent-states/*.json`；重要里程碑 → 同步 `claude-progress.txt`。详见 [docs/agent-states-guide.md](docs/agent-states-guide.md)
+1. **新会话先读偏好与进度**：每次开启新对话 / 新 Agent 接手时，先读取 [USER_PREFERENCES.md](USER_PREFERENCES.md) 与 [claude-progress.txt](claude-progress.txt) 顶部摘要，再开始任务
+2. **PRD 是唯一事实源**：任何具体决策（功能 / Schema / 优先级 / 技术选型）以 [docs/PRD.md](docs/PRD.md) 为准，不要凭对话上下文猜需求
+3. **按需读取**：开始任务前从 §三 表格找到相关文档，**只读这次任务需要的那几个**，不要预加载全部
+4. **遇到歧义就停下来**：与其改错代码再回滚，不如先和项目负责人对齐——AskUserQuestion / 评论 / Issue 都行
+5. **小步提交**：单次改动控制在 1 个 feature 内，commit message 遵循 [docs/git-workflow.md](docs/git-workflow.md)
+6. **维护项目状态**：完成一个 Agent 任务 → 更新对应 `agent-states/*.json`；重要里程碑 → 同步 `claude-progress.txt`。详见 [docs/agent-states-guide.md](docs/agent-states-guide.md)
    - **每天第一次对话**：读取 [claude-progress.txt](claude-progress.txt)，确认「更新历史」最后一条日期 = 昨天（或更近）。如果落后，主动补录昨日完成的工作后再开始当天任务
-6. **改动 = 同步更新文档**：架构改了 → 更 PRD §五；Schema 改了 → 更 PRD §七；Agent 协议改了 → 更 PRD §六；新增 `docs/` 文档 → 更新本文件 §三 索引
-7. **前端设计 / 重构必走 skill**：任何前端组件、页面、UI 设计或重构任务（在 [frontend/](frontend/) 下），**开工前必须先调用** `frontend-design` 和 `web-design-guidelines` 两个 skill——前者生成有设计感的代码、避免 generic AI 风格，后者按 Vercel Web Interface Guidelines 做 a11y / 可用性 / typography 合规审查。两者按需挑选，不要跳过
-8. **提 PR 前必须本地跑通 lint**：`git push` 发起 GitHub PR 前，本地必须跑 `npm run lint`（前端）/ `ruff check` + `mypy`（后端）**0 error 才能 push**。让 CI 失败的 PR 浪费 review 时间，也丢比赛 ③ 子项的 Git 规范分
+7. **改动 = 同步更新文档**：架构改了 → 更 PRD §五；Schema 改了 → 更 PRD §七；Agent 协议改了 → 更 PRD §六；新增 `docs/` 文档 → 更新本文件 §三 索引
+8. **前端设计 / 重构必走 skill**：任何前端组件、页面、UI 设计或重构任务（在 [frontend/](frontend/) 下），**开工前必须先调用** `frontend-design` 和 `web-design-guidelines` 两个 skill——前者生成有设计感的代码、避免 generic AI 风格，后者按 Vercel Web Interface Guidelines 做 a11y / 可用性 / typography 合规审查。两者按需挑选，不要跳过
+9. **提 PR 前必须本地跑通 lint**：`git push` 发起 GitHub PR 前，本地必须跑 `npm run lint`（前端）/ `ruff check` + `mypy`（后端）**0 error 才能 push**。让 CI 失败的 PR 浪费 review 时间，也丢比赛 ③ 子项的 Git 规范分

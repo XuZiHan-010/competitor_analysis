@@ -76,7 +76,7 @@ flowchart TB
 
 ## 图 B：多 Agent DAG 流转图
 
-> 反映真实代码执行顺序（对照 [backend/graph/workflow.py](../backend/graph/workflow.py)）：**QA 在 Writer 之前**做数据充分性校验，不足则打回 Collector 重采（最多 3 次），达标后才让 Writer 写报告——避免在数据不足时白白消耗 Writer 的 token。
+> 反映真实代码执行顺序（对照 [backend/graph/workflow.py](../backend/graph/workflow.py)）：**QA 在 Writer 之前**做数据充分性校验，不足则打回 Collector 重采（最多 1 次有效重跑；明确命中竞品时 Collector/Analyst 只重跑该竞品），达标后才让 Writer 写报告——避免在数据不足时白白消耗 Writer 的 token。
 
 ```mermaid
 flowchart LR
@@ -88,8 +88,8 @@ flowchart LR
         direction LR
         COL["collect<br/>CollectorAgent"] --> ANA["analyze<br/>AnalystAgent<br/>含 evidence-gated 跨竞品矩阵补全"]
         ANA --> QA["qa_check<br/>QAAgent"]
-        QA -->|"blocker 且 retry < 3"| COL
-        QA -->|"通过 / retry ≥ 3"| WR["write<br/>WriterAgent"]
+        QA -->|"blocker 且 retry < 2"| COL
+        QA -->|"通过 / retry ≥ 2"| WR["write<br/>WriterAgent"]
         WR --> DONE(["END → Report"])
     end
 

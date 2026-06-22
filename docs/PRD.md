@@ -124,7 +124,7 @@
     实时显示 DAG 进度（哪个 Agent 在跑、跑到哪一步、Trace 可点开）
     采集 Agent → 分析 Agent → 质检 Agent → 撰写 Agent
                                   ↓
-                （质检不通过，打回采集 Agent 重采，最多 3 次；
+                （质检不通过，打回采集 Agent 重采，最多 1 次有效重跑；
                  达标或重试上限后才进撰写 Agent）
     各 Agent 都按 TaskScopeContract 中的维度做事
     ↓
@@ -157,7 +157,7 @@
 
 > 本节统一收口长任务运行时的工程约束。**借鉴自 [ByteDance DeerFlow](https://github.com/bytedance/deerflow)（MIT License）**，详见 [plans/2026-05-26-deerflow-architecture-inspirations.md](../plans/2026-05-26-deerflow-architecture-inspirations.md) 与项目根 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)。
 
-竞品分析任务跑 2-5 分钟很正常（5 竞品 × 多维度抽取 + Survey 4 阶段 + Writer 渲染），网络抖动 / 浏览器 tab 切换 / API 失败 / LLM 死循环都可能让用户中途失去进度。本节定义 5 条**强制**工程实现约束：
+竞品分析任务跑 2-5 分钟很正常（5 竞品 × 多维度抽取 + Survey 4 阶段 + Writer 渲染），网络抖动 / 浏览器 tab 切换 / API 失败 / LLM 死循环都可能让用户中途失去进度。本节定义 7 条**强制**工程实现约束：
 
 | # | 约束 | 实现位置 | 验收 |
 |---|------|---------|------|
@@ -166,13 +166,14 @@
 | 3 | **@traced_node 装饰器** | `backend/services/agents/decorators.py` | 每个 LangGraph 节点函数挂 `@traced_node`，自动记录 `{stage, prompt_hash, input_summary, output_summary, tokens_in, tokens_out, cost_usd, latency_ms, failure_reason}` 到 `agent_traces` 表，节点代码不手写 trace（`cost_usd` 按 §五.X 模型单价 × token 估算） |
 | 4 | **StreamBridge 抽象（producer/consumer 解耦）** | `backend/services/streaming/bridge.py` | 抽象 `publish(run_id, event)` / `subscribe(run_id) → AsyncIterator`；MVP 用内存实现，生产化平滑切 Redis（详见 §十一-ter 设计钩子 6） |
 | 5 | **RunRecord 任务生命周期** | `task_runs` 表（详见 §十）+ `backend/services/runs/manager.py` | `{run_id, task_id, status, error, checkpoint_id, started_at, completed_at}`；`checkpoint_id` 与 LangGraph PostgresCheckpointer 的 `thread_id` 一一对应，支持"刷新页面后任务还在跑 + 失败从中断点续跑" |
-| 6 | **LangSmith 执行过程 trace 上报（可选增强层）** | LangGraph 原生回调（设 `LANGCHAIN_TRACING_V2` / `LANGCHAIN_API_KEY` / `LANGCHAIN_PROJECT` env，key 不入库）；`agent_traces` 写入 `langsmith_run_id` 关联 | env 开关控制（CI 默认关，本地 debug + 答辩演示开）；多 Agent 执行树在 LangSmith 可查、token/cost 仪表盘可见；**SurveyTool 涉敏节点（访谈 / 用户声音 / persona）必须 `hide_inputs`/`hide_outputs` 或 anonymizer 脱敏后再上报**（合规红线，见 [docs/security.md](security.md)） |
+| 6 | **Workflow 全局 deadline + 可读 timeout 摘要** | `backend/graph/workflow.py` + `backend/services/runs/manager.py` | 单次 DAG 有硬上限，防止长任务无限挂起；到点后 `error_summary` 必须包含 `exception_class/message/stage_hint/deadline_seconds`，前端显示中文可读原因而不是裸 `TimeoutError` |
+| 7 | **LangSmith 执行过程 trace 上报（可选增强层）** | LangGraph 原生回调（设 `LANGCHAIN_TRACING_V2` / `LANGCHAIN_API_KEY` / `LANGCHAIN_PROJECT` env，key 不入库）；`agent_traces` 写入 `langsmith_run_id` 关联 | env 开关控制（CI 默认关，本地 debug + 答辩演示开）；多 Agent 执行树在 LangSmith 可查、token/cost 仪表盘可见；**SurveyTool 涉敏节点（访谈 / 用户声音 / persona）必须 `hide_inputs`/`hide_outputs` 或 anonymizer 脱敏后再上报**（合规红线，见 [docs/security.md](security.md)） |
 
 **可观测三层分工（不冗余）**：① `agent_traces` 表（自建 Postgres）是事实源，撑产品内可观测页 + 演示断网兜底，带 token/cost；② LangSmith 是开发期 debug + 答辩展示的增强层；③ 报告权威性（每条结论可溯源）靠 `source_ids` + 前端溯源面板（§六 5.3 / §七），**与 LangSmith 正交，不可被其替代**。
 
-**为什么不抄 DeerFlow 全套**：DeerFlow 的 14 层 middleware + MCP + Skill + Sandbox 是为开放式深度研究设计，与我们结构化竞品分析（4 Agent DAG + 强 Schema）正交。本节只取 5 条工程地基，**主架构（PRD §六 多 Agent DAG）不动**。
+**为什么不抄 DeerFlow 全套**：DeerFlow 的 14 层 middleware + MCP + Skill + Sandbox 是为开放式深度研究设计，与我们结构化竞品分析（4 Agent DAG + 强 Schema）正交。本节只取这些工程地基，**主架构（PRD §六 多 Agent DAG）不动**。
 
-**比赛评分对应**：本节 1-5 条直接撑起评分卡 25% "技术深度与工程完整度" 的"长任务稳定性"维度；约束 2/3 还为 35% "多 Agent 协作可信度"中的"trace 完整、可追溯"提供工程保障。约束 6（LangSmith）撑 25% 中"每个 Agent 的 Prompt/输入/输出/Token 消耗均有 Trace 可查"，且其涉敏脱敏策略同时撑 10% "合规"中的"问卷 / 访谈数据脱敏"——同一动作覆盖两个维度。注意"信息溯源保证报告权威性"是 35% 的独立要求，靠 `source_ids` 实现，**不靠 LangSmith**。
+**比赛评分对应**：本节 1-6 条直接撑起评分卡 25% "技术深度与工程完整度" 的"长任务稳定性"维度；约束 2/3 还为 35% "多 Agent 协作可信度"中的"trace 完整、可追溯"提供工程保障。约束 7（LangSmith）撑 25% 中"每个 Agent 的 Prompt/输入/输出/Token 消耗均有 Trace 可查"，且其涉敏脱敏策略同时撑 10% "合规"中的"问卷 / 访谈数据脱敏"——同一动作覆盖两个维度。注意"信息溯源保证报告权威性"是 35% 的独立要求，靠 `source_ids` 实现，**不靠 LangSmith**。
 
 ---
 
@@ -207,7 +208,7 @@
 > - **ScopingAgent**（5.0）：在主 DAG 启动**之前**跑，对话式立项的主语，同步 LLM 调用
 > - **DAG 内 4 Agent**（5.1-5.4）：Collector / Analyst / QA / Writer，通过 LangGraph 编排，State 驱动 + 反馈闭环
 >
-> **DAG 执行顺序**（见 §五图 B）：`collect → analyze → qa_check → write`。**QA 在 Writer 之前**——QA 先校验分析数据是否充分，出现 blocker 则打回 Collector 重采（最多 3 次），达标或重试上限后才进 Writer，避免在数据不足时白白消耗 Writer 的 token。下文小节号（5.1-5.4）按 Agent 编号排列，非执行顺序。
+> **DAG 执行顺序**（见 §五图 B）：`collect → analyze → qa_check → write`。**QA 在 Writer 之前**——QA 先校验分析数据是否充分，出现 blocker 则打回 Collector 重采（最多 1 次有效重跑；明确命中竞品时 Collector/Analyst 只重跑该竞品并复用其他产物），达标或重试上限后才进 Writer，避免在数据不足时白白消耗 Writer 的 token。下文小节号（5.1-5.4）按 Agent 编号排列，非执行顺序。
 
 ### Agent 5.0: 立项 Agent (`ScopingAgent`)
 
@@ -230,7 +231,7 @@
 |---|---|---|
 | 调用位置 | 主 DAG **之前**（用户在 scoping 页面时） | 主 DAG **之内**（用户点「确认 → 开始分析」之后） |
 | 调用形态 | 同步 LLM call，前端等 1-3s | 异步 LangGraph 编排，SSE 推送进度 |
-| 反馈闭环 | 无 QA 闭环，用户本人即 reviewer，编辑即修正 | QA Agent 自动检查 + 打回重做（最多 3 次） |
+| 反馈闭环 | 无 QA 闭环，用户本人即 reviewer，编辑即修正 | QA Agent 自动检查 + 打回重做（最多 1 次有效重跑） |
 | 输出 | `ScopingDraft` → 用户 freeze 后 → `TaskScopeContract` | `WorkflowState` 各 Agent 产物 |
 | 是否进 trace_log | 进 `scoping_drafts` 表（独立） | 进 `agent_traces` 表 |
 
@@ -289,7 +290,7 @@ class ScopingDraft(BaseModel):
   - `SearchProvider` Protocol 抽象，按**层（tier）**组织：主层 `TavilyProvider` + `DuckDuckGoProvider`（DuckDuckGo 免 key、`ddgs` 库、线程池执行），兜底层 `SerpApiProvider`
   - **分层策略**：同一层内的 provider 并行查询 + 结果合并去重（按 URL）；**首个有结果的层即返回，下层不触碰**——主层（Tavily+DuckDuckGo）命中时绝不消耗 SerpApi 的稀缺配额
   - **并发限流 + 配额熔断**：全局 `asyncio.Semaphore` 限制同时在飞的搜索请求数（防 429 洪泛）；某 provider 返回永久配额错误（Tavily 432 / `PermanentProviderError`）后，本次分析后续所有查询直接跳过它（跨层生效）
-  - **全失败**：抛 `SearchUnavailableError`，LangGraph CollectorAgent 节点走 retry（最多 3 次）
+  - **全失败**：写入采集 errors 并保留节点可观测性；后续由 QA 根据字段缺口触发最多 1 次有效重跑，明确命中竞品时 scoped retry
   - **启动时探测**：按 `TAVILY_API_KEY` / `SERPAPI_API_KEY` 可用性与 `duckduckgo_enabled` 开关自动构建分层；任一层非空即可工作（DuckDuckGo 免 key，故无任何付费 key 时仍可真实采集）
   - 返回的每条 `SourceCitation` 含 `provider` 字段（记录实际使用的 provider 实现名）
   - 代码路径：`backend/services/search/`（`providers.py` / `tavily.py` / `duckduckgo.py` / `serpapi.py` / `hybrid.py`）
@@ -427,7 +428,7 @@ class ScopingDraft(BaseModel):
 | `representative_quotes` 含 `ai_simulated` 时前端强制显示 ⚠️ | **约定**（非阻塞） | QAAgent 输出 issue 标记（`severity: "convention"`），前端渲染必须消费此标记；若前端未渲染则视为前端 bug |
 
 **反馈闭环逻辑**：
-- **blocker** → 打回 Collector 重抓（最多 3 次），3 次仍失败则字段标"未确认"
+- **blocker** → 打回 Collector 重抓（最多 1 次有效重跑），仍失败则字段标"未确认"
 - **warning** → 不阻塞流程，在最终报告中标"未充分确认"提示
 
 **实现注记（2026-06-09 补齐）**：
@@ -435,7 +436,7 @@ class ScopingDraft(BaseModel):
 - Collector 在搜索结果进入抓取前后执行来源相关性闸门，优先保留官网、产品页、应用商店、行业媒体和可信评论，丢弃仅把竞品当作学术样本提及的离题来源，并将 `dropped_irrelevant` 写入采集 errors。
 - QA retry 达到上限后，`WorkflowState.field_verification_status` 记录字段级未确认状态，Writer 在报告和指标中以"未确认/公开信息未发现"方式诚实降级，不再把 `unknown` 当作已覆盖字段。
 
-**correction_detected 信号**：QAAgent 输出 blocker 时同步在 `WorkflowState.feedback_signals` 写入 `correction_detected: {target_competitor, failed_field, last_evidence_summary}`，CollectorAgent 重跑时读这个信号，在 prompt 里强调"上次错的是 XX 字段，证据是 YY，这次特别检查 ZZ"，避免无指导性的盲目重抓。借鉴自 DeerFlow memory 模块（见 §五.Y 与 [plans/2026-05-26-deerflow-architecture-inspirations.md](../plans/2026-05-26-deerflow-architecture-inspirations.md) D1）。代码位置：`backend/services/agents/signals.py`。
+**correction_detected 信号**：QAAgent 输出 retryable blocker 时同步在 `WorkflowState.feedback_signals` 写入 `correction_detected: {target_agent, retry_count, issues}`，其中 `issues[].target_competitor` 是 scoped retry 的依据。若所有 issue 都有明确且合法的 `target_competitor`，Collector/Analyst 只重跑这些竞品并复用其他竞品的 `raw_collections`、`survey_results`、`structured_profiles` 与 `extension_findings`；若缺少明确目标则全量重跑，保证正确性优先。
 
 这套分层保证了 §十三 35% 评分项里"严格符合预定义 Schema、字段完整"对**核心层**始终成立；扩展层走"尽力服务"，缺失也不影响演示主流程。
 
@@ -455,7 +456,7 @@ class ScopingDraft(BaseModel):
 }
 ```
 
-**反馈闭环逻辑**: blocker 级 issue 触发 LangGraph 回到对应节点重跑，最多 3 次。3 次仍失败则标记字段为"未确认"，进入人工介入流程。
+**反馈闭环逻辑**: retryable blocker 级 issue 触发 LangGraph 回到 Collector 重跑，最多 1 次有效重跑。仍失败则标记字段为"未确认"，进入人工介入流程；有明确 `target_competitor` 时按竞品 scope 重跑，否则全量重跑。
 
 ### Agent 间通信协议
 
@@ -475,6 +476,7 @@ class WorkflowState(BaseModel):
     draft_report: ReportDraft | None
     qa_result: QAResult | None
     field_verification_status: dict[str, Any]          # 字段级 verified/unverified/not_applicable 状态
+    feedback_signals: dict[str, Any]                    # QA → Collector/Analyst 的结构化重试信号
     retry_counts: dict[str, int]                          # node_name → count
     trace_log: list[TraceEntry]                           # 完整决策日志
 ```
@@ -1643,4 +1645,3 @@ competitor_analysis/
 │   └── deployment.md
 └── README.md
 ```
-
