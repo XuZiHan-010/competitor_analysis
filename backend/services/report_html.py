@@ -1,3 +1,4 @@
+import re
 from collections.abc import Iterable, Mapping
 from html import escape
 from math import isfinite
@@ -16,7 +17,7 @@ def build_report_html(report: Report) -> str:
     created_at = report.created_at.strftime("%Y-%m-%d")
     extension_count = len(extension_sections(sc))
 
-    sections = [
+    pre_source_sections = [
         _masthead(title=title, subtitle=subtitle, summary=summary, created_at=created_at),
         _quality_status(report),
         _metrics(report),
@@ -30,9 +31,14 @@ def build_report_html(report: Report) -> str:
         _cross_analysis(sc, index=5 + extension_count),
         _survey_insights(sc, index=6 + extension_count),
         _claims(report, index=7 + extension_count),
-        _sources(report, index=8 + extension_count),
     ]
-    body = "\n".join(section for section in sections if section)
+    body_before = "\n".join(section for section in pre_source_sections if section)
+    # CH.11 lists only sources whose id appears as a visible inline citation in the rendered
+    # body — not every id buried in hidden source_ids arrays. Scan the assembled HTML so the
+    # list matches what a reader can actually trace.
+    visible_ids = set(re.findall(r"src_[A-Za-z0-9_]+", body_before))
+    sources_section = _sources(report, index=8 + extension_count, visible_ids=visible_ids)
+    body = "\n".join(section for section in (body_before, sources_section) if section)
     return f"""<!doctype html>
 <html lang="{escape(report.language)}">
 <head>
@@ -178,9 +184,71 @@ def _metrics(report: Report) -> str:
     return f'<section class="metrics" aria-label="关键指标">{badges}</section>'
 
 
+def _report_competitor_names(sc: JsonMapping) -> list[str]:
+    names: dict[str, None] = {}
+
+    def add(value: Any) -> None:
+        name = text_value(value)
+        if name:
+            names.setdefault(name, None)
+
+    for item in as_list(sc.get("competitors")):
+        add(item)
+    for name in feature_competitors(sc, as_list(as_mapping(sc.get("feature_tree")).get("rows"))):
+        add(name)
+    for tier in pricing_tiers(sc):
+        add(tier.get("competitor"))
+    for persona in personas(sc):
+        add(persona.get("competitor"))
+    for block in swot_blocks(sc):
+        add(block.get("competitor"))
+    for gap in as_list(sc.get("data_gaps")):
+        add(as_mapping(gap).get("competitor"))
+    return list(names)
+
+
+def _failed_competitor_names(sc: JsonMapping) -> set[str]:
+    # data_gaps marks competitors whose collection produced no usable source — the
+    # signal that separates "draft" (nothing usable) from "partial" (some competitor
+    # delivered real data, only specific fields need review).
+    return {
+        name
+        for gap in as_list(sc.get("data_gaps"))
+        if (name := text_value(as_mapping(gap).get("competitor")))
+    }
+
+
 def _quality_status(report: Report) -> str:
     if report.qa_status != "issues":
         return ""
+    sc = report_structured_content(report)
+    competitors = _report_competitor_names(sc)
+    failed = _failed_competitor_names(sc)
+    usable = [name for name in competitors if name not in failed]
+
+    # Partial: at least one competitor cleared collection. Grade the run by data
+    # completeness instead of flatly failing the whole report on any single gap.
+    if usable:
+        if failed:
+            failed_label = "、".join(name for name in competitors if name in failed)
+            detail = (
+                f"{html_text('、'.join(usable))} 已采集到有效数据；"
+                f"{html_text(failed_label)} 网络采集失败、本报告暂无其有效数据。"
+                "部分字段仍需复核，详见下方缺口说明。"
+            )
+        else:
+            detail = (
+                "竞品数据已采集，部分字段缺少可验证来源、暂列为待复核，"
+                "详见下方字段缺口说明。"
+            )
+        return f"""
+<section class="quality-warning partial" role="status" aria-label="质量门部分通过">
+  <strong>部分可用</strong>
+  <span>{detail}</span>
+</section>
+"""
+
+    # Draft: collection broadly failed or no competitor could be graded.
     return """
 <section class="quality-warning" role="alert" aria-label="质量门未通过">
   <strong>草稿 / 待复核</strong>
@@ -442,9 +510,11 @@ def _summary_findings(sc: JsonMapping) -> list[str]:
     return findings[:6]
 
 
-def _sources(report: Report, *, index: int) -> str:
+def _sources(report: Report, *, index: int, visible_ids: set[str]) -> str:
     items = []
     for source in report.sources:
+        if source.id not in visible_ids:
+            continue
         title = text_value(source.title) or text_value(source.url) or source.id
         url = text_value(source.url)
         link = (
@@ -664,6 +734,12 @@ h4 { font-size: 12px; margin-bottom: 6px; }
   font-size: 12px;
 }
 .quality-warning strong { white-space: nowrap; }
+.quality-warning.partial {
+  border-color: #e0b400;
+  border-left-color: #e0b400;
+  background: #fffaeb;
+  color: #5a4500;
+}
 .data-gaps {
   border: 1px solid #e0b400;
   border-left: 4px solid #e0b400;
