@@ -51,7 +51,16 @@ def _report(**overrides: object) -> Report:
 
 
 def test_build_report_html_renders_ui_like_sections_without_field_leaks() -> None:
-    html = build_report_html(_report())
+    structured = _structured_content()
+    feature_tree = structured["feature_tree"]
+    assert isinstance(feature_tree, dict)
+    rows = feature_tree["rows"]
+    assert isinstance(rows, list)
+    # CH.11 now lists only sources cited verbatim in visible prose, so the note must
+    # surface the id token for src_1 to reach the sources chapter.
+    rows[0]["cells"][0]["note"] = "稳定（src_1）"
+
+    html = build_report_html(_report(structured_content=structured))
 
     assert "<table>" in html
     assert "功能树" in html
@@ -97,7 +106,10 @@ def test_build_report_html_degrades_unknown_feature_status() -> None:
     assert 'class="support unverified"' not in html
 
 
-def test_build_report_html_marks_failed_quality_gate_as_draft() -> None:
+def test_build_report_html_grades_partial_gate_when_competitor_has_data() -> None:
+    # Notion collected real data; only the pricing field lacks a verifiable source, so the
+    # report is graded "部分可用" rather than flatly failed — collection never failed wholesale
+    # (no data_gaps entry), the gap is field-level.
     structured = {
         **_structured_content(),
         "pricing": {"tiers": []},
@@ -113,8 +125,8 @@ def test_build_report_html_marks_failed_quality_gate_as_draft() -> None:
 
     html = build_report_html(_report(structured_content=structured, qa_status="issues"))
 
-    assert "草稿 / 待复核" in html
-    assert "不可作为正式交付" in html
+    assert "部分可用" in html
+    assert "草稿 / 待复核" not in html
     assert "定价模型：未找到可验证定价来源" in html
 
 
