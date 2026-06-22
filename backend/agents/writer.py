@@ -65,6 +65,25 @@ def _canonical_feature_cell(cell: Mapping[str, object], competitor: str) -> dict
     }
 
 
+def _canonical_persona(persona: Mapping[str, object], competitor: str) -> dict[str, object]:
+    """Coerce a freeform AnalystAgent persona into the shape the report renderer requires.
+
+    DeepSeek occasionally omits ``needs``/``pain_points`` (or returns them as a scalar),
+    which would otherwise reach the frontend as ``undefined`` and crash the whole report
+    page on ``persona.needs.map``.  Normalizing here keeps the canonical contract intact.
+    """
+    return {
+        **dict(persona),
+        "competitor": str(persona.get("competitor") or competitor),
+        "label": str(persona.get("label") or ""),
+        "size": str(persona.get("size") or "niche"),
+        "needs": _strings(persona.get("needs")),
+        "pain_points": _strings(persona.get("pain_points")),
+        "evidence": str(persona.get("evidence") or ""),
+        "source_ids": _strings(persona.get("source_ids")),
+    }
+
+
 def _collection_gaps(state: WorkflowState) -> list[dict[str, str]]:
     """Competitors with missing or degraded collection evidence."""
     gaps: list[dict[str, str]] = []
@@ -237,9 +256,11 @@ class WriterAgent:
 
         # user_personas: merge all persona lists
         all_personas: list[dict] = []
-        for profile in profiles.values():
+        for name, profile in profiles.items():
             personas = profile.user_personas if isinstance(profile.user_personas, list) else []
-            all_personas.extend(personas)
+            all_personas.extend(
+                _canonical_persona(p, name) for p in personas if isinstance(p, Mapping)
+            )
 
         # swot: one block per competitor
         swot_blocks: list[dict] = []

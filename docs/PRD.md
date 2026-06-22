@@ -183,10 +183,13 @@
 
 | Agent | 模型 | 输入 / 输出（USD/1M tokens） | 7 天演示成本 | 能力分 | 选择理由 |
 |-------|------|----------------------------|-------------|--------|---------|
+| ScopingAgent | `gpt-4.1` | $2.00 / $8.00 | ~$0.03 | 90 | 立项对话在主 DAG 之前、同步阻塞用户，需强意图理解把 NL 转成 TaskScopeContract；调用次数少、单次 token 小，用最强款换确定性收益最高 |
 | CollectorAgent | `gpt-4o-mini` | $0.15 / $0.60 | ~$0.08 | 75 | query 改写任务轻、JSON 输出强约束，便宜款够用；与 Scoping/QA 同模型同 SDK，收敛外部依赖 |
 | AnalystAgent | `deepseek-v4-pro` | $0.435 / $0.87 | ~$0.21 | 86 | 推理强 + 384K 输出容量；成本仅 gpt-4.1 的 1/6（2026-05 永久 75% 降价后） |
 | WriterAgent | `deepseek-v4-pro` | $0.435 / $0.87 | ~$0.21 | 88（中文） | 中文长报告自然度高；与 AnalystAgent 同模型简化 prompt 协调 |
 | QAAgent | `gpt-4o-mini` | $0.15 / $0.60 | ~$0.10 | 75 | JSON 结构化检查任务简单，便宜款够用 |
+
+> **非对话模型**：向量检索（pgvector 历史报告复用）用 `text-embedding-3-small`（1536 维，$0.02/1M tokens），不是对话 Agent，故单列于此。上表 5 个角色 + 此 embedding 模型 = `backend/settings.py` 中写死的全部 6 个模型角色。
 
 **演示周（7 天 × 5 任务/天）总成本上限**：~$3（含 20% 缓冲）；单次任务 token 消耗假设 100K input + 20K output。
 
@@ -1171,6 +1174,19 @@ manual_corrections (
   field_path text, old_value jsonb, new_value jsonb,
   correction_type text,                    -- 事实修正/表述优化/补充信息/删除无效/结构调整
   triggered_rerun boolean, user_id FK, created_at
+)
+
+-- 对话式立项草稿（ScopingAgent 产出，主 DAG 之前；§六 ScopingAgent / line 236）
+scoping_drafts (
+  id uuid PK,
+  task_id FK nullable,                       -- freeze 成正式 task 前可为空
+  user_brief text,                           -- 用户原始 NL 输入
+  intent_mode text,                          -- 立项意图模式
+  scope_contract jsonb,                      -- 收敛出的 TaskScopeContract 草稿
+  clarification_questions jsonb,             -- 待用户澄清的问题列表
+  rationale text,                            -- 收敛理由（可追溯）
+  iteration int,                             -- 第几轮澄清
+  created_at
 )
 
 -- 用户研究一手数据上传（方案 C，§八 8.6）
