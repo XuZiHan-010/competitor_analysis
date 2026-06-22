@@ -418,6 +418,65 @@ def test_writer_normalizes_feature_matrix_status_values() -> None:
     assert statuses == ["unknown", "supported", "partial"]
 
 
+def test_writer_normalizes_personas_missing_needs_and_pain_points() -> None:
+    """A persona the analyst returned without ``needs``/``pain_points`` must still
+    reach structured_content with those fields as lists — otherwise the frontend
+    crashes the whole report page on ``persona.needs.map`` (undefined)."""
+    source = SourceCitation(
+        id="src_tavily_deadbeef_001",
+        type="media",
+        category="media",
+        title="Source",
+        snippet="Evidence.",
+        provider="tavily",
+    )
+    scope = TaskScopeContract(
+        user_brief="Compare AI coding tools",
+        intent_mode="list",
+        competitors=[CompetitorCandidate(name="Trae", source="nl_extracted")],
+        dimensions=[
+            ScopeDimension(
+                id="core.feature_tree",
+                title="Feature tree",
+                intent="Compare features",
+                layer="core",
+                order=1,
+            )
+        ],
+    )
+    state = WorkflowState(
+        task_id=scope.id,
+        run_id=scope.id,
+        scope_contract=scope,
+        raw_collections={
+            "Trae": RawCollectionResult(
+                competitor_name="Trae",
+                sources=[source],
+                completeness_score=1.0,
+            )
+        },
+        structured_profiles={
+            "Trae": StructuredCompetitorProfile(
+                competitor_name="Trae",
+                feature_tree={},
+                pricing={},
+                # No needs/pain_points keys, and a scalar where a list is expected.
+                user_personas=[{"competitor": "Trae", "label": "Power user"}],
+                swot={},
+                source_ids=[source.id],
+            )
+        },
+    )
+
+    report = WriterAgent()._run_fallback(state, language="zh")
+
+    personas = report.structured_content["user_personas"]["personas"]
+    assert len(personas) == 1
+    assert personas[0]["needs"] == []
+    assert personas[0]["pain_points"] == []
+    assert isinstance(personas[0]["source_ids"], list)
+
+
 def test_report_source_integrity_warns_on_duplicate_and_unresolved_ids() -> None:
     # assert_report_sources_resolvable now warns + records degradation rather than
     # raising, so runs with minor citation issues still produce a report.
