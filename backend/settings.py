@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -14,6 +15,7 @@ class Settings(BaseSettings):
     redis_url: str | None = None
     redis_event_stream_maxlen: int = 2000
     redis_event_stream_ttl_seconds: int = 86400
+    workflow_checkpointer: Literal["memory", "postgres"] = "memory"
     jwt_secret: str | None = None
     mock_llm: bool = False
     openai_api_key: str | None = None
