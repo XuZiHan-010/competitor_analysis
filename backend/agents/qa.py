@@ -147,6 +147,10 @@ class QAAgent:
 
             unknown_rate = _feature_unknown_rate(profile)
             if unknown_rate is None:
+                raw_entry = state.raw_collections.get(name)
+                has_real_sources = raw_entry is not None and RawCollectionResult.model_validate(
+                    raw_entry
+                ).has_real_sources()
                 issues.append(
                     QAIssue(
                         severity="blocker",
@@ -155,6 +159,7 @@ class QAAgent:
                         failed_field="feature_tree",
                         message="功能树缺少可比较的结构化行。",
                         code="feature_tree_missing",
+                        retryable=not has_real_sources,
                     )
                 )
             elif unknown_rate > _MAX_FEATURE_UNKNOWN_RATE:

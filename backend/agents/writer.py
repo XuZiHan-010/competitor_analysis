@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Mapping
 from uuid import UUID
 
@@ -17,6 +18,11 @@ from services.report_integrity import (
     remap_markdown_source_ids,
 )
 from settings import get_settings
+
+# Independent budget for the writer's LLM call.  Keeps an upstream retry cycle
+# from consuming the entire global deadline and leaving the writer with zero time.
+# ~600s covers 16384 output tokens at ~30 tok/s (conservative DeepSeek estimate).
+WRITER_BUDGET_S = 600.0
 
 logger = structlog.get_logger(__name__)
 
@@ -102,7 +108,14 @@ class WriterAgent:
         if not settings.deepseek_api_key:
             raise RuntimeError("DEEPSEEK_API_KEY is required for WriterAgent in real mode")
         try:
-            return await self._run_llm(state, llm, language=language)
+            return await asyncio.wait_for(
+                self._run_llm(state, llm, language=language),
+                timeout=WRITER_BUDGET_S,
+            )
+        except TimeoutError as exc:
+            logger.warning("writer_llm_timeout", budget_s=WRITER_BUDGET_S)
+            record_degradation(f"writer: timeout after {WRITER_BUDGET_S}s")
+            raise RuntimeError(f"WriterAgent timed out after {WRITER_BUDGET_S}s") from exc
         except Exception as exc:
             logger.warning("writer_llm_failed", exc_info=True)
             record_degradation(f"writer: {type(exc).__name__}: {exc}")

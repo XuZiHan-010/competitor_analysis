@@ -1,7 +1,5 @@
 import asyncio
 
-import pytest
-
 from agents.writer import WriterAgent
 from graph.state import (
     ExtensionFinding,
@@ -420,7 +418,9 @@ def test_writer_normalizes_feature_matrix_status_values() -> None:
     assert statuses == ["unknown", "supported", "partial"]
 
 
-def test_report_source_integrity_rejects_duplicate_and_unresolved_ids() -> None:
+def test_report_source_integrity_warns_on_duplicate_and_unresolved_ids() -> None:
+    # assert_report_sources_resolvable now warns + records degradation rather than
+    # raising, so runs with minor citation issues still produce a report.
     source = SourceCitation(
         id="src_tavily_deadbeef_001",
         type="media",
@@ -430,19 +430,17 @@ def test_report_source_integrity_rejects_duplicate_and_unresolved_ids() -> None:
         provider="tavily",
     )
 
-    with pytest.raises(ValueError, match="duplicate report source ids"):
-        assert_report_sources_resolvable(
-            sources=[source, source],
-            claims=[],
-            structured_content={},
-        )
+    assert_report_sources_resolvable(
+        sources=[source, source],
+        claims=[],
+        structured_content={},
+    )  # duplicate ids — must not raise
 
-    with pytest.raises(ValueError, match="unresolved report source ids"):
-        assert_report_sources_resolvable(
-            sources=[source],
-            claims=[],
-            structured_content={"feature_tree": {"rows": [{"source_ids": ["missing"]}]}},
-        )
+    assert_report_sources_resolvable(
+        sources=[source],
+        claims=[],
+        structured_content={"feature_tree": {"rows": [{"source_ids": ["missing"]}]}},
+    )  # unresolved ids — must not raise
 
 
 def test_writer_filters_disabled_extension_findings_and_metrics() -> None:

@@ -21,7 +21,7 @@ MAX_COLLECTOR_RETRIES = 2
 # Hard wall-clock ceiling for one run. A backstop so no single run can hang for an
 # hour: on expiry the graph is cancelled and the run is reported as failed instead
 # of silently burning provider quota forever.
-WORKFLOW_DEADLINE_S = 1500.0
+WORKFLOW_DEADLINE_S = 2100.0
 
 
 def _trace_ctx(config: RunnableConfig) -> Any:
@@ -33,9 +33,7 @@ def _trace_ctx(config: RunnableConfig) -> Any:
 # writes via msgpack, which cannot encode raw Pydantic model instances.
 async def _collector_node(state: WorkflowState, config: RunnableConfig) -> dict[str, Any]:
     trace_context = _trace_ctx(config)
-    raw_collections, survey_results = await CollectorAgent().run(
-        state, trace_context=trace_context
-    )
+    raw_collections, survey_results = await CollectorAgent().run(state, trace_context=trace_context)
     # A competitor with zero real sources means every downstream section for it
     # will be empty; surface that on the live event stream now instead of letting
     # the viewer discover a blank report minutes later.
@@ -115,9 +113,7 @@ def _route_after_qa(state: WorkflowState) -> str:
     if state.qa_result is None or state.qa_result.passed:
         return "write"
     retryable_blockers = [
-        issue
-        for issue in state.qa_result.issues
-        if issue.severity == "blocker" and issue.retryable
+        issue for issue in state.qa_result.issues if issue.severity == "blocker" and issue.retryable
     ]
     if retryable_blockers and state.retry_counts.get("collector", 0) < MAX_COLLECTOR_RETRIES:
         return "collect"

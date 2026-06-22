@@ -1,4 +1,3 @@
-import pytest
 
 from schemas.report import ReportClaim
 from schemas.source import SourceCitation
@@ -82,9 +81,10 @@ def test_prune_report_sources_keeps_unresolved_references_visible() -> None:
 
     assert pruned_sources == []
     assert remapped_claims[0].source_ids == ["missing"]
-    with pytest.raises(ValueError, match="unresolved report source ids"):
-        assert_report_sources_resolvable(
-            sources=pruned_sources,
-            claims=remapped_claims,
-            structured_content=remapped_content,
-        )
+    # assert_report_sources_resolvable now warns + records degradation instead of raising,
+    # so unresolved refs are survivable — the run produces a report with a degradation flag.
+    assert_report_sources_resolvable(
+        sources=pruned_sources,
+        claims=remapped_claims,
+        structured_content=remapped_content,
+    )  # must not raise

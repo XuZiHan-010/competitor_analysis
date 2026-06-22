@@ -18,6 +18,7 @@ import {
   fetchRunRecord,
   taskEventSource,
   type AgentTrace,
+  type RunRecord,
   type StreamEvent,
 } from "@/lib/api/tasks";
 import { cn } from "@/lib/utils";
@@ -32,6 +33,8 @@ const PIPELINE: { agent: string; label: string; role: string }[] = [
   { agent: "QAAgent", label: "QA", role: "字段校验 + 反馈闭环" },
 ];
 const AGENT_ORDER = PIPELINE.map((node) => node.agent);
+type RunStatus = RunRecord["status"];
+
 const STREAM_EVENT_NAMES = [
   "run.started",
   "node.started",
@@ -54,6 +57,8 @@ export default function TaskRunPage() {
   const [error, setError] = useState<string | null>(null);
   const [streamWarning, setStreamWarning] = useState<string | null>(null);
   const [reportTaskId, setReportTaskId] = useState<string | null>(null);
+  const [runStatus, setRunStatus] = useState<RunStatus | null>(null);
+  const [finalizingWarningRunId, setFinalizingWarningRunId] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -68,6 +73,7 @@ export default function TaskRunPage() {
         ]);
         if (!mounted) return;
         setTraces(next);
+        setRunStatus(run.status);
         if (run.status === "succeeded" && run.task_id) {
           setReportTaskId(run.task_id);
           setError(null);
@@ -94,13 +100,12 @@ export default function TaskRunPage() {
 
       setEvents((current) => [...current, event].slice(-40));
       if (event.event === "run.succeeded") {
-        const taskId = event.data.task_id;
-        if (typeof taskId === "string" && taskId) setReportTaskId(taskId);
+        setRunStatus("succeeded");
+        // Do not set reportTaskId directly from the SSE payload — let refreshTimeline
+        // confirm the report is readable via the server before showing the button.
         void refreshTimeline();
-        // Terminal state: close the stream so EventSource stops auto-reconnecting
-        // to a run that will never emit again (the source of the repeated
-        // ERR_HTTP2_PROTOCOL_ERROR churn after completion).
         terminal = true;
+        window.clearInterval(interval);
         source.close();
         setConnectionState("closed");
       }
@@ -108,10 +113,12 @@ export default function TaskRunPage() {
         void refreshTimeline();
       }
       if (event.event === "run.failed") {
+        setRunStatus("failed");
         setError(formatRunFailure(event.data));
         setStreamWarning(null);
         void refreshTimeline();
         terminal = true;
+        window.clearInterval(interval);
         source.close();
         setConnectionState("closed");
       }
@@ -160,7 +167,26 @@ export default function TaskRunPage() {
   );
   const latestEvents = [...events].reverse().slice(0, 8);
   const doneCount = nodes.filter((node) => node.status === "done").length;
-  const overallPct = Math.round((doneCount / nodes.length) * 100);
+  const allNodesDone = doneCount === nodes.length;
+  const terminalSucceeded = Boolean(reportTaskId) || runStatus === "succeeded";
+  const terminalFailed = Boolean(error) || runStatus === "failed";
+  const rawOverallPct = Math.round((doneCount / nodes.length) * 100);
+  const overallPct = terminalSucceeded
+    ? 100
+    : allNodesDone && !terminalFailed
+      ? 99
+      : rawOverallPct;
+  const progressLabel = terminalSucceeded
+    ? "报告已生成"
+    : allNodesDone && !terminalFailed
+      ? "正在保存报告"
+      : "Overall";
+
+  useEffect(() => {
+    if (!allNodesDone || terminalSucceeded || terminalFailed) return;
+    const timeout = window.setTimeout(() => setFinalizingWarningRunId(runId), 120000);
+    return () => window.clearTimeout(timeout);
+  }, [allNodesDone, runId, terminalSucceeded, terminalFailed]);
 
   return (
     <PageContainer width="wide">
@@ -210,7 +236,7 @@ export default function TaskRunPage() {
       <section className="mb-8">
         <div className="mb-2 flex items-baseline justify-between">
           <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-            Overall
+            {progressLabel}
           </span>
           <span className="tabular text-xs text-muted-foreground">{overallPct}%</span>
         </div>
@@ -250,6 +276,22 @@ export default function TaskRunPage() {
           {streamWarning}
         </div>
       )}
+
+      {finalizingWarningRunId === runId &&
+        allNodesDone &&
+        !terminalSucceeded &&
+        !terminalFailed &&
+        !error &&
+        !streamWarning && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mb-6 flex items-center gap-2 rounded-md border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-200"
+          >
+            <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+            报告已生成，后端正在收尾保存；若长时间停留，请重新发起本次分析。
+          </div>
+        )}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <section aria-label="Agent 节点状态">
