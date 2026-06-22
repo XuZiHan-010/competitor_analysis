@@ -153,8 +153,27 @@ def test_p1_contract_placeholders(
     )
     assert run_response.status_code == 200
 
-    report = client.get(f"/api/reports/{task_id}").json()
-    claim_id = report["claims"][0]["id"]
+    report_response = client.get(f"/api/reports/{task_id}")
+    assert report_response.status_code == 200
+
+    intro_response = client.patch(
+        f"/api/reports/{task_id}/field",
+        json={
+            "claim_id": None,
+            "field_path": "feature_tree.intro",
+            "new_value": "corrected feature intro",
+            "correction_type": "wording_improvement",
+        },
+    )
+    assert intro_response.status_code == 200
+    intro_corrected = intro_response.json()
+    assert intro_corrected["structured_content"]["feature_tree"]["intro"] == (
+        "corrected feature intro"
+    )
+    assert all(claim["edit_status"] == "untouched" for claim in intro_corrected["claims"])
+    assert intro_corrected["metrics"]["manual_correction_rate"] == 0.0
+
+    claim_id = intro_corrected["claims"][0]["id"]
 
     correction_response = client.patch(
         f"/api/reports/{task_id}/field",

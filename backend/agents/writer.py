@@ -63,12 +63,12 @@ def _collection_gaps(state: WorkflowState) -> list[dict[str, str]]:
     """Competitors with missing or degraded collection evidence."""
     gaps: list[dict[str, str]] = []
     for name, result in state.raw_collections.items():
-        errors = [error for error in result.errors if error]
-        if result.has_real_sources() and not errors and len(result.sources) >= 5:
+        real_errors = [e for e in result.errors if e and not e.startswith("dropped_irrelevant:")]
+        if result.has_real_sources() and not real_errors and len(result.sources) >= 5:
             continue
         reason_parts = []
-        if errors:
-            reason_parts.append("搜索服务限流/失败导致部分来源缺失：" + "; ".join(errors))
+        if real_errors:
+            reason_parts.append("搜索服务限流/失败导致部分来源缺失：" + "; ".join(real_errors))
         if len(result.sources) < 5:
             reason_parts.append(f"仅采集到 {len(result.sources)} 条来源，少于质量门要求的 5 条")
         if not result.has_real_sources():

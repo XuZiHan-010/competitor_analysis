@@ -119,14 +119,15 @@ async def correct_field(
     current_user: CurrentUserDep,
 ) -> Report:
     report = await _require_owned_report(task_id, current_user)
-    claim_index = _claim_index(report, request.claim_id)
     claims = list(report.claims)
-    claims[claim_index] = claims[claim_index].model_copy(
-        update={
-            "edit_status": "edited",
-            "correction_type": request.correction_type,
-        }
-    )
+    if request.claim_id is not None:
+        claim_index = _claim_index(report, request.claim_id)
+        claims[claim_index] = claims[claim_index].model_copy(
+            update={
+                "edit_status": "edited",
+                "correction_type": request.correction_type,
+            }
+        )
     structured_content = dict(report.structured_content)
     _set_field_path(structured_content, request.field_path, request.new_value)
     updated = report.model_copy(
