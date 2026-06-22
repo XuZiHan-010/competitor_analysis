@@ -1,7 +1,5 @@
 import asyncio
 
-import pytest
-
 from agents.writer import WriterAgent
 from graph.state import (
     ExtensionFinding,

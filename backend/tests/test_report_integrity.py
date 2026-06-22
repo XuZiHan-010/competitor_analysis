@@ -1,4 +1,3 @@
-import pytest
 
 from schemas.report import ReportClaim
 from schemas.source import SourceCitation
