@@ -242,9 +242,9 @@
 
 | 意图 | 触发条件 | ScopingAgent 行为重点 |
 |---|---|---|
-| `list` | NL 主要由 2+ 个具体竞品名构成 | 提取所有提到的竞品，推荐 2-3 个**同价位 / 同目标人群**的额外候选；大纲基于"对比"目的生成 |
-| `intent` | NL 描述研究问题但未提具体竞品（或只提 1 个） | **AI 推荐 3-5 个竞品**，附 reason（同价位 / 同渠道 / 同目标人群）；大纲对研究问题做精细拆解 |
-| `mixed` | NL 有 1-2 个竞品名 + 显式的"还有谁"诉求 | 提取已知竞品 + 补全到 3-5 个 AI 推荐 + 标准大纲 |
+| `list` | NL 显式点名 **2+ 个**具体竞品 | **精确保留**所点名的竞品，**不做 AI 补齐**（用户已给出明确对比集）；大纲基于"对比"目的生成 |
+| `intent` | NL 描述研究问题但未点名具体竞品 | **AI 推荐 3-5 个竞品**，附 reason（同价位 / 同渠道 / 同目标人群）；大纲对研究问题做精细拆解 |
+| `mixed` | NL 仅点名 **1 个**竞品（或点名后显式要"还有谁"） | 保留已点名竞品（`nl_extracted`）+ AI 补齐到 3-5（`ai_recommended`）+ 标准大纲 |
 
 **输入 Schema** (`ScopingRequest`):
 ```python
@@ -269,7 +269,7 @@ class CompetitorCandidate(BaseModel):
 
 class ScopingDraft(BaseModel):
     intent_mode: Literal["list", "intent", "mixed"]
-    competitors: list[CompetitorCandidate]                # 保证 3-5 个
+    competitors: list[CompetitorCandidate]                # ≤5；点名≤1 时补齐到 3-5，显式 2+ 精确保留
     dimensions: list[DimensionSpec]                       # 核心 4 + N 扩展
     user_research_plan: UserResearchPlan | None           # 用户研究模块草案（方案 C）：含可编辑问卷 + 启用开关；§7.0
     clarifying_questions: list[ClarifyingQuestion]
@@ -277,7 +277,7 @@ class ScopingDraft(BaseModel):
 ```
 
 **对下游的承诺**：
-- `competitors` 长度 ∈ [3, 5]——少于 3 时 ScopingAgent 必须用 AI 推荐补齐
+- `competitors` 长度 ≤ 5。当用户**点名 ≤1 个**竞品（`intent` / `mixed` 模式）时，ScopingAgent 必须用 AI 推荐补齐到 ∈ [3, 5]；当用户**显式点名 2+ 个**（`list` 模式）时精确保留、不补齐。补齐保证只在 LLM 路径生效（无 LLM 的本地/CI fallback 不补齐）
 - `dimensions` 中 `layer="core"` 的恰好 4 项（功能树 / 定价 / 画像 / SWOT），不可缺失，可改名
 - `dimensions` 中 `source="ai_suggested"` 的条目 ≤ 4——`source="user_added"` 不计入此上限
 - 输出**幂等**——同样的输入两次调用应给出**结构相同**（顺序可不同）的草案，方便用户多次「重新生成」时不大幅震荡
