@@ -16,8 +16,8 @@ import { cn } from "@/lib/utils";
 const DEMO_PIPELINE = [
   { agent: "CollectorAgent", label: "Collector", role: "公开数据采集 + 溯源" },
   { agent: "AnalystAgent", label: "Analyst", role: "Schema 抽取 + 结构化" },
-  { agent: "WriterAgent", label: "Writer", role: "章节渲染 + 摘要" },
   { agent: "QAAgent", label: "QA", role: "字段校验 + 反馈闭环" },
+  { agent: "WriterAgent", label: "Writer", role: "章节渲染 + 摘要" },
 ] as const;
 
 const COMPRESS_FACTOR_REDUCED = 0.2; // play at 5× when prefers-reduced-motion

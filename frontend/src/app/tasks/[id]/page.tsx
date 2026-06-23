@@ -23,14 +23,15 @@ import {
 } from "@/lib/api/tasks";
 import { cn } from "@/lib/utils";
 
-// Pipeline order matches the real LangGraph DAG: Collector → Analyst → Writer → QA,
-// with QA looping back to Collector. QA sits last so the feedback arc reads
-// right-to-left (QA → Collector).
+// Pipeline order matches the real LangGraph DAG: Collector → Analyst → QA → Writer.
+// QA gates the structured analysis before Writer renders it; on a blocker QA loops
+// back to Collector (the feedback arc beneath spans QA → Collector, with Writer
+// sitting downstream outside the loop).
 const PIPELINE: { agent: string; label: string; role: string }[] = [
   { agent: "CollectorAgent", label: "Collector", role: "公开数据采集 + 溯源" },
   { agent: "AnalystAgent", label: "Analyst", role: "Schema 抽取 + 结构化" },
-  { agent: "WriterAgent", label: "Writer", role: "章节渲染 + 摘要" },
   { agent: "QAAgent", label: "QA", role: "字段校验 + 反馈闭环" },
+  { agent: "WriterAgent", label: "Writer", role: "章节渲染 + 摘要" },
 ];
 const AGENT_ORDER = PIPELINE.map((node) => node.agent);
 type RunStatus = RunRecord["status"];
@@ -211,7 +212,7 @@ export default function TaskRunPage() {
               Agent 协作正在运行
             </h1>
             <p className="mt-3 max-w-[58ch] text-sm leading-relaxed text-muted-foreground">
-              后端 LangGraph 正在按 Collector、Analyst、Writer、QA 顺序推进；
+              后端 LangGraph 正在按 Collector、Analyst、QA、Writer 顺序推进；
               QA 发现 blocker 时会在事件流中显示打回与补采信号。
             </p>
           </div>
