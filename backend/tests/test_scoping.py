@@ -161,6 +161,70 @@ def test_anchor_keeps_known_competitor_chips_on_regenerate() -> None:
     assert names.count("Cursor") == 1
 
 
+def test_single_named_competitor_is_padded_to_minimum() -> None:
+    # User named exactly one competitor: the model returns it alone (list-ish),
+    # so the deterministic floor must pad with ai_recommended peers to reach 3-5
+    # and reclassify the result as 'mixed'.
+    first: dict[str, object] = {
+        "intent_mode": "list",
+        "competitors": [{"name": "Trae", "source": "nl_extracted", "reason": "x"}],
+        "named_in_brief": ["Trae"],
+        "extension_dimensions": [
+            {"title": "模型与上下文能力", "intent": "对比底层模型与上下文窗口。"},
+            {"title": "IDE 与生态集成", "intent": "评估编辑器集成深度与插件生态。"},
+        ],
+        "clarification_questions": [],
+        "rationale": "...",
+    }
+    padding: dict[str, object] = {
+        "competitors": [
+            {"name": "Cursor", "source": "ai_recommended", "reason": "同赛道"},
+            {"name": "GitHub Copilot", "source": "ai_recommended", "reason": "同赛道"},
+        ],
+    }
+    llm = _fake_llm_seq([first, padding])
+    request = ScopingRequest(user_brief="分析 Trae", known_competitors=["Trae"])
+    draft = asyncio.run(ScopingAgent()._run_llm(request, llm))
+    contract = draft.scope_contract
+    names = [c.name for c in contract.competitors]
+
+    assert "Trae" in names
+    assert len(names) >= 3
+    trae = next(c for c in contract.competitors if c.name == "Trae")
+    assert trae.source == "nl_extracted"
+    assert any(c.source == "ai_recommended" for c in contract.competitors)
+    assert contract.intent_mode == "mixed"
+
+
+def test_intent_mode_competitors_padded_when_llm_returns_too_few() -> None:
+    # Pure intent (no named products) where the model under-delivers: a single
+    # ai_recommended must be topped up to >=3, staying 'intent'.
+    first: dict[str, object] = {
+        "intent_mode": "intent",
+        "competitors": [{"name": "抖音", "source": "ai_recommended", "reason": "龙头"}],
+        "named_in_brief": [],
+        "extension_dimensions": [
+            {"title": "内容生态与创作者激励", "intent": "评估创作者供给与激励。"},
+        ],
+        "clarification_questions": [],
+        "rationale": "...",
+    }
+    padding: dict[str, object] = {
+        "competitors": [
+            {"name": "快手", "source": "ai_recommended", "reason": "同赛道"},
+            {"name": "视频号", "source": "ai_recommended", "reason": "同赛道"},
+        ],
+    }
+    llm = _fake_llm_seq([first, padding])
+    request = ScopingRequest(user_brief="帮我看看短视频电商赛道", known_competitors=[])
+    draft = asyncio.run(ScopingAgent()._run_llm(request, llm))
+    contract = draft.scope_contract
+
+    assert len(contract.competitors) >= 3
+    assert all(c.source == "ai_recommended" for c in contract.competitors)
+    assert contract.intent_mode == "intent"
+
+
 def test_empty_extension_dimensions_retry_succeeds() -> None:
     # A weak model returns [] on the first pass; the forced retry produces real
     # dimensions, which must land in the contract instead of the floor.

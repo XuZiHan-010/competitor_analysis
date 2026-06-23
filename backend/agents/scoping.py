@@ -20,14 +20,6 @@ logger = structlog.get_logger(__name__)
 IntentMode = Literal["list", "intent", "mixed"]
 
 
-def _coerce_intent_mode(value: object) -> IntentMode:
-    if value == "list":
-        return "list"
-    if value == "mixed":
-        return "mixed"
-    return "intent"
-
-
 SCOPING_SYSTEM_PROMPT = (
     "You are ScopingAgent. Return JSON matching this exact schema:\n"
     "{\n"
@@ -64,6 +56,9 @@ SCOPING_SYSTEM_PROMPT = (
     "- 'intent': 3-5 competitors, all source='ai_recommended'.\n"
     "- 'mixed': the named ones (nl_extracted) + enough ai_recommended to "
     "reach 3-5.\n"
+    "SINGLE-NAME RULE: when the brief names EXACTLY ONE product, treat it as "
+    "'mixed' — keep that one as nl_extracted AND add ai_recommended peers "
+    "until the list reaches 3-5. Never return a lone competitor.\n"
     "Examples:\n"
     "- '对比 Trae、Cursor、GitHub Copilot 在 AI 编程辅助上的差异，重点关注"
     "开发者体验与定价' → named_in_brief=['Trae','Cursor','GitHub Copilot'], "
@@ -126,7 +121,6 @@ class ScopingAgent:
                 self._build_user_message(request),
             ],
         )
-        intent_mode = _coerce_intent_mode(payload.get("intent_mode"))
         raw_competitors = payload.get("competitors", [])
         competitors: list[CompetitorCandidate] = []
         for item in raw_competitors[:5]:
@@ -149,9 +143,9 @@ class ScopingAgent:
                     rationale=str(reason).strip() if reason else "LLM scoped competitor",
                 )
             )
-        competitors, intent_mode = self._anchor_named_competitors(
-            competitors, request, payload, intent_mode
-        )
+        competitors = self._anchor_named_competitors(competitors, request, payload)
+        competitors = await self._ensure_minimum_competitors(competitors, request, llm)
+        intent_mode = self._derive_intent_mode(competitors)
         # The 4 cores always ship; extension dimensions are the LLM's value-add.
         # A weak model (debug-tier gpt-4o-mini) breaks STEP 4 two ways: returns []
         # despite the prompt forbidding it, OR echoes the 4 cores back verbatim as
@@ -304,8 +298,7 @@ class ScopingAgent:
         competitors: list[CompetitorCandidate],
         request: ScopingRequest,
         payload: dict[str, object],
-        intent_mode: IntentMode,
-    ) -> tuple[list[CompetitorCandidate], IntentMode]:
+    ) -> list[CompetitorCandidate]:
         # The LLM occasionally drops or substitutes products the user explicitly
         # named, hallucinating a generic list instead. Re-anchor on deterministic
         # ground truth: any name the user supplied as a chip, or that appears
@@ -327,20 +320,105 @@ class ScopingAgent:
                 CompetitorCandidate(name=name, source="nl_extracted", rationale="brief 点名")
             )
         # Named competitors lead; model recommendations follow, capped at 5 total.
-        competitors = (anchored + competitors)[:5]
+        return (anchored + competitors)[:5]
 
-        # If the brief explicitly named products, it is not pure 'intent' mode —
-        # repair the classification the model may have gotten wrong.
-        if must_keep and intent_mode == "intent":
-            has_recommended = any(c.source == "ai_recommended" for c in competitors)
-            intent_mode = "mixed" if has_recommended else "list"
-        return competitors, intent_mode
+    async def _ensure_minimum_competitors(
+        self,
+        competitors: list[CompetitorCandidate],
+        request: ScopingRequest,
+        llm: LLMClient,
+    ) -> list[CompetitorCandidate]:
+        # PRD §六: competitors must reach 3-5. The 4-core dimensions have a
+        # deterministic floor; competitors cannot (names are domain-specific), so
+        # we guarantee the floor with a focused LLM call. Per product decision,
+        # only pad when the user explicitly named 0-1 competitors — an explicit
+        # list of 2+ stays exact (list mode, no padding).
+        named_count = sum(1 for c in competitors if c.source == "nl_extracted")
+        if named_count >= 2 or len(competitors) >= 3:
+            return competitors
+        try:
+            recommended = await self._recommend_competitors(request, llm, competitors)
+        except Exception:
+            logger.warning("scoping_competitor_padding_failed", exc_info=True)
+            return competitors
+        existing_lower = {c.name.lower() for c in competitors}
+        for name, reason in recommended:
+            key = name.lower()
+            if not name or key in existing_lower:
+                continue
+            existing_lower.add(key)
+            competitors.append(
+                CompetitorCandidate(name=name, source="ai_recommended", rationale=reason)
+            )
+            if len(competitors) >= 5:
+                break
+        if len(competitors) < 3:
+            logger.warning(
+                "scoping_competitor_floor_unmet", count=len(competitors)
+            )
+        return competitors
+
+    async def _recommend_competitors(
+        self,
+        request: ScopingRequest,
+        llm: LLMClient,
+        existing: list[CompetitorCandidate],
+    ) -> list[tuple[str, str]]:
+        settings = get_settings()
+        existing_names = [c.name for c in existing]
+        payload = await llm.complete_json(
+            provider="openai",
+            model=settings.scoping_model,
+            messages=[
+                {"role": "system", "content": SCOPING_SYSTEM_PROMPT},
+                self._build_user_message(request),
+                {
+                    "role": "user",
+                    "content": (
+                        "当前竞品列表过短（少于 3 个）。请基于 brief 与已有竞品所在的"
+                        f"赛道，推荐足够多的「同价位 / 同目标人群」竞品，使总数达到 3-5 个。"
+                        f"已有竞品（不要重复）：{existing_names}。只返回此 JSON："
+                        '{"competitors": [{"name": "X", "source": "ai_recommended", '
+                        '"reason": "为何同赛道"}]}'
+                    ),
+                },
+            ],
+        )
+        raw = payload.get("competitors", [])
+        results: list[tuple[str, str]] = []
+        if isinstance(raw, list):
+            for item in raw:
+                if isinstance(item, dict):
+                    name = str(item.get("name", item.get("product", ""))).strip()
+                    reason = item.get("reason") or item.get("rationale")
+                else:
+                    name = str(item).strip()
+                    reason = None
+                if name:
+                    results.append(
+                        (name, str(reason).strip() if reason else "AI 推荐的同赛道竞品")
+                    )
+        return results
+
+    @staticmethod
+    def _derive_intent_mode(competitors: list[CompetitorCandidate]) -> IntentMode:
+        # Classify from the final competitor sources rather than trusting the
+        # model's self-reported mode: named + recommended → mixed, only named →
+        # list, only recommended → intent.
+        has_named = any(c.source == "nl_extracted" for c in competitors)
+        has_recommended = any(c.source == "ai_recommended" for c in competitors)
+        if has_named and has_recommended:
+            return "mixed"
+        if has_named:
+            return "list"
+        return "intent"
 
     def _run_fallback(self, request: ScopingRequest) -> ScopingDraft:
         # No LLM available: we can only honor competitors the caller already named
-        # (chips on regenerate, or the brief on first call). We do NOT pad the list,
-        # matching the list-mode contract. With no names there is nothing to scope,
-        # so we raise — the frontend has a graceful degrade path for this.
+        # (chips on regenerate, or the brief on first call). We do NOT pad the list
+        # — the 3-5 floor guarantee lives only on the LLM path, since recommending
+        # real competitor names deterministically isn't possible. With no names
+        # there is nothing to scope, so we raise — the frontend degrades gracefully.
         competitors = self._competitors_from_request(request)
         if not competitors:
             raise ValueError(
