@@ -35,7 +35,7 @@ export function PricingTable({ tiers, sources }: PricingTableProps) {
                 {t.price}
               </td>
               <td className="py-2.5 text-muted-foreground">
-                {t.highlights.join(" · ")}
+                {(t.highlights ?? []).join(" · ")}
                 <CitationChips ids={t.source_ids} sources={sources} />
               </td>
             </tr>

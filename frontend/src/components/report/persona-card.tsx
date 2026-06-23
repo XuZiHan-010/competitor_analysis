@@ -26,7 +26,7 @@ export function PersonaCard({ persona, sources }: PersonaCardProps) {
         需求
       </p>
       <ul className="text-[12.5px] text-foreground/90 leading-relaxed space-y-0.5 mb-3">
-        {persona.needs.map((n, i) => (
+        {(persona.needs ?? []).map((n, i) => (
           <li key={i}>· {n}</li>
         ))}
       </ul>
@@ -35,7 +35,7 @@ export function PersonaCard({ persona, sources }: PersonaCardProps) {
         痛点
       </p>
       <ul className="text-[12.5px] text-foreground/90 leading-relaxed space-y-0.5 mb-3">
-        {persona.pain_points.map((p, i) => (
+        {(persona.pain_points ?? []).map((p, i) => (
           <li key={i}>· {p}</li>
         ))}
       </ul>
