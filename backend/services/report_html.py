@@ -1,16 +1,17 @@
-import re
 from collections.abc import Iterable, Mapping
 from html import escape
 from math import isfinite
 from typing import Any
 
 from schemas.report import Report
+from schemas.source import SourceCitation
 
 JsonMapping = Mapping[str, Any]
 
 
 def build_report_html(report: Report) -> str:
     sc = report_structured_content(report)
+    cite = CitationIndex(report.sources)
     title = text_value(sc.get("title")) or "竞品分析报告"
     subtitle = text_value(sc.get("subtitle"))
     summary = text_value(sc.get("summary"))
@@ -23,21 +24,17 @@ def build_report_html(report: Report) -> str:
         _metrics(report),
         _data_gaps_banner(sc),
         _field_gaps_banner(sc),
-        _feature_matrix(sc),
-        _pricing_table(sc),
-        _persona_cards(sc),
-        _swot_blocks(sc),
-        _extensions(sc),
+        _feature_matrix(sc, cite),
+        _pricing_table(sc, cite),
+        _persona_cards(sc, cite),
+        _swot_blocks(sc, cite),
+        _extensions(sc, cite),
         _cross_analysis(sc, index=5 + extension_count),
         _survey_insights(sc, index=6 + extension_count),
         _claims(report, index=7 + extension_count),
     ]
     body_before = "\n".join(section for section in pre_source_sections if section)
-    # CH.11 lists only sources whose id appears as a visible inline citation in the rendered
-    # body — not every id buried in hidden source_ids arrays. Scan the assembled HTML so the
-    # list matches what a reader can actually trace.
-    visible_ids = set(re.findall(r"src_[A-Za-z0-9_]+", body_before))
-    sources_section = _sources(report, index=8 + extension_count, visible_ids=visible_ids)
+    sources_section = _sources(cite, index=8 + extension_count)
     body = "\n".join(section for section in (body_before, sources_section) if section)
     return f"""<!doctype html>
 <html lang="{escape(report.language)}">
@@ -57,6 +54,122 @@ def build_report_html(report: Report) -> str:
 
 def report_structured_content(report: Report) -> JsonMapping:
     return as_mapping(report.structured_content)
+
+
+_TYPE_ABBREV = {
+    "official": "官",
+    "commercial": "商",
+    "media": "媒",
+    "user_feedback": "反",
+    "tech_community": "技",
+    "user_uploaded": "传",
+    "published_survey": "调",
+    "public_review": "公",
+    "app_review": "评",
+    "ai_simulated": "AI",
+}
+
+_FACTUAL_TYPES = {
+    "official",
+    "commercial",
+    "media",
+    "tech_community",
+    "user_feedback",
+    "user_uploaded",
+}
+_USER_VOICE_TYPES = {"app_review", "public_review", "published_survey"}
+
+
+class CitationIndex:
+    def __init__(self, sources: Iterable[SourceCitation]) -> None:
+        self._groups = self._build_groups(list(sources))
+        self._numbers: dict[str, int] = {}
+        self._sources: dict[str, SourceCitation] = {}
+        counter = 1
+        for _, group_sources in self._groups:
+            for source in group_sources:
+                if source.id in self._numbers:
+                    continue
+                self._numbers[source.id] = counter
+                self._sources[source.id] = source
+                counter += 1
+
+    def number(self, source_id: str) -> int | None:
+        return self._numbers.get(source_id)
+
+    def ordered_groups(self) -> list[tuple[str, list[tuple[int, SourceCitation]]]]:
+        groups: list[tuple[str, list[tuple[int, SourceCitation]]]] = []
+        for title, sources in self._groups:
+            numbered = [
+                (number, source)
+                for source in sources
+                if (number := self.number(source.id)) is not None
+            ]
+            if numbered:
+                groups.append((title, numbered))
+        return groups
+
+    def html_marker(self, source_ids: Any) -> str:
+        links = []
+        for source_id in _source_id_values(source_ids):
+            source = self._sources.get(source_id)
+            number = self.number(source_id)
+            if not source or number is None:
+                continue
+            type_abbrev = _TYPE_ABBREV.get(source.type, source.type[:2])
+            links.append(
+                f'<a class="cite" href="#{html_text(source.id)}" '
+                f'title="{html_text(source.title)}">S{number}·{html_text(type_abbrev)}</a>'
+            )
+        if not links:
+            return ""
+        return f'<sup class="cites">{"".join(links)}</sup>'
+
+    def markdown_marker(self, source_ids: Any) -> str:
+        markers = [
+            f"[S{number}]"
+            for source_id in _source_id_values(source_ids)
+            if (number := self.number(source_id)) is not None
+        ]
+        return "".join(markers)
+
+    @staticmethod
+    def _build_groups(
+        sources: list[SourceCitation],
+    ) -> list[tuple[str, list[SourceCitation]]]:
+        factual = [
+            source
+            for source in sources
+            if source.type in _FACTUAL_TYPES and not _is_simulated_source(source)
+        ]
+        user_voice = [source for source in sources if source.type in _USER_VOICE_TYPES]
+        simulated = [source for source in sources if _is_simulated_source(source)]
+        grouped_ids = {source.id for source in [*factual, *user_voice, *simulated]}
+        other = [source for source in sources if source.id not in grouped_ids]
+        return [
+            ("报告正文来源", [*factual, *other]),
+            ("用户声音来源", user_voice),
+            ("模拟 / 兜底来源", simulated),
+        ]
+
+
+def _is_simulated_source(source: SourceCitation) -> bool:
+    provider = source.provider.lower()
+    return (
+        source.type == "ai_simulated"
+        or "fallback" in provider
+        or "simulated" in provider
+    )
+
+
+def _source_id_values(value: Any) -> list[str]:
+    raw_values = value if isinstance(value, list) else [value]
+    seen: dict[str, None] = {}
+    for raw in raw_values:
+        source_id = text_value(raw)
+        if source_id:
+            seen.setdefault(source_id, None)
+    return list(seen)
 
 
 def as_mapping(value: Any) -> JsonMapping:
@@ -94,7 +207,16 @@ def list_text(value: Any, separator: str = "、") -> str:
 
 
 def swot_item_texts(block: JsonMapping, key: str) -> list[str]:
-    return [text for text in (text_value(item) for item in as_list(block.get(key))) if text]
+    return [text for text, _ in swot_item_entries(block, key)]
+
+
+def swot_item_entries(block: JsonMapping, key: str) -> list[tuple[str, list[str]]]:
+    entries: list[tuple[str, list[str]]] = []
+    for item in as_list(block.get(key)):
+        text = text_value(item)
+        if text:
+            entries.append((text, _source_id_values(as_mapping(item).get("source_ids"))))
+    return entries
 
 
 def feature_competitors(sc: JsonMapping, rows: list[Any]) -> list[str]:
@@ -293,7 +415,7 @@ def _field_gaps_banner(sc: JsonMapping) -> str:
 """
 
 
-def _feature_matrix(sc: JsonMapping) -> str:
+def _feature_matrix(sc: JsonMapping, cite: CitationIndex) -> str:
     feature_tree = as_mapping(sc.get("feature_tree"))
     rows = as_list(feature_tree.get("rows"))
     if not rows:
@@ -310,7 +432,7 @@ def _feature_matrix(sc: JsonMapping) -> str:
             for cell in as_list(row.get("cells"))
         }
         cells = [
-            f"<td><strong>{html_text(feature)}</strong>"
+            f"<td><strong>{html_text(feature)}</strong>{cite.html_marker(row.get('source_ids'))}"
             f"{f'<small>{html_text(description)}</small>' if description else ''}</td>"
         ]
         for competitor in competitors:
@@ -321,7 +443,7 @@ def _feature_matrix(sc: JsonMapping) -> str:
     return _chapter(1, "功能树", body)
 
 
-def _pricing_table(sc: JsonMapping) -> str:
+def _pricing_table(sc: JsonMapping, cite: CitationIndex) -> str:
     pricing = as_mapping(sc.get("pricing"))
     tiers = pricing_tiers(sc)
     if not tiers:
@@ -338,7 +460,7 @@ def _pricing_table(sc: JsonMapping) -> str:
         f"<td>{html_text(tier.get('competitor'))}</td>"
         f"<td>{html_text(tier.get('tier'))}</td>"
         f"<td class=\"price\">{html_text(tier.get('price'))}</td>"
-        f"<td>{html_text(list_text(tier.get('highlights')))}</td>"
+        f"<td>{html_text(list_text(tier.get('highlights')))}{cite.html_marker(tier.get('source_ids'))}</td>"
         "</tr>"
         for tier in tiers
     ]
@@ -348,7 +470,7 @@ def _pricing_table(sc: JsonMapping) -> str:
     return _chapter(2, "定价模型", body)
 
 
-def _persona_cards(sc: JsonMapping) -> str:
+def _persona_cards(sc: JsonMapping, cite: CitationIndex) -> str:
     persona_section = as_mapping(sc.get("user_personas"))
     items = personas(sc)
     if not items:
@@ -367,6 +489,7 @@ def _persona_cards(sc: JsonMapping) -> str:
             f"<p class=\"mini-heading\">需求</p>{needs}"
             f"<p class=\"mini-heading\">痛点</p>{pains}"
             f"{quote}"
+            f"{cite.html_marker(persona.get('source_ids'))}"
             "</article>"
         )
     body = _intro_paragraph(text_value(persona_section.get("intro"))) + (
@@ -375,7 +498,7 @@ def _persona_cards(sc: JsonMapping) -> str:
     return _chapter(3, "用户画像", body)
 
 
-def _swot_blocks(sc: JsonMapping) -> str:
+def _swot_blocks(sc: JsonMapping, cite: CitationIndex) -> str:
     swot = as_mapping(sc.get("swot"))
     blocks = swot_blocks(sc)
     if not blocks:
@@ -390,7 +513,10 @@ def _swot_blocks(sc: JsonMapping) -> str:
     for block in blocks:
         quadrants = []
         for key, label in labels:
-            items = "".join(f"<li>{html_text(item)}</li>" for item in swot_item_texts(block, key))
+            items = "".join(
+                f"<li>{html_text(item)}{cite.html_marker(source_ids)}</li>"
+                for item, source_ids in swot_item_entries(block, key)
+            )
             if items:
                 quadrants.append(f"<div><h4>{label}</h4><ul>{items}</ul></div>")
         if quadrants:
@@ -416,7 +542,7 @@ def _swot_blocks(sc: JsonMapping) -> str:
     return _chapter(4, "SWOT", body)
 
 
-def _extensions(sc: JsonMapping) -> str:
+def _extensions(sc: JsonMapping, cite: CitationIndex) -> str:
     sections = []
     for offset, ext in enumerate(extension_sections(sc), start=5):
         bullets = []
@@ -431,7 +557,7 @@ def _extensions(sc: JsonMapping) -> str:
                 bullets.append(
                     '<article class="card">'
                     f"<h3>{html_text(bullet.get('competitor'))}</h3>"
-                    f"<ul>{points}</ul></article>"
+                    f"<ul>{points}</ul>{cite.html_marker(bullet.get('source_ids'))}</article>"
                 )
         title = text_value(ext.get("title")) or text_value(ext.get("dimension_id"))
         summary = text_value(ext.get("summary"))
@@ -510,26 +636,33 @@ def _summary_findings(sc: JsonMapping) -> list[str]:
     return findings[:6]
 
 
-def _sources(report: Report, *, index: int, visible_ids: set[str]) -> str:
-    items = []
-    for source in report.sources:
-        if source.id not in visible_ids:
-            continue
-        title = text_value(source.title) or text_value(source.url) or source.id
-        url = text_value(source.url)
-        link = (
-            f'<a href="{html_text(url)}">{html_text(title)}</a>'
-            if url
-            else html_text(title)
+def _sources(cite: CitationIndex, *, index: int) -> str:
+    groups = []
+    for title, sources in cite.ordered_groups():
+        items = []
+        for number, source in sources:
+            source_title = text_value(source.title) or text_value(source.url) or source.id
+            url = text_value(source.url)
+            link = (
+                f'<a href="{html_text(url)}">{html_text(source_title)}</a>'
+                if url
+                else html_text(source_title)
+            )
+            type_abbrev = _TYPE_ABBREV.get(source.type, source.type[:2])
+            items.append(
+                f'<li id="{html_text(source.id)}">'
+                f"<strong>S{number}</strong> "
+                f'<span class="source-type">{html_text(type_abbrev)}</span> '
+                f"{link}<small>{html_text(source.id)}</small>"
+                "</li>"
+            )
+        groups.append(
+            f'<div class="source-group"><h3>{html_text(title)}</h3>'
+            f'<ol>{"".join(items)}</ol></div>'
         )
-        items.append(
-            "<li>"
-            f"<strong>{html_text(source.id)}</strong> {link}"
-            "</li>"
-        )
-    if not items:
+    if not groups:
         return ""
-    return _chapter(index, "来源", f'<ol>{"".join(items)}</ol>', class_name="sources")
+    return _chapter(index, "来源", "".join(groups), class_name="sources")
 
 
 def _table_section(title: str, headers: Iterable[str], rows: list[str]) -> str:
@@ -794,6 +927,28 @@ th {
   text-transform: uppercase;
 }
 td small, .sources small { display: block; color: #666666; margin-top: 3px; }
+.cites { white-space: nowrap; margin-left: 4px; font-size: 9px; vertical-align: super; }
+.cite {
+  border: 1px solid #d9d9d9;
+  border-radius: 3px;
+  color: #555555;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  margin-left: 2px;
+  padding: 0 3px;
+  text-decoration: none;
+}
+.source-group { margin-bottom: 14px; }
+.source-group h3 {
+  color: #666666;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 9px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+.source-type {
+  color: #666666;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+}
 .card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .card, .swot {
   border: 1px solid #d9d9d9;

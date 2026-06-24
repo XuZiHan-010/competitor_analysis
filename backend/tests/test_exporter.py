@@ -51,18 +51,12 @@ def _report(**overrides: object) -> Report:
 
 
 def test_build_report_html_renders_ui_like_sections_without_field_leaks() -> None:
-    structured = _structured_content()
-    feature_tree = structured["feature_tree"]
-    assert isinstance(feature_tree, dict)
-    rows = feature_tree["rows"]
-    assert isinstance(rows, list)
-    # CH.11 now lists only sources cited verbatim in visible prose, so the note must
-    # surface the id token for src_1 to reach the sources chapter.
-    rows[0]["cells"][0]["note"] = "稳定（src_1）"
-
-    html = build_report_html(_report(structured_content=structured))
+    html = build_report_html(_report())
 
     assert "<table>" in html
+    assert 'href="#src_1"' in html
+    assert "S1" in html
+    assert '<li id="src_1">' in html
     assert "功能树" in html
     assert "定价模型" in html
     assert "用户画像" in html
@@ -134,6 +128,8 @@ def test_render_markdown_uses_clean_tables_and_no_internal_fields() -> None:
     md = render_report_markdown(_report())
 
     assert "# Notion vs Lark" in md
+    assert "[S1]" in md
+    assert "`src_1`" in md
     assert "## 功能对比" in md
     assert "| 竞品 | 方案 | 价格 | 亮点 |" in md
     assert "生态强" in md

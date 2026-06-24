@@ -40,9 +40,14 @@ def prune_report_sources_to_references(
     sources: list[SourceCitation],
     claims: list[ReportClaim],
     structured_content: dict[str, Any],
+    markdown_content: str = "",
 ) -> tuple[list[SourceCitation], list[ReportClaim], dict[str, Any], dict[str, str]]:
     referenced_ids = {source_id for claim in claims for source_id in claim.source_ids}
     referenced_ids.update(source_ids_from_payload(structured_content))
+    # Inline citations in free-text (e.g. extension intros) are not in source_ids arrays;
+    # scan the markdown so CH.12 lists every source the reader can actually see in the body.
+    if markdown_content:
+        referenced_ids.update(re.findall(r"\bsrc_[A-Za-z0-9_]+", markdown_content))
 
     id_mapping: dict[str, str] = {}
     canonical_by_key: dict[str, SourceCitation] = {}

@@ -25,21 +25,19 @@ def _metrics() -> ReportMetrics:
     )
 
 
-def test_sources_list_only_includes_visible_citations() -> None:
-    # src_visible is written verbatim into a rendered cell note; src_hidden_only lives only in a
-    # hidden source_ids array and is never surfaced to the reader.
+def test_sources_list_renders_structured_source_ids() -> None:
     structured_content = {
-        "title": "竞品分析报告",
+        "title": "Report",
         "feature_tree": {
             "rows": [
                 {
-                    "feature": "可视化工作流",
+                    "feature": "Workflow",
                     "source_ids": ["src_hidden_only"],
                     "cells": [
                         {
-                            "competitor": "飞书",
+                            "competitor": "Lark",
                             "status": "supported",
-                            "note": "飞书提供可视化工作流（src_visible）。",
+                            "note": "Lark provides workflow.",
                             "source_ids": ["src_hidden_only"],
                         }
                     ],
@@ -58,8 +56,10 @@ def test_sources_list_only_includes_visible_citations() -> None:
 
     html = build_report_html(report)
 
-    assert "src_visible" in html
-    assert "src_hidden_only" not in html
+    assert 'href="#src_hidden_only"' in html
+    assert '<li id="src_hidden_only">' in html
+    assert '<li id="src_visible">' in html
+    assert "S2" in html
 
 
 def _report_with_gaps(*, data_gap_competitors: list[str], competitors: list[str]) -> Report:
@@ -119,10 +119,10 @@ def test_quality_banner_absent_when_passed() -> None:
     assert "部分可用" not in html
 
 
-def test_sources_section_omitted_when_no_visible_citations() -> None:
+def test_sources_section_lists_unused_sources_but_omits_empty_source_set() -> None:
     report = Report(
         task_id=uuid4(),
-        structured_content={"title": "竞品分析报告"},
+        structured_content={"title": "Report"},
         markdown_content="",
         sources=[_source("src_unused")],
         claims=[],
@@ -131,6 +131,18 @@ def test_sources_section_omitted_when_no_visible_citations() -> None:
 
     html = build_report_html(report)
 
-    assert "src_unused" not in html
-    # The sources chapter (class="chapter sources") is omitted entirely when nothing is cited.
-    assert "chapter sources" not in html
+    assert '<li id="src_unused">' in html
+    assert "chapter sources" in html
+
+    empty_report = Report(
+        task_id=uuid4(),
+        structured_content={"title": "Report"},
+        markdown_content="",
+        sources=[],
+        claims=[],
+        metrics=_metrics(),
+    )
+
+    empty_html = build_report_html(empty_report)
+
+    assert "chapter sources" not in empty_html

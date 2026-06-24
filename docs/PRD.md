@@ -399,6 +399,7 @@ class ScopingDraft(BaseModel):
 - 网页结构（JSON，前端渲染用）
 - Markdown 全文（用于 PDF/PPTX 导出）
 - 每段文字带 `source_ids` 引用，前端渲染时变成可点击的溯源链接
+- PDF / Markdown 导出与网页一致渲染内联 `[S1]` 标注和分组来源列表，保证下载件可追溯
 - 多语言报告（P1 答辩前必达）：支持 `language="zh" | "en"`；英文版复用中文报告的 claim/source 结构，只改写语言表达，不允许删除 `source_ids` 或新增无来源结论
 
 **关键约束**: 不允许产生不带引用的结论（强制引用机制，抑制幻觉），核心层和扩展层一视同仁

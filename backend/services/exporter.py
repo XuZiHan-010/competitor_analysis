@@ -9,6 +9,7 @@ from typing import Any, cast
 
 from schemas.report import Report
 from services.report_html import (
+    CitationIndex,
     JsonMapping,
     as_list,
     as_mapping,
@@ -23,7 +24,7 @@ from services.report_html import (
     status_with_note,
     survey_results,
     swot_blocks,
-    swot_item_texts,
+    swot_item_entries,
     text_value,
 )
 
@@ -48,6 +49,7 @@ def render_report_markdown(report: Report) -> str:
     store a placeholder markdown_content for historical reports.
     """
     sc = report_structured_content(report)
+    cite = CitationIndex(report.sources)
     lines: list[str] = [f"# {text_value(sc.get('title')) or '竞品分析报告'}"]
 
     subtitle = text_value(sc.get("subtitle"))
@@ -57,14 +59,15 @@ def render_report_markdown(report: Report) -> str:
     if summary:
         lines += ["", summary]
 
-    _append_feature_matrix(lines, sc)
-    _append_pricing(lines, sc)
-    _append_personas(lines, sc)
-    _append_swot(lines, sc)
-    _append_extensions(lines, sc)
+    _append_feature_matrix(lines, sc, cite)
+    _append_pricing(lines, sc, cite)
+    _append_personas(lines, sc, cite)
+    _append_swot(lines, sc, cite)
+    _append_extensions(lines, sc, cite)
     _append_cross_analysis(lines, sc)
     _append_survey(lines, sc)
-    _append_claims(lines, report)
+    _append_claims(lines, report, cite)
+    _append_sources(lines, cite)
 
     return "\n".join(lines) + "\n"
 
@@ -184,7 +187,7 @@ def _launch_pdf_browser(playwright: Any, error_type: type[Exception]) -> Any:
     raise PdfRenderError(hint) from last_error
 
 
-def _append_feature_matrix(lines: list[str], sc: JsonMapping) -> None:
+def _append_feature_matrix(lines: list[str], sc: JsonMapping, cite: CitationIndex) -> None:
     feature_tree = as_mapping(sc.get("feature_tree"))
     rows = as_list(feature_tree.get("rows"))
     if not rows:
@@ -202,6 +205,7 @@ def _append_feature_matrix(lines: list[str], sc: JsonMapping) -> None:
         feature = text_value(row.get("feature"))
         description = text_value(row.get("description"))
         feature_cell = f"{feature} - {description}" if description else feature
+        feature_cell += cite.markdown_marker(row.get("source_ids"))
         values = [
             feature_cell,
             *[
@@ -212,7 +216,7 @@ def _append_feature_matrix(lines: list[str], sc: JsonMapping) -> None:
         _append_table_row(lines, values)
 
 
-def _append_pricing(lines: list[str], sc: JsonMapping) -> None:
+def _append_pricing(lines: list[str], sc: JsonMapping, cite: CitationIndex) -> None:
     tiers = pricing_tiers(sc)
     if not tiers:
         return
@@ -226,12 +230,12 @@ def _append_pricing(lines: list[str], sc: JsonMapping) -> None:
                 text_value(tier.get("competitor")),
                 text_value(tier.get("tier")),
                 text_value(tier.get("price")),
-                list_text(tier.get("highlights")),
+                list_text(tier.get("highlights")) + cite.markdown_marker(tier.get("source_ids")),
             ],
         )
 
 
-def _append_personas(lines: list[str], sc: JsonMapping) -> None:
+def _append_personas(lines: list[str], sc: JsonMapping, cite: CitationIndex) -> None:
     items = personas(sc)
     if not items:
         return
@@ -247,12 +251,13 @@ def _append_personas(lines: list[str], sc: JsonMapping) -> None:
                 text_value(persona.get("size")),
                 list_text(persona.get("needs")),
                 list_text(persona.get("pain_points")),
-                text_value(persona.get("evidence")),
+                text_value(persona.get("evidence"))
+                + cite.markdown_marker(persona.get("source_ids")),
             ],
         )
 
 
-def _append_swot(lines: list[str], sc: JsonMapping) -> None:
+def _append_swot(lines: list[str], sc: JsonMapping, cite: CitationIndex) -> None:
     blocks = swot_blocks(sc)
     if not blocks:
         return
@@ -269,12 +274,16 @@ def _append_swot(lines: list[str], sc: JsonMapping) -> None:
         if competitor:
             lines.append(f"### {competitor}")
         for key, label in labels:
-            items = swot_item_texts(block, key)
+            entries = swot_item_entries(block, key)
+            items = [
+                f"{item}{cite.markdown_marker(source_ids)}"
+                for item, source_ids in entries
+            ]
             if items:
                 lines.append(f"- {label}: {'；'.join(items)}")
 
 
-def _append_extensions(lines: list[str], sc: JsonMapping) -> None:
+def _append_extensions(lines: list[str], sc: JsonMapping, cite: CitationIndex) -> None:
     extensions = extension_sections(sc)
     if not extensions:
         return
@@ -293,6 +302,7 @@ def _append_extensions(lines: list[str], sc: JsonMapping) -> None:
             competitor = text_value(bullet.get("competitor"))
             points = [text_value(point) for point in as_list(bullet.get("points"))]
             rendered = "；".join(point for point in points if point)
+            rendered += cite.markdown_marker(bullet.get("source_ids"))
             if competitor or rendered:
                 lines.append(f"- {competitor}: {rendered}" if competitor else f"- {rendered}")
 
@@ -317,12 +327,30 @@ def _append_survey(lines: list[str], sc: JsonMapping) -> None:
         lines += ["", "## 调研洞察", *insight_lines]
 
 
-def _append_claims(lines: list[str], report: Report) -> None:
+def _append_claims(lines: list[str], report: Report, cite: CitationIndex) -> None:
     claim_lines = [
-        f"- {claim.claim_text.strip()}" for claim in report.claims if claim.claim_text.strip()
+        f"- {claim.claim_text.strip()}{cite.markdown_marker(claim.source_ids)}"
+        for claim in report.claims
+        if claim.claim_text.strip()
     ]
     if claim_lines:
         lines += ["", "## 关键结论", *claim_lines]
+
+
+def _append_sources(lines: list[str], cite: CitationIndex) -> None:
+    groups = cite.ordered_groups()
+    if not groups:
+        return
+
+    lines += ["", "### 来源"]
+    for title, sources in groups:
+        lines += ["", f"#### {title}"]
+        for number, source in sources:
+            source_title = text_value(source.title) or text_value(source.url) or source.id
+            url = text_value(source.url)
+            label = f"[S{number}]"
+            linked_title = f"[{source_title}]({url})" if url else source_title
+            lines.append(f"{number}. {label} {linked_title} — `{source.id}`")
 
 
 def _append_table(lines: list[str], headers: Iterable[object]) -> None:
