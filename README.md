@@ -2,7 +2,7 @@
 
 > 字节跳动 AI 编程大赛参赛作品 · 3 周开发周期
 
-多 Agent 协作的竞品分析系统。用户以自然语言描述需求，5 个专职 Agent 自动完成"采集 → 分析 → 撰写 → 质检"全流程，5-10 分钟内产出结构化竞品报告，支持网页交互 / PDF / Markdown 三种导出格式。
+多 Agent 协作的竞品分析系统。用户以自然语言描述需求，5 个专职 Agent 自动完成"采集 → 分析 → 撰写 → 质检"全流程，5-10 分钟内产出结构化竞品报告，支持 PDF / Markdown 导出格式。
 
 
 本项目为个人参赛作品。GitHub Contributors 中出现的两个账号均为本人账号：
@@ -21,11 +21,11 @@ CollectorAgent  — 多源采集（官网 / 搜索 / 应用商店 / 评论）
     ↓
 AnalystAgent    — 结构化分析，写入 Schema（功能树 / 定价 / 画像 / SWOT + 扩展维度）
     ↓
-WriterAgent     — 生成报告草稿
-    ↓
 QAAgent         — 质检，不通过则打回上游重做（反馈闭环）
     ↓
-结构化报告（网页 / PDF / Markdown）
+WriterAgent     — 生成报告草稿
+    ↓
+结构化报告（PDF / Markdown）
 ```
 
 LangGraph 驱动 DAG，Agent 间通过 `WorkflowState` 结构化消息通信，前端实时显示进度。
