@@ -483,6 +483,7 @@ class WriterAgent:
             sources=sources,
             claims=claims,
             structured_content=structured_content,
+            markdown_content=markdown,
         )
         markdown = remap_markdown_source_ids(markdown, id_mapping)
         assert_report_sources_resolvable(

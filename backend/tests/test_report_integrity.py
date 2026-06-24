@@ -72,6 +72,24 @@ def test_prune_report_sources_keeps_only_referenced_and_remaps_duplicate_urls() 
     )
 
 
+def test_prune_report_sources_keeps_inline_markdown_citations() -> None:
+    """Sources cited only as inline text (e.g. extension intros) must survive pruning."""
+    sources = [
+        _source("src_inline_only"),
+        _source("src_unused"),
+    ]
+    markdown = "分析如下（来源：src_inline_only）：内容详情。"
+
+    pruned_sources, _, _, _ = prune_report_sources_to_references(
+        sources=sources,
+        claims=[],
+        structured_content={},
+        markdown_content=markdown,
+    )
+
+    assert [s.id for s in pruned_sources] == ["src_inline_only"]
+
+
 def test_prune_report_sources_keeps_unresolved_references_visible() -> None:
     pruned_sources, remapped_claims, remapped_content, _ = prune_report_sources_to_references(
         sources=[_source("src_a")],
