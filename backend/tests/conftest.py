@@ -38,17 +38,18 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         item.add_marker(pytest.mark.unit)
 
 
-@pytest.hookimpl(optionalhook=True)
-def pytest_asyncio_loop_factories() -> (
-    dict[str, Callable[[], asyncio.AbstractEventLoop]] | None
-):
-    if sys.platform != "win32":
-        return None
+# psycopg cannot run on Windows' ProactorEventLoop, so on Windows we force
+# pytest-asyncio onto a SelectorEventLoop. pytest-asyncio 1.4 treats a *registered*
+# pytest_asyncio_loop_factories hook that returns None as a UsageError, so only define
+# the hook on Windows; elsewhere its absence lets pytest-asyncio use its own default.
+if sys.platform == "win32":
 
-    def selector_loop() -> asyncio.AbstractEventLoop:
-        return asyncio.SelectorEventLoop(selectors.SelectSelector())
+    @pytest.hookimpl(optionalhook=True)
+    def pytest_asyncio_loop_factories() -> dict[str, Callable[[], asyncio.AbstractEventLoop]]:
+        def selector_loop() -> asyncio.AbstractEventLoop:
+            return asyncio.SelectorEventLoop(selectors.SelectSelector())
 
-    return {"selector": selector_loop}
+        return {"selector": selector_loop}
 
 
 @pytest.fixture(autouse=True)

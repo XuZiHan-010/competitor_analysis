@@ -64,11 +64,6 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Disable two pytest plugins we don't use: anyio's and langsmith's. Async tests run
-# on pytest-asyncio; when those plugins drift to a version that registers an empty
-# pytest_asyncio_loop_factories hookimpl, pytest-asyncio 1.4+ raises UsageError and
-# fails collection of every async test. `-p no:` is a no-op where they're absent.
-addopts = "-p no:anyio -p no:langsmith_plugin"
 markers = [
   "unit: deterministic tests without external infrastructure",
   "integration: tests requiring temporary PostgreSQL/pgvector or Redis",
