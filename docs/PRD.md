@@ -163,7 +163,7 @@
 |---|------|---------|------|
 | 1 | **SSE 心跳 + Last-Event-ID 幂等重连** | `frontend/src/hooks/useTaskStream.ts` + `backend/api/routes/stream.py` | 15s 空闲发 `__heartbeat__`；断线重连传 `Last-Event-ID` 头，服务端从该 event 之后续推 |
 | 2 | **Tool Error Wrapper** | `backend/services/agents/wrappers.py` | 所有 Agent 工具调用（`web_search` / `fetch_page` / `SurveyTool` / `app_review_fetch`）统一包装：异常转成 `ToolMessage(error_content)`，不挂掉整个 DAG；写入 `trace_log` `stage="tool.error"` |
-| 3 | **@traced_node 装饰器** | `backend/services/agents/decorators.py` | 每个 LangGraph 节点函数挂 `@traced_node`，自动记录 `{stage, prompt_hash, input_summary, output_summary, tokens_in, tokens_out, cost_usd, latency_ms, failure_reason}` 到 `agent_traces` 表，节点代码不手写 trace（`cost_usd` 按 §五.X 模型单价 × token 估算） |
+| 3 | **@traced_node 装饰器** | `backend/services/agents/decorators.py` | 每个 LangGraph 节点函数挂 `@traced_node`；进入节点时 best-effort 推送纯 SSE `node.started`（不落库、不占 `sequence_no`），结束时自动记录 `{stage, prompt_hash, input_summary, output_summary, tokens_in, tokens_out, cost_usd, latency_ms, failure_reason}` 到 `agent_traces` 表并推送 `node.succeeded` / `node.failed`，节点代码不手写 trace（`cost_usd` 按 §五.X 模型单价 × token 估算） |
 | 4 | **StreamBridge 抽象（producer/consumer 解耦）** | `backend/services/streaming/bridge.py` | 抽象 `publish(run_id, event)` / `subscribe(run_id) → AsyncIterator`；MVP 用内存实现，生产化平滑切 Redis（详见 §十一-ter 设计钩子 6） |
 | 5 | **RunRecord 任务生命周期** | `task_runs` 表（详见 §十）+ `backend/services/runs/manager.py` | `{run_id, task_id, status, error, checkpoint_id, started_at, completed_at}`；`checkpoint_id` 与 LangGraph PostgresCheckpointer 的 `thread_id` 一一对应，支持"刷新页面后任务还在跑 + 失败从中断点续跑" |
 | 6 | **Workflow 全局 deadline + 可读 timeout 摘要** | `backend/graph/workflow.py` + `backend/services/runs/manager.py` | 单次 DAG 有硬上限，防止长任务无限挂起；到点后 `error_summary` 必须包含 `exception_class/message/stage_hint/deadline_seconds`，前端显示中文可读原因而不是裸 `TimeoutError` |
@@ -293,7 +293,7 @@ class ScopingDraft(BaseModel):
   - `SearchProvider` Protocol 抽象，按**层（tier）**组织：主层 `TavilyProvider` + `DuckDuckGoProvider`（DuckDuckGo 免 key、`ddgs` 库、线程池执行），兜底层 `SerpApiProvider`
   - **分层策略**：同一层内的 provider 并行查询 + 结果合并去重（按 URL）；**首个有结果的层即返回，下层不触碰**——主层（Tavily+DuckDuckGo）命中时绝不消耗 SerpApi 的稀缺配额
   - **并发限流 + 配额熔断**：全局 `asyncio.Semaphore` 限制同时在飞的搜索请求数（防 429 洪泛）；某 provider 返回永久配额错误（Tavily 432 / `PermanentProviderError`）后，本次分析后续所有查询直接跳过它（跨层生效）
-  - **全失败**：写入采集 errors 并保留节点可观测性；后续由 QA 根据字段缺口触发最多 1 次有效重跑，明确命中竞品时 scoped retry
+  - **全失败**：`SearchUnavailableError.permanent` 区分“全部 provider 永久耗尽”与“仍含瞬态/空结果”；Collector 将其写入 `RawCollectionResult.unrecoverable`，QA 对不可恢复失败直接停止无效重试，其余字段缺口最多触发 1 次有效重跑，明确命中竞品时 scoped retry
   - **启动时探测**：按 `TAVILY_API_KEY` / `SERPAPI_API_KEY` 可用性与 `duckduckgo_enabled` 开关自动构建分层；任一层非空即可工作（DuckDuckGo 免 key，故无任何付费 key 时仍可真实采集）
   - 返回的每条 `SourceCitation` 含 `provider` 字段（记录实际使用的 provider 实现名）
   - 代码路径：`backend/services/search/`（`providers.py` / `tavily.py` / `duckduckgo.py` / `serpapi.py` / `hybrid.py`）
@@ -330,7 +330,7 @@ class ScopingDraft(BaseModel):
 **输出 Schema** (`RawCollectionResult`):
 ```json
 {
-  "competitor": "string",
+  "competitor_name": "string",
   "sources": [
     {
       "type": "official_site | search | app_store_review | published_survey | public_review | ai_simulated",
@@ -341,7 +341,10 @@ class ScopingDraft(BaseModel):
       "raw_content": "string"
     }
   ],
-  "completeness_score": "0-1"  // 自评，给质检 Agent 用
+  "completeness_score": "0-1",
+  "skipped_urls": ["string"],
+  "errors": ["string"],
+  "unrecoverable": "boolean"  // 搜索失败是否全部为永久错误；QA 用它阻止无效重试
 }
 ```
 
@@ -438,6 +441,7 @@ class ScopingDraft(BaseModel):
 **实现注记（2026-06-09 补齐）**：
 - QAAgent 已补齐核心层 Schema 完整性 blocker：功能矩阵 `unknown` 占比过高、定价 tiers 缺失、用户画像缺失、SWOT 象限过少都会触发打回 Collector。
 - Collector 在搜索结果进入抓取前后执行来源相关性闸门，优先保留官网、产品页、应用商店、行业媒体和可信评论，丢弃仅把竞品当作学术样本提及的离题来源，并将 `dropped_irrelevant` 写入采集 errors。
+- Collector 将 provider 永久失败结构化为 `RawCollectionResult.unrecoverable`；QA 优先消费该字段，仅对旧数据保留错误文本兜底，并忽略 `dropped_irrelevant` URL 中偶然出现的 `429/403` 数字，避免把正常相关性过滤误判为配额耗尽。
 - QA retry 达到上限后，`WorkflowState.field_verification_status` 记录字段级未确认状态，Writer 在报告和指标中以"未确认/公开信息未发现"方式诚实降级，不再把 `unknown` 当作已覆盖字段。
 
 **correction_detected 信号**：QAAgent 输出 retryable blocker 时同步在 `WorkflowState.feedback_signals` 写入 `correction_detected: {target_agent, retry_count, issues}`，其中 `issues[].target_competitor` 是 scoped retry 的依据。若所有 issue 都有明确且合法的 `target_competitor`，Collector/Analyst 只重跑这些竞品并复用其他竞品的 `raw_collections`、`survey_results`、`structured_profiles` 与 `extension_findings`；若缺少明确目标则全量重跑，保证正确性优先。

@@ -50,6 +50,29 @@ def _report(**overrides: object) -> Report:
     return Report(**base)
 
 
+def test_reference_list_shows_authority_tier() -> None:
+    report = _report(
+        sources=[
+            SourceCitation(
+                id="src_1",
+                type="official",
+                url="https://example.com/a",
+                title="来源 A",
+                snippet="片段",
+                provider="test",
+                dimension_id="core.feature_tree",
+                tier="A",
+            )
+        ]
+    )
+
+    html = build_report_html(report)
+    markdown = render_report_markdown(report)
+
+    assert '<span class="source-tier">[A]</span>' in html
+    assert "[S1][A]" in markdown
+
+
 def test_build_report_html_renders_ui_like_sections_without_field_leaks() -> None:
     html = build_report_html(_report())
 

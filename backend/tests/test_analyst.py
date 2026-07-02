@@ -3,7 +3,12 @@ from math import isfinite
 from typing import Any
 
 from agents.analyst import AnalystAgent, _canonical_feature_status
-from graph.state import RawCollectionResult, StructuredCompetitorProfile, WorkflowState
+from graph.state import (
+    ExtensionFinding,
+    RawCollectionResult,
+    StructuredCompetitorProfile,
+    WorkflowState,
+)
 from schemas.scope import CompetitorCandidate, ScopeDimension, TaskScopeContract
 from schemas.source import SourceCitation
 from services.report_integrity import assert_report_sources_resolvable, source_ids_from_payload
@@ -280,6 +285,204 @@ def test_run_llm_drops_hallucinated_nested_source_ids() -> None:
             "cross_analysis": cross.model_dump(mode="json"),
         },
     )
+
+
+def test_run_llm_isolates_single_competitor_extraction_failure() -> None:
+    """One competitor's extraction blowing up must not crash the whole run: the
+    failed competitor gets an empty profile (so QA produces blockers for it) and
+    the failure is surfaced as a degradation, while the others extract normally."""
+    from services.llm.usage import collected_degradations, reset_capture, start_capture
+
+    scope = TaskScopeContract(
+        user_brief="Compare tools",
+        intent_mode="list",
+        competitors=[
+            CompetitorCandidate(name="A", source="nl_extracted"),
+            CompetitorCandidate(name="B", source="nl_extracted"),
+        ],
+        dimensions=[
+            ScopeDimension(
+                id="core.feature_tree",
+                title="Feature tree",
+                intent="Compare features",
+                layer="core",
+                order=1,
+            ),
+        ],
+    )
+    state = WorkflowState(
+        task_id=scope.id,
+        run_id=scope.id,
+        scope_contract=scope,
+        raw_collections={
+            "A": RawCollectionResult(
+                competitor_name="A", sources=[_source("src_a_001", "core.feature_tree")]
+            ),
+            "B": RawCollectionResult(
+                competitor_name="B", sources=[_source("src_b_001", "core.feature_tree")]
+            ),
+        },
+    )
+
+    class _PartlyFailingAnalyst(AnalystAgent):
+        async def _extract_competitor(
+            self, name: str, *args: Any, **kwargs: Any
+        ) -> tuple[str, StructuredCompetitorProfile, list[ExtensionFinding]]:
+            if name == "B":
+                raise RuntimeError("deepseek truncated B")
+            return await super()._extract_competitor(name, *args, **kwargs)
+
+    llm = _FakeLLM({"feature_tree": {"rows": []}, "pricing": {}, "user_personas": [], "swot": {}})
+
+    token = start_capture()
+    try:
+        profiles, _, _ = asyncio.run(_PartlyFailingAnalyst()._run_llm(state, llm))  # type: ignore[arg-type]
+        degradations = collected_degradations()
+    finally:
+        reset_capture(token)
+
+    assert set(profiles) == {"A", "B"}
+    assert profiles["B"].source_ids == []
+    assert profiles["B"].feature_tree == {"rows": []}
+    assert any("B" in reason for reason in degradations)
+
+
+def test_run_llm_keeps_profiles_when_cross_analysis_fails() -> None:
+    """A failure building/enriching the cross-analysis must not discard the
+    per-competitor profiles already extracted — cross degrades to None instead."""
+    from services.llm.usage import collected_degradations, reset_capture, start_capture
+
+    scope = TaskScopeContract(
+        user_brief="Compare tools",
+        intent_mode="list",
+        competitors=[CompetitorCandidate(name="A", source="nl_extracted")],
+        dimensions=[
+            ScopeDimension(
+                id="core.feature_tree",
+                title="Feature tree",
+                intent="Compare features",
+                layer="core",
+                order=1,
+            ),
+        ],
+    )
+    state = WorkflowState(
+        task_id=scope.id,
+        run_id=scope.id,
+        scope_contract=scope,
+        raw_collections={
+            "A": RawCollectionResult(
+                competitor_name="A", sources=[_source("src_a_001", "core.feature_tree")]
+            )
+        },
+    )
+
+    class _CrossFailingAnalyst(AnalystAgent):
+        def _build_cross_analysis(self, profiles: Any) -> Any:
+            raise RuntimeError("cross boom")
+
+    llm = _FakeLLM({"feature_tree": {"rows": []}, "pricing": {}, "user_personas": [], "swot": {}})
+
+    token = start_capture()
+    try:
+        profiles, _, cross = asyncio.run(_CrossFailingAnalyst()._run_llm(state, llm))  # type: ignore[arg-type]
+        degradations = collected_degradations()
+    finally:
+        reset_capture(token)
+
+    assert set(profiles) == {"A"}
+    assert cross is None
+    assert any("cross" in reason.lower() for reason in degradations)
+
+
+def test_scoped_retry_does_not_duplicate_orphan_extension_findings() -> None:
+    """A scoped retry that force-extracts an orphaned competitor must purge that
+    competitor's stale findings first, so its extension block isn't duplicated."""
+    scope = TaskScopeContract(
+        user_brief="Compare tools",
+        intent_mode="list",
+        competitors=[
+            CompetitorCandidate(name="A", source="nl_extracted"),
+            CompetitorCandidate(name="B", source="nl_extracted"),
+            CompetitorCandidate(name="C", source="nl_extracted"),
+        ],
+        dimensions=[
+            ScopeDimension(
+                id="core.feature_tree",
+                title="Feature tree",
+                intent="Compare features",
+                layer="core",
+                order=1,
+            ),
+            ScopeDimension(
+                id="ext.ecosystem",
+                title="Ecosystem",
+                intent="Compare ecosystem signals",
+                layer="extension",
+                order=5,
+            ),
+        ],
+    )
+    existing = {
+        name: StructuredCompetitorProfile(
+            competitor_name=name,
+            feature_tree={"rows": []},
+            pricing={},
+            user_personas=[],
+            swot={},
+            source_ids=[f"src_{name.lower()}"],
+        )
+        for name in ("A", "B")  # C is orphaned: never made it into structured_profiles
+    }
+    state = WorkflowState(
+        task_id=scope.id,
+        run_id=scope.id,
+        scope_contract=scope,
+        raw_collections={
+            "A": RawCollectionResult(
+                competitor_name="A", sources=[_source("src_a", "ext.ecosystem")]
+            ),
+            "B": RawCollectionResult(
+                competitor_name="B", sources=[_source("src_b", "ext.ecosystem")]
+            ),
+            "C": RawCollectionResult(
+                competitor_name="C", sources=[_source("src_c", "ext.ecosystem")]
+            ),
+        },
+        structured_profiles=existing,
+        extension_findings=[
+            ExtensionFinding(
+                dimension_id="ext.ecosystem", competitor_name="A", summary="old A",
+                source_ids=["src_a"],
+            ),
+            ExtensionFinding(
+                dimension_id="ext.ecosystem", competitor_name="C", summary="old C",
+                source_ids=["src_c"],
+            ),
+        ],
+        feedback_signals={
+            "correction_detected": {
+                "target_agent": "CollectorAgent",
+                "issues": [{"target_competitor": "A"}],
+            }
+        },
+    )
+    llm = _FakeLLM(
+        {
+            "feature_tree": {"rows": []},
+            "pricing": {},
+            "user_personas": [],
+            "swot": {},
+            "summary": "fresh",
+            "bullets": ["signal"],
+        }
+    )
+
+    _, findings, _ = asyncio.run(AnalystAgent()._run_llm(state, llm))  # type: ignore[arg-type]
+
+    c_findings = [f for f in findings if f.competitor_name == "C"]
+    assert len(c_findings) == 1
+    assert c_findings[0].summary == "fresh"
 
 
 def test_cross_analysis_builds_positioning_map_points() -> None:

@@ -1,14 +1,5 @@
-import type {
-  ClarifyingQuestion,
-  DimensionSpec,
-  TaskScopeContract,
-} from "./types";
+import type { DimensionSpec, TaskScopeContract } from "./types";
 import { CORE_DIMENSION_IDS, emptyUserResearchPlan } from "./types";
-
-// ⚠️ PRD §十一-quater 11Q.7 路由职责边界：
-// 本文件中所有以 `Skincare` / `KNOWN_BRANDS` / `extractCompetitorsFromBrief`
-// 命名的导出仅服务于 `/demo/*` fixture 生成，**禁止**被 `/tasks/new/*` 真实路径
-// 直接 import。真实路径在 ScopingAgent 未接通时应使用 `buildEmptyDraftContract`。
 
 /**
  * The 4 locked core dimensions that every task must include.
@@ -85,83 +76,6 @@ export function buildCoreDimensions(): DimensionSpec[] {
 }
 
 /**
- * The 3 extension dimensions our pretend Scoping Agent inferred from the
- * user's brief about high-end skincare brands.
- */
-export function buildSkincareExtensions(): DimensionSpec[] {
-  return [
-    {
-      id: "ext.membership_promo",
-      layer: "extension",
-      source: "ai_suggested",
-      title: "会员体系与折扣节奏",
-      intent: "电商旗舰店黑卡 / 积分 / 双11 与 618 大促力度对比",
-      schema_ref: null,
-      enabled: true,
-      locked: false,
-      order: 4,
-    },
-    {
-      id: "ext.kol_endorsement",
-      layer: "extension",
-      source: "ai_suggested",
-      title: "KOL 与代言矩阵",
-      intent: "品牌代言人、头部主播合作、内容投放渠道与频次",
-      schema_ref: null,
-      enabled: true,
-      locked: false,
-      order: 5,
-    },
-    {
-      id: "ext.channel_distribution",
-      layer: "extension",
-      source: "ai_suggested",
-      title: "渠道与铺货",
-      intent: "线下专柜密度、电商旗舰店运营、免税与海淘渠道占比",
-      schema_ref: null,
-      enabled: true,
-      locked: false,
-      order: 6,
-    },
-  ];
-}
-
-/**
- * Clarifying questions surfaced by the Scoping Agent.
- *
- * Currently empty — the previous two mock questions (audience / history range)
- * were removed because they had no real effect on outline generation and the
- * UI section felt like decorative ceremony. Stage 2's real AI may produce
- * genuinely outline-shaping questions; when that happens, return them here and
- * the `<ClarifyingQuestions />` UI will reappear automatically.
- */
-export function buildClarifyingQuestions(): ClarifyingQuestion[] {
-  return [];
-}
-
-/**
- * The whole mock scope contract — what the Scoping Agent "returns"
- * after the user submits the brief about high-end skincare brands.
- *
- * ⚠️ 仅供 `/demo/*` fixture 生成器使用，真实路径禁止调用——见 PRD §十一-quater 11Q.7。
- */
-export function buildSkincareMockContract(
-  userBrief: string,
-  competitors: string[],
-): TaskScopeContract {
-  return {
-    task_id: `task_${Date.now()}`,
-    target_product: null,
-    competitors,
-    user_brief: userBrief,
-    clarifications: buildClarifyingQuestions(),
-    dimensions: [...buildCoreDimensions(), ...buildSkincareExtensions()],
-    user_research_plan: emptyUserResearchPlan(),
-    frozen_at: null,
-  };
-}
-
-/**
  * Domain-agnostic empty draft for the real `/tasks/new/scoping` path while
  * ScopingAgent is not yet wired up. 4 locked core dimensions, zero extensions,
  * zero competitors — the user fills in the rest by hand.
@@ -181,47 +95,3 @@ export function buildEmptyDraftContract(userBrief: string): TaskScopeContract {
     frozen_at: null,
   };
 }
-
-/**
- * Heuristic competitor extraction from a freeform Chinese brief.
- * Looks for known high-end skincare brand names. In Stage 2 this is
- * replaced by the real LLM extraction; here it's just for demo realism.
- */
-const KNOWN_BRANDS = [
-  "SK-II",
-  "SK2",
-  "雅诗兰黛",
-  "Estée Lauder",
-  "资生堂",
-  "Shiseido",
-  "兰蔻",
-  "Lancôme",
-  "海蓝之谜",
-  "La Mer",
-  "赫莲娜",
-  "HR",
-  "黑绷带",
-  "Helena Rubinstein",
-];
-
-export function extractCompetitorsFromBrief(brief: string): string[] {
-  const found = new Set<string>();
-  for (const brand of KNOWN_BRANDS) {
-    if (brief.includes(brand)) found.add(normalizeBrand(brand));
-  }
-  return Array.from(found);
-}
-
-function normalizeBrand(b: string): string {
-  if (b === "SK2") return "SK-II";
-  if (b === "Estée Lauder") return "雅诗兰黛";
-  if (b === "Shiseido") return "资生堂";
-  if (b === "Lancôme") return "兰蔻";
-  if (b === "La Mer") return "海蓝之谜";
-  if (b === "HR" || b === "Helena Rubinstein") return "赫莲娜";
-  return b;
-}
-
-/** Default placeholder brief shown in the textarea. */
-export const DEFAULT_BRIEF_PLACEHOLDER =
-  "例：帮我对比 SK-II、资生堂、雅诗兰黛 三个高端护肤品牌在中国电商的会员体系和 KOL 策略上的差异，重点关注 25-35 岁城市女性消费群体。";

@@ -237,14 +237,15 @@ async def _require_owned_report(task_id: UUID, current_user: CurrentUser) -> Rep
 def _set_field_path(payload: dict, field_path: str, value: object) -> None:
     parts = [part for part in field_path.split(".") if part]
     if not parts:
-        return
+        raise HTTPException(status_code=422, detail="field_path must not be empty")
     cursor = payload
     for part in parts[:-1]:
         next_value = cursor.get(part)
         if not isinstance(next_value, dict):
-            next_value = {}
-            cursor[part] = next_value
+            raise HTTPException(status_code=422, detail="field_path does not exist")
         cursor = next_value
+    if parts[-1] not in cursor:
+        raise HTTPException(status_code=422, detail="field_path does not exist")
     cursor[parts[-1]] = value
 
 

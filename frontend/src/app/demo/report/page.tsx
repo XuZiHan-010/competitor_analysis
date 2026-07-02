@@ -18,6 +18,7 @@ import type {
   DemoSwotBlock,
 } from "@/lib/mocks/demo/types";
 import { Button } from "@/components/ui/button";
+import { TIER_META, TIER_ORDER, TierBadge } from "@/components/report/source-tier";
 import { cn } from "@/lib/utils";
 
 const SUPPORT_GLYPH: Record<string, { label: string; tone: string }> = {
@@ -272,6 +273,19 @@ export default function DemoReportPage() {
           >
             溯源
           </h2>
+          <ul
+            aria-label="来源可信档位图例"
+            className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-2"
+          >
+            {TIER_ORDER.map((tier) => (
+              <li key={tier} className="flex items-center gap-1.5">
+                <TierBadge tier={tier} decorative />
+                <span className="text-[10.5px] text-muted-foreground/70">
+                  {TIER_META[tier].desc}
+                </span>
+              </li>
+            ))}
+          </ul>
           <ol className="space-y-2.5">
             {demoSources.map((s) => (
               <li
@@ -285,15 +299,18 @@ export default function DemoReportPage() {
                   {s.id}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <a
-                    href={s.url}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    className="text-foreground/90 hover:text-primary inline-flex items-baseline gap-1 underline decoration-border underline-offset-4 hover:decoration-primary"
-                  >
-                    {s.title}
-                    <ExternalLink className="h-3 w-3 self-center" aria-hidden="true" />
-                  </a>
+                  <span className="flex items-baseline gap-1.5">
+                    <TierBadge tier={s.tier ?? "C"} />
+                    <a
+                      href={s.url}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="text-foreground/90 hover:text-primary inline-flex items-baseline gap-1 underline decoration-border underline-offset-4 hover:decoration-primary"
+                    >
+                      {s.title}
+                      <ExternalLink className="h-3 w-3 self-center" aria-hidden="true" />
+                    </a>
+                  </span>
                   <p className="text-muted-foreground/85 mt-0.5">{s.snippet}</p>
                 </div>
               </li>

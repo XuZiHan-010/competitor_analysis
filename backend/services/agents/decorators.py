@@ -35,6 +35,8 @@ class TraceContext(Protocol):
 
     async def publish_trace(self, trace: AgentTrace) -> None: ...
 
+    async def publish_event(self, event: str, data: dict[str, Any]) -> None: ...
+
 
 T = TypeVar("T")
 
@@ -161,6 +163,12 @@ def traced_node(
             start = perf_counter()
             input_payload = {"args": [_to_payload(arg) for arg in args[1:]]}
             usage_token = start_capture()
+            if context is not None:
+                with suppress(Exception):
+                    await context.publish_event(
+                        "node.started",
+                        {"agent_name": agent_name, "node_name": node_name},
+                    )
             try:
                 result = await func(*args, **kwargs)
                 real_usage = collected_usage()

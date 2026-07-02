@@ -2,6 +2,7 @@
   {
     "id": "src_001",
     "type": "url",
+    "tier": "A",
     "url": "https://www.douyin.com/ecommerce",
     "title": "抖音电商官网 — 平台介绍",
     "snippet": "抖音电商 2023 年 GMV 突破 2.2 万亿元，直播带货贡献超 60%，抖音商城 DAU 稳定在 4 亿以上。",
@@ -11,6 +12,7 @@
   {
     "id": "src_002",
     "type": "url",
+    "tier": "A",
     "url": "https://www.oceanengine.com/data",
     "title": "巨量引擎 — 2024 短视频广告基准报告",
     "snippet": "抖音信息流广告 CPM 均值 ¥40–80，TopView 开屏广告单日覆盖 3 亿+ 用户，品牌广告 ROAS 中位数 3.2×。",
@@ -20,6 +22,7 @@
   {
     "id": "src_003",
     "type": "url",
+    "tier": "A",
     "url": "https://ir.kuaishou.com/annual-reports",
     "title": "快手科技 2023 年度报告",
     "snippet": "2023 年快手电商 GMV 达 1.18 万亿元，同比增长 28%；平均月活跃用户 6.74 亿，DAU/MAU 比率提升至 62%。",
@@ -29,6 +32,7 @@
   {
     "id": "src_004",
     "type": "url",
+    "tier": "A",
     "url": "https://e.kuaishou.com/welcome",
     "title": "快手电商官方平台 — 商家入驻",
     "snippet": "快手小店服务费率 0–5%，「老铁计划」创作者每千次有效播放可获 ¥2–4 激励；磁力聚星接单佣金比例 10–15%。",
@@ -38,6 +42,7 @@
   {
     "id": "src_005",
     "type": "url",
+    "tier": "A",
     "url": "https://www.tencent.com/en-us/articles/2201555.html",
     "title": "腾讯 2023 Q4 财报 — 视频号业务数据",
     "snippet": "微信视频号 2023 年全年 GMV 同比增长超 300%，视频号小店月活商家数量突破 100 万，总 GMV 预估约 2000 亿元。",
@@ -47,6 +52,7 @@
   {
     "id": "src_006",
     "type": "url",
+    "tier": "A",
     "url": "https://channels.weixin.qq.com",
     "title": "微信视频号官方创作者中心",
     "snippet": "视频号依托微信 13 亿 MAU 社交关系链分发内容，私域流量转化率比纯公域平台高 2.8 倍，订单复购率达 34%。",
@@ -56,6 +62,7 @@
   {
     "id": "src_007",
     "type": "url",
+    "tier": "B",
     "url": "https://36kr.com/p/douyin-kuaishou-competition-2024",
     "title": "36氪 — 抖音快手 2024 年竞争格局深度分析",
     "snippet": "抖音日均使用时长 110 分钟，快手 85 分钟，视频号 35 分钟；三平台用户重叠率约 45%，「老铁」黏性文化是快手最难被复制的护城河。",
@@ -65,6 +72,7 @@
   {
     "id": "src_008",
     "type": "url",
+    "tier": "A",
     "url": "https://report.iresearch.cn/short-video-2024",
     "title": "艾瑞咨询 — 2024 中国短视频市场研究报告",
     "snippet": "2024 年中国短视频用户规模达 10.7 亿，三大平台合计覆盖 95% 用户；抖音月活 7.4 亿，快手 6.8 亿，视频号 4.5 亿。",
@@ -74,6 +82,7 @@
   {
     "id": "src_009",
     "type": "url",
+    "tier": "A",
     "url": "https://www.questmobile.com.cn/research/report/short-video",
     "title": "QuestMobile — 短视频用户画像报告 2024Q1",
     "snippet": "抖音用户 18–30 岁占比 42%，31–40 岁占 31%；快手三线及以下城市用户占比 58%；视频号 35 岁以上用户占 61%，微信重度用户属性明显。",
@@ -83,6 +92,7 @@
   {
     "id": "src_010",
     "type": "url",
+    "tier": "B",
     "url": "https://www.cloutrank.com/mcn-report-2024",
     "title": "克劳锐 — 2024 MCN 机构发展白皮书",
     "snippet": "抖音头部 MCN 机构超 2000 家，腰部达人变现效率同比提升 35%；快手「磁力聚星」覆盖 50 万签约达人，快手星芒短剧计划年度扶持过亿元。",
@@ -92,6 +102,7 @@
   {
     "id": "src_011",
     "type": "url",
+    "tier": "A",
     "url": "https://star.toutiao.com/product",
     "title": "巨量星图官网 — 创作者接单平台",
     "snippet": "巨量星图 2023 年合作品牌超 10 万家，达人接单总金额同比增长 68%；百万粉丝达人单条视频定价中位数 ¥3–8 万，直播坑位费 ¥5–30 万。",
@@ -101,6 +112,7 @@
   {
     "id": "src_012",
     "type": "url",
+    "tier": "A",
     "url": "https://ad.weixin.qq.com/guide/video-channel",
     "title": "微信广告官方 — 视频号广告产品介绍",
     "snippet": "视频号信息流广告 CPM ¥25–100（依受众质量浮动），与公众号、朋友圈联合投放可降低 CPM 约 20%；2024 年广告收入预计同比增长 80%。",
@@ -110,6 +122,7 @@
   {
     "id": "src_013",
     "type": "url",
+    "tier": "A",
     "url": "https://e.kuaishou.com/welcome/advertising",
     "title": "磁力引擎官网 — 2024 广告产品手册",
     "snippet": "磁力引擎信息流广告 CPM ¥15–60，品牌挑战赛单次活动平均曝光 3 亿次；直播间引流广告 CPE 成本较行业均值低 22%。",
@@ -119,6 +132,7 @@
   {
     "id": "src_014",
     "type": "url",
+    "tier": "B",
     "url": "https://huxiu.com/article/douyin-private-domain-2024",
     "title": "虎嗅网 — 抖音私域困局与视频号弯道超车",
     "snippet": "抖音公域依赖导致复购率仅 18%，视频号凭借微信生态私域沉淀将复购率推高至 34%；快手「老铁」关系链忠诚度最高，付费会员转化率 8.3%。",

@@ -51,6 +51,8 @@ export interface DemoSource {
   snippet: string;
   agent: DemoAgent;
   fetched_at: string;
+  /** Authority tier A>B>C (see components/report/source-tier). Absent → shown as C. */
+  tier?: "A" | "B" | "C" | null;
 }
 
 export interface DemoFeatureSupport {

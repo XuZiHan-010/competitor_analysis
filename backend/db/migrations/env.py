@@ -2,6 +2,7 @@ import asyncio
 import selectors
 import sys
 from logging.config import fileConfig
+from typing import Any
 
 from alembic import context
 from sqlalchemy import pool
@@ -17,6 +18,36 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
+_RAW_VECTOR_COLUMNS = {
+    ("source_citations", "embedding"),
+    ("reports", "embedding"),
+    ("report_claims", "embedding"),
+}
+_RAW_VECTOR_INDEXES = {
+    "idx_source_citations_embedding",
+    "idx_reports_embedding",
+    "idx_report_claims_embedding",
+}
+
+
+def include_object(
+    object_: Any,
+    name: str | None,
+    object_type: str,
+    reflected: bool,
+    compare_to: Any,
+) -> bool:
+    if reflected and compare_to is None and object_type == "column":
+        table_name = getattr(getattr(object_, "table", None), "name", None)
+        if (table_name, name) in _RAW_VECTOR_COLUMNS:
+            return False
+    return not (
+        reflected
+        and compare_to is None
+        and object_type == "index"
+        and name in _RAW_VECTOR_INDEXES
+    )
+
 
 def get_database_url() -> str:
     url = get_settings().database_url
@@ -29,6 +60,7 @@ def run_migrations_offline() -> None:
     context.configure(
         url=get_database_url(),
         target_metadata=target_metadata,
+        include_object=include_object,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
     )
@@ -36,8 +68,12 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
-def do_run_migrations(connection) -> None:  # type: ignore[no-untyped-def]
-    context.configure(connection=connection, target_metadata=target_metadata)
+def do_run_migrations(connection: Any) -> None:
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        include_object=include_object,
+    )
     with context.begin_transaction():
         context.run_migrations()
 

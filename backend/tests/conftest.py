@@ -1,4 +1,6 @@
+import asyncio
 import os
+import selectors
 import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -6,6 +8,10 @@ from pathlib import Path
 os.environ["MOCK_LLM"] = "true"
 os.environ["DATABASE_URL"] = ""
 os.environ["REDIS_URL"] = ""
+os.environ["OPENAI_API_KEY"] = ""
+os.environ["DEEPSEEK_API_KEY"] = ""
+os.environ["TAVILY_API_KEY"] = ""
+os.environ["SERPAPI_API_KEY"] = ""
 os.environ["JWT_SECRET"] = "test-secret"
 # Keep tests deterministic and offline: never emit LangSmith traces, regardless
 # of the developer's .env (env vars take precedence over the .env file).
@@ -23,6 +29,26 @@ from main import app  # noqa: E402
 from services.auth import JwtService  # noqa: E402
 from services.storage import store  # noqa: E402
 from settings import get_settings  # noqa: E402
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    for item in items:
+        if any(item.get_closest_marker(name) for name in ("unit", "integration", "smoke")):
+            continue
+        item.add_marker(pytest.mark.unit)
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_asyncio_loop_factories() -> (
+    dict[str, Callable[[], asyncio.AbstractEventLoop]] | None
+):
+    if sys.platform != "win32":
+        return None
+
+    def selector_loop() -> asyncio.AbstractEventLoop:
+        return asyncio.SelectorEventLoop(selectors.SelectSelector())
+
+    return {"selector": selector_loop}
 
 
 @pytest.fixture(autouse=True)

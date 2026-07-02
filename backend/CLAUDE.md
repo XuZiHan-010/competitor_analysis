@@ -7,7 +7,15 @@ Read the repository root `AGENTS.md` first. Backend implementation follows:
 - Lint: `ruff check .`
 - Format: `black .`
 - Type check: `mypy .`
-- Tests: `pytest`
+- Unit tests: `pytest -m unit`
+- PostgreSQL/Redis integration tests: `pytest -m integration`
+- Dedicated remote smoke tests: `pytest -m smoke`
+- Branch coverage: `pytest --cov=. --cov-branch`
+
+Integration tests only read `TEST_DATABASE_URL` / `TEST_REDIS_URL`; smoke tests only read
+`SMOKE_DATABASE_URL` / `SMOKE_REDIS_URL`. Never point these variables at production services.
+Start local dependencies from the repository root with
+`docker compose -f docker-compose.test.yml up -d` when Docker Compose is available.
 
 Rules:
 
@@ -15,4 +23,4 @@ Rules:
 - LangGraph state must be Pydantic v2 models, not untyped dict contracts.
 - Every Agent node must produce trace data with prompt/input/output/token/cost/latency fields.
 - Do not hardcode secrets. Use `.env` locally and keep `.env.example` value-only-empty.
-- CI and tests use mock LLM behavior by default.
+- CI and tests use mock LLM behavior by default. Real PDF rendering runs only in smoke.

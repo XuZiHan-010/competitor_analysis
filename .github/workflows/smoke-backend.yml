@@ -1,0 +1,42 @@
+name: Backend smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 18 * * *"
+
+jobs:
+  smoke:
+    name: Dedicated Neon + Upstash smoke
+    runs-on: ubuntu-latest
+    environment: smoke
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      SMOKE_DATABASE_URL: ${{ secrets.SMOKE_DATABASE_URL }}
+      SMOKE_REDIS_URL: ${{ secrets.SMOKE_REDIS_URL }}
+      SMOKE_ALLOW_REMOTE: "true"
+      MOCK_LLM: "true"
+      LANGCHAIN_TRACING_V2: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Install Chromium for real PDF rendering
+        run: python -m playwright install --with-deps chromium
+
+      - name: Verify smoke secrets are present
+        shell: bash
+        run: test -n "$SMOKE_DATABASE_URL" && test -n "$SMOKE_REDIS_URL"
+
+      - name: Smoke tests
+        run: pytest -m smoke -v

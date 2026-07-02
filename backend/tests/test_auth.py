@@ -1,9 +1,11 @@
 from collections.abc import Iterator
+from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 
 from main import app
+from services.auth import JwtService
 from settings import get_settings
 
 
@@ -32,3 +34,31 @@ def test_login_and_me() -> None:
 
     logout_response = client.post("/api/auth/logout")
     assert logout_response.status_code == 204
+
+
+def test_jwt_rejects_expired_tampered_and_wrong_signature_tokens() -> None:
+    service = JwtService("test-signing-secret")
+    expired = service.issue("eric@example.com", expires_delta=timedelta(seconds=-1))
+    valid = service.issue("eric@example.com")
+    header, payload, signature = valid.split(".")
+
+    with pytest.raises(ValueError, match="expired"):
+        service.verify(expired)
+    with pytest.raises(ValueError, match="signature"):
+        service.verify(f"{header}.{payload}.{signature[:-1]}x")
+    with pytest.raises(ValueError, match="signature"):
+        JwtService("different-signing-secret").verify(valid)
+
+
+def test_jwt_requires_configured_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(ValueError, match="JWT_SECRET"):
+        JwtService("")
+
+    monkeypatch.setenv("JWT_SECRET", "")
+    get_settings.cache_clear()
+    response = TestClient(app).get(
+        "/api/auth/me",
+        headers={"Authorization": "Bearer placeholder"},
+    )
+    assert response.status_code == 500
+    assert response.json()["detail"] == "JWT_SECRET is not configured"

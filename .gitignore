@@ -22,6 +22,8 @@
 **/*token*
 **/*.key
 **/*.pem
+secrets/
+credentials/
 # 白名单：design-tokens.md 是 CSS design tokens 文档，被 **/*token* 误伤
 !**/design-tokens.md
 
@@ -53,6 +55,8 @@ next-env.d.ts
 
 # Test coverage
 coverage/
+.coverage
+htmlcov/
 
 # Dependencies
 node_modules/
@@ -72,3 +76,9 @@ yarn-error.log*
 # Misc
 .DS_Store
 *.pem
+
+# Scratch render output (generated, not source)
+tmp/
+
+# Defense deliverables (large binaries kept out of the repo)
+deliverables/

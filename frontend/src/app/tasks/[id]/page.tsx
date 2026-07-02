@@ -436,6 +436,20 @@ function computeDagNodes(
     }
   }
 
+  const activeStartedAgents = new Set<string>();
+  for (const event of events) {
+    const agentName = event.data.agent_name;
+    if (typeof agentName !== "string") continue;
+    if (event.event === "node.started") {
+      activeStartedAgents.add(agentName);
+    } else if (
+      event.event === "node.succeeded" ||
+      event.event === "node.failed"
+    ) {
+      activeStartedAgents.delete(agentName);
+    }
+  }
+
   const runSucceeded = events.some((e) => e.event === "run.succeeded");
   const runFailed = events.some((e) => e.event === "run.failed");
   const qaBlockerCount = events.filter((e) => e.event === "qa.blocker").length;
@@ -445,8 +459,16 @@ function computeDagNodes(
     const lastTrace = [...traces].sort((a, b) => b.sequence_no - a.sequence_no)[0];
     if (lastTrace) statuses[lastTrace.agent_name] = "failed";
   } else if (!runSucceeded) {
-    const firstIdle = AGENT_ORDER.find((agent) => statuses[agent] === "idle");
-    if (firstIdle) statuses[firstIdle] = "running";
+    const runningAgents = AGENT_ORDER.filter(
+      (agent) =>
+        statuses[agent] === "idle" && activeStartedAgents.has(agent),
+    );
+    if (runningAgents.length > 0) {
+      for (const agent of runningAgents) statuses[agent] = "running";
+    } else {
+      const firstIdle = AGENT_ORDER.find((agent) => statuses[agent] === "idle");
+      if (firstIdle) statuses[firstIdle] = "running";
+    }
   }
 
   if (blockerActive) {

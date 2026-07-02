@@ -5,11 +5,13 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
@@ -36,6 +38,7 @@ class User(Base):
 
 class Task(Base):
     __tablename__ = "tasks"
+    __table_args__ = (Index("idx_tasks_user_created", "user_id", text("created_at DESC")),)
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
     user_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("users.id"))
@@ -78,7 +81,10 @@ class TaskRun(Base):
 
 class AgentTrace(Base):
     __tablename__ = "agent_traces"
-    __table_args__ = (UniqueConstraint("task_run_id", "sequence_no"),)
+    __table_args__ = (
+        UniqueConstraint("task_run_id", "sequence_no"),
+        Index("idx_agent_traces_run_sequence", "task_run_id", "sequence_no"),
+    )
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
     task_run_id: Mapped[UUID] = mapped_column(
@@ -170,6 +176,7 @@ class CrossAnalysis(Base):
 
 class Report(Base):
     __tablename__ = "reports"
+    __table_args__ = (Index("idx_reports_task_created", "task_id", text("created_at DESC")),)
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
     task_id: Mapped[UUID] = mapped_column(
@@ -196,6 +203,7 @@ class Report(Base):
 
 class ReportClaim(Base):
     __tablename__ = "report_claims"
+    __table_args__ = (Index("idx_report_claims_report", "report_id"),)
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
     report_id: Mapped[UUID] = mapped_column(
