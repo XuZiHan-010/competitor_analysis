@@ -348,7 +348,7 @@ def _append_sources(lines: list[str], cite: CitationIndex) -> None:
         for number, source in sources:
             source_title = text_value(source.title) or text_value(source.url) or source.id
             url = text_value(source.url)
-            label = f"[S{number}]"
+            label = f"[S{number}][{source.tier or 'C'}]"
             linked_title = f"[{source_title}]({url})" if url else source_title
             lines.append(f"{number}. {label} {linked_title} — `{source.id}`")
 

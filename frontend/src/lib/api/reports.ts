@@ -58,6 +58,9 @@ export type SourceType =
   | "app_review"
   | "ai_simulated";
 
+/** Authority tier: A (official/authoritative) > B (credible media) > C (UGC/unknown). */
+export type SourceTier = "A" | "B" | "C";
+
 export interface ReportSource {
   id: string;
   type: SourceType;
@@ -70,6 +73,8 @@ export interface ReportSource {
   fetched_at?: string;
   valid: boolean;
   dimension_id?: string | null;
+  // Ungraded sources arrive as null; UI treats them as C, mirroring the backend exporters.
+  tier?: SourceTier | null;
 }
 
 // --- structured_content canonical shape (after WriterAgent fix) ---

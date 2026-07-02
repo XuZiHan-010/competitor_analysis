@@ -29,9 +29,28 @@
 ### 集成测试
 
 - 范围：
-  - LangGraph DAG 从 `CollectorAgent` 跑到 `QAAgent`（用录制好的 LLM 响应回放）
-  - 反馈闭环：构造缺失字段 → QA 打回 → 重跑 → 字段填充
-- 工具：`pytest` + `respx`（mock OpenAI/Tavily HTTP）
+  - 空 PostgreSQL + pgvector 数据库执行 Alembic upgrade / check / downgrade
+  - User / Task / Run / Trace / Report / Claim / Source 持久化往返、账户隔离、回滚和级联删除
+  - pgvector 写入与检索机制、Redis Stream 重连和清理
+  - DB 持久化路径必须落表，禁止以静默回退内存的结果冒充通过
+- 本地与 PR CI 使用 `pgvector/pgvector:pg16` + Redis 7.4 临时服务，不连接 Neon / Upstash。
+- 本地启动：`docker compose -f docker-compose.test.yml up -d`。
+- 测试进程只读取 `TEST_DATABASE_URL` / `TEST_REDIS_URL`，且会拒绝生产式地址。
+
+### 测试分层命令
+
+在 `backend/` 下执行：
+
+```bash
+pytest -m unit
+pytest -m integration
+pytest -m smoke
+pytest --cov=. --cov-branch
+```
+
+- 未显式标记的现有测试自动归入 `unit`。
+- `integration` 需要临时 PostgreSQL + pgvector 和 Redis。
+- `smoke` 只面向独立 Neon Branch / Upstash 测试实例，需显式设置 `SMOKE_ALLOW_REMOTE=true`。
 
 ### Mock LLM 策略
 
@@ -61,8 +80,10 @@
 
 ## CI 触发
 
-- PR 创建 / 更新 → 跑所有单元 + 集成测试
-- merge 到 `main` → 跑 E2E（部署到 Railway preview 后）
+- PR 创建 / 更新 → Ruff → Mypy → Mock LLM 单元测试 → 临时 PostgreSQL/Redis 集成测试。
+- 覆盖率启用 branch coverage，仅作为可见性指标，不设 100% 门槛。
+- 每日定时或人工触发 `smoke-backend.yml`，使用 GitHub `smoke` environment 中的独立测试连接；该 workflow 不接受 PR 触发，因此 fork PR 无法消费 secrets。
+- Smoke workflow 安装 Chromium，并执行真实 PDF 渲染；普通 PR 不安装浏览器、不打真实 LLM。
 
 ---
 

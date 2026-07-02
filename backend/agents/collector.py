@@ -17,6 +17,7 @@ from services.llm import LLMClient, provider_for_model
 from services.llm.usage import record_degradation
 from services.scraper import FetchResult, PageFetcher
 from services.search import AppReviewProvider, HybridSearch
+from services.search.authority import grade_source_authority
 from services.search.duckduckgo import DuckDuckGoProvider
 from services.search.providers import SearchProvider
 from services.search.relevance import filter_relevant_sources
@@ -556,6 +557,7 @@ class CollectorAgent:
     ) -> RawCollectionResult:
         skipped_urls: list[str] = []
         errors: list[str] = []
+        search_error_kinds: list[str] = []
         sources: list[SourceCitation] = []
 
         # Run all dimension searches concurrently; a slow provider on one query no
@@ -571,6 +573,7 @@ class CollectorAgent:
         ):
             if isinstance(search_result, ToolError):
                 errors.append(f"search({query}): {search_result.error_content}")
+                search_error_kinds.append(search_result.error_kind)
             else:
                 # Tag each source with the dimension that produced it
                 sources.extend(
@@ -642,6 +645,12 @@ class CollectorAgent:
                 for source in post_fetch_relevance.dropped
             )
 
+        # Grade retained sources by authority (A>B>C) and order them A-first so the
+        # Analyst sees high-authority evidence first and citations can be tier-labelled.
+        enriched_sources = await grade_source_authority(
+            competitor_name, enriched_sources, llm, include_raw_content=True
+        )
+
         dimension_source_counts = {
             dimension_id: sum(
                 1 for source in enriched_sources if source.dimension_id == dimension_id
@@ -676,6 +685,11 @@ class CollectorAgent:
             completeness_score=completeness,
             skipped_urls=skipped_urls,
             errors=errors,
+            unrecoverable=(
+                not real_sources
+                and bool(search_error_kinds)
+                and all(kind == "permanent" for kind in search_error_kinds)
+            ),
         )
 
     async def _run_fallback_collection(

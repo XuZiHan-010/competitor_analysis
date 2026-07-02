@@ -17,6 +17,7 @@ from graph.workflow import _qa_node
 from schemas.scope import CompetitorCandidate, ScopeDimension, TaskScopeContract
 from schemas.source import SourceCitation
 from services.metrics import calculate_report_metrics
+from services.search.authority import grade_source_authority
 from services.search.relevance import filter_relevant_sources
 
 
@@ -235,6 +236,28 @@ def test_qa_blocks_pricing_backed_only_by_user_reviews() -> None:
     assert len(pricing_blockers) == 1
     assert pricing_blockers[0].code == "pricing_source_weak"
     assert not result.passed
+
+
+@pytest.mark.asyncio
+async def test_qa_accepts_pricing_when_official_domain_media_source_regraded() -> None:
+    # A provider stamps the official pricing page as type=media; once grading upgrades
+    # its category to official, the pricing gate must stop flagging it as a weak source.
+    raw = SourceCitation(
+        id="src_pricing",
+        type="media",
+        category="media",
+        url="https://www.douyin.com/pricing",
+        title="Douyin pricing",
+        snippet="Pro plan is $10/mo.",
+        provider="tavily",
+    )
+    [graded] = await grade_source_authority("Douyin", [raw], llm=None)
+    assert graded.category == "official"  # precondition: the re-stamp happened
+
+    profile = _healthy_pricing_profile("src_pricing")
+    result = QAAgent()._deterministic_checks(_state(profile, _pricing_sources(graded)))
+
+    assert not [i for i in result.issues if i.code == "pricing_source_weak"]
 
 
 def test_qa_accepts_pricing_backed_by_commercial_source() -> None:

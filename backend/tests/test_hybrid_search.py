@@ -154,3 +154,21 @@ def test_hybrid_raises_when_all_providers_exhausted() -> None:
     provider = _FailingProvider("tavily", PermanentProviderError("quota"))
     with pytest.raises(SearchUnavailableError):
         asyncio.run(HybridSearch([[provider]]).search("q"))
+
+
+def test_exhausted_error_is_permanent_when_every_attempt_was_permanent() -> None:
+    """All tried providers failed permanently → the raised error flags permanent."""
+    a = _FailingProvider("tavily", PermanentProviderError("quota"))
+    b = _FailingProvider("serpapi", PermanentProviderError("quota"))
+    with pytest.raises(SearchUnavailableError) as exc_info:
+        asyncio.run(HybridSearch([[a], [b]]).search("q"))
+    assert exc_info.value.permanent is True
+
+
+def test_exhausted_error_not_permanent_when_a_transient_failure_mixed_in() -> None:
+    """A transient/empty failure means a retry might still help → not permanent."""
+    permanent = _FailingProvider("tavily", PermanentProviderError("quota"))
+    transient = _Provider("serpapi", [])  # empty results = soft/transient failure
+    with pytest.raises(SearchUnavailableError) as exc_info:
+        asyncio.run(HybridSearch([[permanent], [transient]]).search("q"))
+    assert exc_info.value.permanent is False

@@ -53,10 +53,13 @@ competitor_analysis/
 ├── plans/          AI Agent plan 文件（gitignored）
 ├── agent-states/   被构建系统的运行时状态（应用层，非 Claude 记忆）
 ├── USER_PREFERENCES.md  项目负责人长期协作偏好
+├── MEMORY.md       长期记忆索引（协作经验 / 设计决策 / 交接入口）
 └── claude-progress.txt  项目开发进度日志
 ```
 
-### 常用命令（前端 [frontend/](frontend/)，npm）
+### 常用命令
+
+前端（[frontend/](frontend/)，npm）：
 
 | 操作 | 命令 |
 |---|---|
@@ -65,9 +68,19 @@ competitor_analysis/
 | 生产构建 | `npm run build` |
 | Lint | `npm run lint` |
 
-> 后端 [backend/](backend/) 待 Week 0.5 脚手架落地后补 `uvicorn`、`pytest`、`ruff`、`mypy` 命令。届时同步更新本节，**并在 `backend/` 下建一份 `CLAUDE.md`**（参考已有的 [frontend/CLAUDE.md](frontend/CLAUDE.md)），把测试 / lint 命令写死在子目录，避免改后端一个文件却跑整个项目的测试套件浪费 context。
+后端（[backend/](backend/)，Python）：
+
+| 操作 | 命令 |
+|---|---|
+| 起 API | `python run.py` |
+| Lint | `ruff check .` |
+| 类型检查 | `mypy .` |
+| 单元测试 | `pytest -m unit` |
+| 临时 PostgreSQL/Redis 集成测试 | `pytest -m integration` |
+| 独立测试环境 Smoke | `pytest -m smoke` |
+| 分支覆盖率 | `pytest --cov=. --cov-branch` |
 >
-> **每个子目录的详细命令与约束**：见对应目录的 CLAUDE.md（如 [frontend/CLAUDE.md](frontend/CLAUDE.md)）——本表只给入门概览。
+> **每个子目录的详细命令与约束**：见对应目录的 CLAUDE.md（如 [frontend/CLAUDE.md](frontend/CLAUDE.md)、[backend/CLAUDE.md](backend/CLAUDE.md)）——本表只给入门概览。
 
 ---
 
@@ -81,6 +94,7 @@ competitor_analysis/
 | [ai竞品分析要求.txt](ai竞品分析要求.txt) | 比赛官方课题与评分标准 |
 | [docs/security.md](docs/security.md) | 安全规则全文（红线之外的细则） |
 | [USER_PREFERENCES.md](USER_PREFERENCES.md) | 项目负责人长期协作偏好（语言、plan、GitHub 提交语义） |
+| [MEMORY.md](MEMORY.md) | 长期记忆索引（只做经验 / 决策 / 交接入口；事实仍回 PRD / docs / 代码核验） |
 
 ### 按场景按需读取（just-in-time retrieval）
 
@@ -106,6 +120,7 @@ competitor_analysis/
 | 文件 | 说明 |
 |---|---|
 | [claude-progress.txt](claude-progress.txt) | 项目开发进度日志（人工 / 里程碑更新） |
+| [MEMORY.md](MEMORY.md) | 长期记忆索引（不是事实源，不替代 PRD / 架构文档 / 进度日志） |
 | [agent-states/](agent-states/) | Collector / Analyst / Writer / QA 4 个业务 Agent 的运行时状态（JSON） |
 | [docs/agent-states-guide.md](docs/agent-states-guide.md) | 上述状态文件的 schema 与维护指南 |
 
@@ -130,7 +145,7 @@ competitor_analysis/
 
 ## 五、工作规范（高阶原则）
 
-1. **新会话先读偏好与进度**：每次开启新对话 / 新 Agent 接手时，先读取 [USER_PREFERENCES.md](USER_PREFERENCES.md) 与 [claude-progress.txt](claude-progress.txt) 顶部摘要，再开始任务
+1. **新会话先读偏好、记忆与进度**：每次开启新对话 / 新 Agent 接手时，先读取 [USER_PREFERENCES.md](USER_PREFERENCES.md)、[MEMORY.md](MEMORY.md) 与 [claude-progress.txt](claude-progress.txt) 顶部摘要，再开始任务；MEMORY.md 只做长期记忆索引，具体事实仍以 PRD、架构文档、代码和进度日志为准
 2. **PRD 是唯一事实源**：任何具体决策（功能 / Schema / 优先级 / 技术选型）以 [docs/PRD.md](docs/PRD.md) 为准，不要凭对话上下文猜需求
 3. **按需读取**：开始任务前从 §三 表格找到相关文档，**只读这次任务需要的那几个**，不要预加载全部
 4. **遇到歧义就停下来**：与其改错代码再回滚，不如先和项目负责人对齐——AskUserQuestion / 评论 / Issue 都行

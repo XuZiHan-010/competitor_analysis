@@ -40,3 +40,6 @@ class SourceCitation(BaseModel):
     valid: bool = True
     # Which scope dimension this source was gathered for (enables Analyst routing)
     dimension_id: str | None = None
+    # Authority tier assigned by the source-authority grader: A (official / authoritative)
+    # > B (credible secondary media) > C (UGC / blogs / unknown). None = ungraded, treated as C.
+    tier: Literal["A", "B", "C"] | None = None

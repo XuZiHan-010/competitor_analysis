@@ -14,7 +14,9 @@ _MAX_CONCURRENT_SEARCHES = 5
 
 
 class SearchUnavailableError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, permanent: bool = False) -> None:
+        super().__init__(message)
+        self.permanent = permanent
 
 
 class HybridSearch:
@@ -42,6 +44,7 @@ class HybridSearch:
     async def _search_inner(self, query: str, max_results: int) -> list[SourceCitation]:
         tried: list[str] = []
         errors: list[str] = []
+        permanent_failures: list[bool] = []
 
         logger.info(
             "search.invoke",
@@ -57,6 +60,7 @@ class HybridSearch:
                 if provider.name in self._exhausted:
                     tried.append(provider.name)
                     errors.append(f"{provider.name}: quota exhausted (circuit open — skipped)")
+                    permanent_failures.append(True)
                     continue
 
                 try:
@@ -70,6 +74,7 @@ class HybridSearch:
                     )
                     tried.append(provider.name)
                     errors.append(f"{provider.name}: {exc}")
+                    permanent_failures.append(True)
                     continue
                 except Exception as exc:
                     logger.warning(
@@ -79,6 +84,7 @@ class HybridSearch:
                     )
                     tried.append(provider.name)
                     errors.append(f"{provider.name}: {exc}")
+                    permanent_failures.append(False)
                     continue
 
                 if results:
@@ -104,6 +110,7 @@ class HybridSearch:
                 # Empty result treated as a soft failure → try next provider in tier
                 tried.append(provider.name)
                 errors.append(f"{provider.name}: empty results")
+                permanent_failures.append(False)
 
             # First tier with any results wins; lower tiers stay untouched.
             if merged:
@@ -115,7 +122,8 @@ class HybridSearch:
             final_error=redact_secrets("; ".join(errors)),
         )
         raise SearchUnavailableError(
-            redact_secrets("; ".join(errors)) or "no search providers configured"
+            redact_secrets("; ".join(errors)) or "no search providers configured",
+            permanent=bool(permanent_failures) and all(permanent_failures),
         )
 
 

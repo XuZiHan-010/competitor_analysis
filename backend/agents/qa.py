@@ -86,7 +86,7 @@ class QAAgent:
                 target_competitor=issue.get("target_competitor"),
                 failed_field=str(issue.get("failed_field", "unknown")),
                 message=str(issue.get("message", "")),
-                retryable=bool(issue.get("retryable", True)),
+                retryable=_parse_llm_retryable(issue),
                 code=str(
                     issue.get("code")
                     or _issue_code(str(issue.get("failed_field", "unknown")))
@@ -96,14 +96,16 @@ class QAAgent:
         ]
         # Always also run deterministic checks alongside LLM checks
         deterministic = self._deterministic_checks(state)
-        all_issues = issues + deterministic.issues
+        all_issues = _apply_unrecoverable_override(issues + deterministic.issues, state)
+        all_issues = _apply_analyst_failure_override(all_issues, state)
         return QAResult(
             passed=not any(i.severity == "blocker" for i in all_issues),
             issues=all_issues,
         )
 
     def _run_fallback(self, state: WorkflowState) -> QAResult:
-        issues = self._deterministic_checks(state).issues
+        issues = _apply_unrecoverable_override(self._deterministic_checks(state).issues, state)
+        issues = _apply_analyst_failure_override(issues, state)
         return QAResult(
             passed=not any(issue.severity == "blocker" for issue in issues),
             issues=issues,
@@ -375,24 +377,6 @@ class QAAgent:
                     )
                 )
 
-        # A collector retry can only help when the failure was transient. When a
-        # competitor got zero real sources and the errors point at quota/auth
-        # exhaustion, every retry hits the same wall (3 × full re-collection +
-        # LLM cost for nothing) — mark those blockers non-retryable so routing
-        # can skip straight to the writer.
-        unrecoverable = {
-            name
-            for name, raw in state.raw_collections.items()
-            if _collection_unrecoverable(raw)
-        }
-        for issue in issues:
-            if (
-                issue.severity == "blocker"
-                and issue.target_agent == "CollectorAgent"
-                and issue.target_competitor in unrecoverable
-            ):
-                issue.retryable = False
-
         return QAResult(
             passed=not any(i.severity == "blocker" for i in issues),
             issues=issues,
@@ -401,7 +385,9 @@ class QAAgent:
 
 _UNRECOVERABLE_ERROR_HINTS = (
     "429",
+    "432",
     "quota",
+    "usage limit",
     "too many requests",
     "rate limit",
     "401",
@@ -411,10 +397,99 @@ _UNRECOVERABLE_ERROR_HINTS = (
 )
 
 
+def _parse_llm_retryable(issue: dict) -> bool:
+    """Default an LLM-emitted issue's ``retryable`` when the model omits it.
+
+    Retry is the most expensive path (a full re-collection round per attempt), so
+    a CollectorAgent blocker must explicitly opt in to a retry — otherwise we
+    default conservative and skip it. Other agents keep the permissive default.
+    """
+    if "retryable" in issue:
+        return bool(issue["retryable"])
+    return str(issue.get("target_agent", "AnalystAgent")) != "CollectorAgent"
+
+
+def _apply_unrecoverable_override(issues: list[QAIssue], state: WorkflowState) -> list[QAIssue]:
+    """Force CollectorAgent blockers non-retryable when a retry can't help.
+
+    A collector retry only helps when the failure was transient. When a competitor
+    got zero real sources and the errors point at quota/auth exhaustion, every retry
+    hits the same wall (a full re-collection round + LLM cost for nothing). This runs
+    over the *combined* LLM + deterministic issues so an LLM-emitted blocker that
+    insists ``retryable=True`` for a dead competitor can't slip a wasted retry past
+    the gate. A global blocker (no target_competitor) is downgraded only when every
+    collected competitor is unrecoverable — otherwise a retry could still help one.
+    """
+    unrecoverable = {
+        name for name, raw in state.raw_collections.items() if _collection_unrecoverable(raw)
+    }
+    all_unrecoverable = bool(state.raw_collections) and unrecoverable == set(state.raw_collections)
+    for issue in issues:
+        if issue.severity != "blocker" or issue.target_agent != "CollectorAgent":
+            continue
+        # The scripted demo blocker drives a fixed feedback-loop retry; it must keep
+        # firing even when live collection is exhausted, so the override never mutes it.
+        if issue.code == "pricing_demo_blocker":
+            continue
+        if issue.target_competitor in unrecoverable or (
+            issue.target_competitor is None and all_unrecoverable
+        ):
+            issue.retryable = False
+    return issues
+
+
+def _apply_analyst_failure_override(issues: list[QAIssue], state: WorkflowState) -> list[QAIssue]:
+    """Re-target a competitor's CollectorAgent blockers to the Analyst when the real
+    cause is a failed extraction, not a collection gap.
+
+    A competitor that was collected with real sources but came back with an empty
+    profile (Analyst extraction failed, e.g. truncated DeepSeek JSON) would otherwise
+    raise CollectorAgent blockers that route back to re-collection — which returns the
+    same good sources and fails identically, burning a full retry round per attempt.
+    Re-collection can't fix an extraction failure, so these blockers are pinned to
+    AnalystAgent and made non-retryable; the gap is then surfaced in the report.
+    """
+    failed = _analyst_failed_competitors(state)
+    if not failed:
+        return issues
+    for issue in issues:
+        if (
+            issue.severity == "blocker"
+            and issue.target_agent == "CollectorAgent"
+            and issue.target_competitor in failed
+        ):
+            issue.target_agent = "AnalystAgent"
+            issue.retryable = False
+    return issues
+
+
+def _analyst_failed_competitors(state: WorkflowState) -> set[str]:
+    """Competitors that have real collected sources yet an empty profile.
+
+    Empty ``source_ids`` is the signature of a totally failed extraction (a real
+    extraction always stamps the ids it cited); paired with real sources it means
+    collection succeeded but structuring did not.
+    """
+    failed: set[str] = set()
+    for name, profile in state.structured_profiles.items():
+        if profile.source_ids:
+            continue
+        raw = state.raw_collections.get(name)
+        if raw is None:
+            continue
+        if RawCollectionResult.model_validate(raw).has_real_sources():
+            failed.add(name)
+    return failed
+
+
 def _collection_unrecoverable(raw: RawCollectionResult | None) -> bool:
     if raw is None or raw.has_real_sources():
         return False
-    error_text = " ".join(raw.errors).lower()
+    if raw.unrecoverable:
+        return True
+    error_text = " ".join(
+        error for error in raw.errors if not error.startswith("dropped_irrelevant:")
+    ).lower()
     return any(hint in error_text for hint in _UNRECOVERABLE_ERROR_HINTS)
 
 

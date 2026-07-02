@@ -186,6 +186,22 @@ def _canonical_feature_status(value: object) -> str:
     return _FEATURE_STATUS_ALIASES.get(str(value or "").strip().lower(), "unknown")
 
 
+def _empty_profile(name: str) -> StructuredCompetitorProfile:
+    """A schema-valid but empty profile for a competitor whose extraction failed.
+
+    Keeping the competitor in the result (rather than dropping it) lets QA raise
+    its citation/feature blockers and the report surface the gap explicitly.
+    """
+    return StructuredCompetitorProfile(
+        competitor_name=name,
+        feature_tree={"rows": []},
+        pricing={},
+        user_personas=[],
+        swot={},
+        source_ids=[],
+    )
+
+
 def _cited_source_ids(
     feature_tree: dict[str, Any],
     pricing: dict[str, Any],
@@ -333,21 +349,43 @@ class AnalystAgent:
                     name, result, core_dims, ext_dims, llm, settings, lang_directive
                 )
 
+        # return_exceptions: one competitor's extraction blowing up (e.g. a truncated
+        # DeepSeek JSON) must not take the whole gather — and the whole run — down with
+        # it. The failed competitor gets an empty profile so QA still raises blockers
+        # for it (and reports the gap) instead of silently dropping it from the report.
+        names = list(raw_to_extract)
         extracted = await asyncio.gather(
-            *(extract(name, result) for name, result in raw_to_extract.items())
+            *(extract(name, raw_to_extract[name]) for name in names),
+            return_exceptions=True,
         )
         combined_profiles = dict(state.structured_profiles) if retry_targets is not None else {}
+        # Drop prior findings for *every* competitor we're re-extracting this round —
+        # both the explicit retry targets and any orphans force-added above. Filtering on
+        # retry_targets alone would keep an orphan's stale findings while the loop appends
+        # a fresh set, duplicating that competitor's extension block in the report.
+        reextracted = set(raw_to_extract)
         extension_findings = (
             [
                 finding
                 for finding in state.extension_findings
-                if finding.competitor_name not in retry_targets
+                if finding.competitor_name not in reextracted
             ]
             if retry_targets is not None
             else []
         )
-        for name, profile, findings in extracted:
-            combined_profiles[name] = profile
+        for name, outcome in zip(names, extracted, strict=True):
+            if isinstance(outcome, BaseException):
+                logger.warning(
+                    "analyst_extract_failed", competitor=name, error=str(outcome)
+                )
+                record_degradation(
+                    f"analyst: extraction failed for {name}: "
+                    f"{type(outcome).__name__}: {outcome}"
+                )
+                combined_profiles[name] = _empty_profile(name)
+                continue
+            extracted_name, profile, findings = outcome
+            combined_profiles[extracted_name] = profile
             extension_findings.extend(findings)
 
         structured_profiles = {
@@ -355,10 +393,19 @@ class AnalystAgent:
             for competitor in state.scope_contract.competitors
             if competitor.name in combined_profiles
         }
-        cross = self._build_cross_analysis(structured_profiles)
-        cross = await self._enrich_cross_matrix(
-            cross, structured_profiles, state.raw_collections, llm, language
-        )
+        # Cross-analysis is a second, independent LLM pass over the already-extracted
+        # profiles. A failure here (timeout, malformed JSON, a bad profile tripping the
+        # matrix build) must not discard the per-competitor profiles we already paid for —
+        # degrade to no cross-analysis instead of taking the whole run down.
+        try:
+            cross = self._build_cross_analysis(structured_profiles)
+            cross = await self._enrich_cross_matrix(
+                cross, structured_profiles, state.raw_collections, llm, language
+            )
+        except Exception as exc:
+            logger.warning("analyst_cross_analysis_failed", exc_info=True)
+            record_degradation(f"analyst_cross_analysis: {type(exc).__name__}: {exc}")
+            cross = None
         return structured_profiles, extension_findings, cross
 
     async def _extract_competitor(
@@ -393,6 +440,9 @@ class AnalystAgent:
                         "pricing tiers, product capabilities, SWOT, monetization, or creator "
                         "incentives. If only those sources exist for a field, leave that "
                         "field empty. "
+                        "Each source carries an authority tier A>B>C (A=official/authoritative, "
+                        "B=credible media, C=user reviews/blogs/unknown); prefer higher-tier "
+                        "evidence and, when sources conflict on a fact, trust the higher tier. "
                         "Do not output placeholder text such as 需验证, 待确认, 标准版, "
                         "unknown, TBD, or needs verification. If evidence is missing, "
                         "leave the specific list empty instead of inventing a placeholder. "
@@ -463,7 +513,9 @@ class AnalystAgent:
                             "Every summary, bullet, and table note must include concrete "
                             "evidence such as numbers, version names, quoted phrases, or "
                             "specific product facts. Do not output 需验证, 待确认, 标准版, "
-                            "unknown, TBD, or needs verification; omit unsupported points."
+                            "unknown, TBD, or needs verification; omit unsupported points. "
+                            "Each source carries an authority tier A>B>C; prefer higher-tier "
+                            "evidence and, when sources conflict, trust the higher tier."
                             + lang_directive
                         ),
                     },

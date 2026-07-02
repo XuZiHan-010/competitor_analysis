@@ -652,6 +652,7 @@ def _sources(cite: CitationIndex, *, index: int) -> str:
             items.append(
                 f'<li id="{html_text(source.id)}">'
                 f"<strong>S{number}</strong> "
+                f'<span class="source-tier">[{html_text(source.tier or "C")}]</span> '
                 f'<span class="source-type">{html_text(type_abbrev)}</span> '
                 f"{link}<small>{html_text(source.id)}</small>"
                 "</li>"

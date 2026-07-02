@@ -1,8 +1,27 @@
 import { ExternalLink } from "lucide-react";
 import type { ReportSource, SourceType } from "@/lib/api/reports";
+import { TIER_META, TIER_ORDER, TierBadge, tierOf } from "@/components/report/source-tier";
 
 interface SourceListProps {
   sources: ReportSource[];
+}
+
+function TierLegend() {
+  return (
+    <ul
+      aria-label="来源可信档位图例"
+      className="mb-8 flex flex-wrap items-center gap-x-4 gap-y-2"
+    >
+      {TIER_ORDER.map((tier) => (
+        <li key={tier} className="flex items-center gap-1.5">
+          <TierBadge tier={tier} decorative />
+          <span className="text-[10.5px] text-muted-foreground/70">
+            {TIER_META[tier].desc}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 const FACTUAL_TYPES: SourceType[] = [
@@ -40,17 +59,20 @@ function SourceItem({ s, globalIndex }: { s: ReportSource; globalIndex: number }
         {globalIndex + 1}.
       </span>
       <div className="min-w-0">
-        <a
-          href={s.url ?? undefined}
-          target="_blank"
-          rel="noreferrer noopener"
-          className="text-foreground/90 hover:text-primary inline-flex items-baseline gap-1 underline decoration-border underline-offset-4 hover:decoration-primary"
-        >
-          {s.title}
-          {s.url && (
-            <ExternalLink className="h-3 w-3 self-center shrink-0" aria-hidden="true" />
-          )}
-        </a>
+        <span className="flex items-baseline gap-1.5">
+          <TierBadge tier={tierOf(s)} />
+          <a
+            href={s.url ?? undefined}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="text-foreground/90 hover:text-primary inline-flex items-baseline gap-1 underline decoration-border underline-offset-4 hover:decoration-primary"
+          >
+            {s.title}
+            {s.url && (
+              <ExternalLink className="h-3 w-3 self-center shrink-0" aria-hidden="true" />
+            )}
+          </a>
+        </span>
         <p
           className="text-[10.5px] text-muted-foreground/55 break-all mt-0.5"
           style={{ fontFamily: "var(--font-mono)" }}
@@ -115,6 +137,7 @@ export function SourceList({ sources }: SourceListProps) {
       >
         溯源
       </h2>
+      <TierLegend />
       <div className="space-y-8">
         <SourceGroup title="报告正文来源" sources={factual} offset={0} />
         <SourceGroup

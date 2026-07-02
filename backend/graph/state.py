@@ -15,6 +15,7 @@ class RawCollectionResult(BaseModel):
     completeness_score: float = 0.0
     skipped_urls: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
+    unrecoverable: bool = False
 
     def has_real_sources(self) -> bool:
         """True when at least one source carries actual web content.

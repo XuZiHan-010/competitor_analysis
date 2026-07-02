@@ -1,12 +1,17 @@
+from collections.abc import Callable
 from typing import Any, cast
 from uuid import uuid4
 
 import pytest
+from fastapi.testclient import TestClient
 
+from api.dependencies import run_manager, stream_bridge
 from api.routes.stream import _format_sse
 from schemas.events import StreamEvent
 from schemas.traces import AgentTrace
-from services.runs.manager import RunTraceContext
+from services.agents.decorators import traced_node
+from services.auth import user_id_for_email
+from services.runs.manager import RunRecord, RunTraceContext
 from services.storage import InMemoryStore
 from services.streaming.bridge import InMemoryStreamBridge, RedisStreamBridge
 
@@ -23,6 +28,24 @@ def _trace(status: str) -> AgentTrace:
         input_payload={},
         output_payload={"output_summary": "collected sources"},
     )
+
+
+@traced_node(
+    agent_name="TestAgent",
+    node_name="run_test_node",
+    prompt="Run a test node.",
+)
+async def _successful_node(*, trace_context: RunTraceContext) -> str:
+    return "ok"
+
+
+@traced_node(
+    agent_name="TestAgent",
+    node_name="run_test_node",
+    prompt="Run a test node.",
+)
+async def _failing_node(*, trace_context: RunTraceContext) -> None:
+    raise RuntimeError("node failed")
 
 
 @pytest.mark.asyncio
@@ -46,6 +69,51 @@ async def test_trace_context_publishes_node_events() -> None:
     assert succeeded.event == "node.succeeded"
     assert failed.event == "node.failed"
     assert retried.event == "node.succeeded"
+
+
+@pytest.mark.asyncio
+async def test_traced_node_publishes_started_before_succeeded_without_extra_trace() -> None:
+    run_id = uuid4()
+    store = InMemoryStore()
+    bridge = InMemoryStreamBridge()
+    context = RunTraceContext(run_id=run_id, store=store, bridge=bridge)
+
+    assert await _successful_node(trace_context=context) == "ok"
+
+    stream = bridge.subscribe(str(run_id))
+    try:
+        events = [await anext(stream), await anext(stream)]
+    finally:
+        await stream.aclose()
+
+    assert [event.event for event in events] == ["node.started", "node.succeeded"]
+    assert events[0].data == {
+        "agent_name": "TestAgent",
+        "node_name": "run_test_node",
+    }
+    assert len(store.traces_by_run[run_id]) == 1
+    assert store.traces_by_run[run_id][0].sequence_no == 1
+
+
+@pytest.mark.asyncio
+async def test_traced_node_publishes_started_before_failed_without_extra_trace() -> None:
+    run_id = uuid4()
+    store = InMemoryStore()
+    bridge = InMemoryStreamBridge()
+    context = RunTraceContext(run_id=run_id, store=store, bridge=bridge)
+
+    with pytest.raises(RuntimeError, match="node failed"):
+        await _failing_node(trace_context=context)
+
+    stream = bridge.subscribe(str(run_id))
+    try:
+        events = [await anext(stream), await anext(stream)]
+    finally:
+        await stream.aclose()
+
+    assert [event.event for event in events] == ["node.started", "node.failed"]
+    assert len(store.traces_by_run[run_id]) == 1
+    assert store.traces_by_run[run_id][0].sequence_no == 1
 
 
 def test_heartbeat_renders_as_comment_without_id() -> None:
@@ -87,6 +155,53 @@ async def test_in_memory_cleanup_removes_replay_events() -> None:
     assert event.id == 1
     assert event.event == "run.succeeded"
     assert event.data == {"step": 3}
+
+
+@pytest.mark.asyncio
+async def test_in_memory_reconnect_resumes_without_duplicates_or_gaps() -> None:
+    run_id = "run-reconnect"
+    bridge = InMemoryStreamBridge()
+    for step in range(1, 4):
+        await bridge.publish(run_id, "node.succeeded", {"step": step})
+
+    stream = bridge.subscribe(run_id, last_event_id=1)
+    try:
+        resumed = [await anext(stream), await anext(stream)]
+    finally:
+        await stream.aclose()
+
+    assert [event.id for event in resumed] == [2, 3]
+    assert [event.data["step"] for event in resumed] == [2, 3]
+
+
+def test_invalid_last_event_id_safely_starts_from_available_events(
+    auth_client_factory: Callable[[str], TestClient],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    email = "stream-owner@example.com"
+    client = auth_client_factory(email)
+    run = RunRecord(task_id=uuid4(), user_id=user_id_for_email(email))
+    run_manager._runs[run.id] = run
+    received: list[int | None] = []
+
+    async def fake_subscribe(
+        run_id: str,
+        *,
+        last_event_id: int | None = None,
+    ) -> Any:
+        received.append(last_event_id)
+        yield StreamEvent(id=1, run_id=run_id, event="run.succeeded", data={})
+
+    monkeypatch.setattr(stream_bridge, "subscribe", fake_subscribe)
+    with client.stream(
+        "GET",
+        f"/api/tasks/{run.id}/events",
+        headers={"Last-Event-ID": "not-a-number"},
+    ) as response:
+        assert response.status_code == 200
+        assert any(line == "id: 1" for line in response.iter_lines())
+
+    assert received == [None]
 
 
 class _FakeRedis:

@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { ExternalLink, X } from "lucide-react";
 import { useCitationPanelStore } from "@/stores/citation-panel-store";
 import type { ReportSource, SourceType } from "@/lib/api/reports";
+import { TierBadge, tierOf } from "@/components/report/source-tier";
 import { cn } from "@/lib/utils";
 
 interface CitationPanelProps {
@@ -141,6 +142,7 @@ export function CitationPanel({ sources }: CitationPanelProps) {
               {/* Metadata */}
               <div className="pt-2 border-t border-border/40 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
+                  <TierBadge tier={tierOf(source)} />
                   <span
                     className={cn(
                       "text-[10px] px-1.5 py-0.5 rounded border",

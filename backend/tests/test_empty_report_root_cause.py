@@ -6,8 +6,11 @@ fixes that make that visible and stop the pipeline from wasting retries or
 leaking field-path placeholders into the report.
 """
 
-from agents.analyst import _cited_source_ids
-from agents.qa import QAAgent
+import asyncio
+from typing import Any
+
+from agents.analyst import _cited_source_ids, _empty_profile
+from agents.qa import _MIN_SOURCES_PER_COMPETITOR, QAAgent
 from agents.writer import _collection_gaps, _field_level_core_claims
 from graph.state import (
     QAIssue,
@@ -63,6 +66,167 @@ def test_has_real_sources_ignores_fallback_and_empty_stubs() -> None:
     assert not empty.has_real_sources()
 
 
+class _FakeQALLM:
+    """Returns a fixed QA payload for every complete_json call."""
+
+    def __init__(self, payload: dict[str, Any]) -> None:
+        self._payload = payload
+
+    async def complete_json(self, **_: Any) -> dict[str, Any]:
+        return self._payload
+
+
+def test_llm_collector_blocker_defaults_non_retryable() -> None:
+    """An LLM-emitted CollectorAgent blocker with no retryable flag defaults to
+    non-retryable; an AnalystAgent blocker keeps the retryable default (True)."""
+    name = "抖音"
+    scope = _scope(name)
+    state = WorkflowState(
+        task_id=scope.id,
+        run_id=scope.id,
+        scope_contract=scope,
+        # Recoverable (real source) so the unrecoverable override can't interfere —
+        # this isolates the parse default itself.
+        raw_collections={name: RawCollectionResult(competitor_name=name, sources=[_source("s1")])},
+        structured_profiles={name: _empty_profile(name)},
+    )
+    llm = _FakeQALLM(
+        {
+            "issues": [
+                {
+                    "severity": "blocker",
+                    "target_agent": "CollectorAgent",
+                    "target_competitor": name,
+                    "failed_field": "pricing.tiers",
+                    "message": "LLM-COLLECTOR",
+                },
+                {
+                    "severity": "blocker",
+                    "target_agent": "AnalystAgent",
+                    "target_competitor": name,
+                    "failed_field": "swot",
+                    "message": "LLM-ANALYST",
+                },
+            ]
+        }
+    )
+
+    result = asyncio.run(QAAgent()._run_llm(state, llm))  # type: ignore[arg-type]
+
+    by_msg = {issue.message: issue for issue in result.issues}
+    assert by_msg["LLM-COLLECTOR"].retryable is False
+    assert by_msg["LLM-ANALYST"].retryable is True
+
+
+def test_llm_collector_blocker_downgraded_for_unrecoverable_competitor() -> None:
+    """The P0-A bug: even when the LLM insists retryable=True, a dead-collection
+    competitor's CollectorAgent blocker must be forced non-retryable."""
+    name = "抖音"
+    scope = _scope(name)
+    state = WorkflowState(
+        task_id=scope.id,
+        run_id=scope.id,
+        scope_contract=scope,
+        raw_collections={
+            name: RawCollectionResult(
+                competitor_name=name, sources=[], errors=["x"], unrecoverable=True
+            )
+        },
+        structured_profiles={name: _empty_profile(name)},
+    )
+    llm = _FakeQALLM(
+        {
+            "issues": [
+                {
+                    "severity": "blocker",
+                    "target_agent": "CollectorAgent",
+                    "target_competitor": name,
+                    "failed_field": "sources",
+                    "message": "LLM-RETRY",
+                    "retryable": True,
+                }
+            ]
+        }
+    )
+
+    result = asyncio.run(QAAgent()._run_llm(state, llm))  # type: ignore[arg-type]
+
+    by_msg = {issue.message: issue for issue in result.issues}
+    assert by_msg["LLM-RETRY"].retryable is False
+
+
+def test_llm_global_collector_blocker_downgraded_when_all_unrecoverable() -> None:
+    """A CollectorAgent blocker with no target_competitor (global) is downgraded
+    only when every collected competitor is unrecoverable."""
+    name = "抖音"
+    scope = _scope(name)
+    state = WorkflowState(
+        task_id=scope.id,
+        run_id=scope.id,
+        scope_contract=scope,
+        raw_collections={
+            name: RawCollectionResult(
+                competitor_name=name, sources=[], errors=["x"], unrecoverable=True
+            )
+        },
+        structured_profiles={name: _empty_profile(name)},
+    )
+    llm = _FakeQALLM(
+        {
+            "issues": [
+                {
+                    "severity": "blocker",
+                    "target_agent": "CollectorAgent",
+                    "target_competitor": None,
+                    "failed_field": "sources",
+                    "message": "LLM-GLOBAL",
+                    "retryable": True,
+                }
+            ]
+        }
+    )
+
+    result = asyncio.run(QAAgent()._run_llm(state, llm))  # type: ignore[arg-type]
+
+    by_msg = {issue.message: issue for issue in result.issues}
+    assert by_msg["LLM-GLOBAL"].retryable is False
+
+
+def test_llm_global_collector_blocker_stays_retryable_when_some_recoverable() -> None:
+    scope = _scope("A", "B")
+    state = WorkflowState(
+        task_id=scope.id,
+        run_id=scope.id,
+        scope_contract=scope,
+        raw_collections={
+            "A": RawCollectionResult(
+                competitor_name="A", sources=[], errors=["x"], unrecoverable=True
+            ),
+            "B": RawCollectionResult(competitor_name="B", sources=[_source("s1")]),
+        },
+        structured_profiles={"A": _empty_profile("A"), "B": _empty_profile("B")},
+    )
+    llm = _FakeQALLM(
+        {
+            "issues": [
+                {
+                    "severity": "blocker",
+                    "target_agent": "CollectorAgent",
+                    "target_competitor": None,
+                    "failed_field": "sources",
+                    "message": "LLM-GLOBAL2",
+                    "retryable": True,
+                }
+            ]
+        }
+    )
+
+    result = asyncio.run(QAAgent()._run_llm(state, llm))  # type: ignore[arg-type]
+
+    by_msg = {issue.message: issue for issue in result.issues}
+    assert by_msg["LLM-GLOBAL2"].retryable is True
+
+
 def test_qa_marks_quota_blockers_non_retryable() -> None:
     scope = _scope("抖音")
     state = WorkflowState(
@@ -98,6 +262,179 @@ def test_qa_marks_quota_blockers_non_retryable() -> None:
     ]
     assert collector_blockers, "empty profile should raise collector blockers"
     assert all(not issue.retryable for issue in collector_blockers)
+
+
+def test_qa_unrecoverable_flag_marks_non_retryable_without_keyword() -> None:
+    """The structured flag drives the verdict — no error-string keyword needed."""
+    scope = _scope("抖音")
+    state = WorkflowState(
+        task_id=scope.id,
+        run_id=scope.id,
+        scope_contract=scope,
+        raw_collections={
+            "抖音": RawCollectionResult(
+                competitor_name="抖音",
+                sources=[],
+                # No quota/auth keyword in the text — only the structured flag.
+                errors=["search(抖音): provider unavailable"],
+                unrecoverable=True,
+            )
+        },
+        structured_profiles={
+            "抖音": StructuredCompetitorProfile(
+                competitor_name="抖音",
+                feature_tree={"rows": []},
+                pricing={},
+                user_personas=[],
+                swot={},
+                source_ids=[],
+            )
+        },
+    )
+
+    result = QAAgent()._run_fallback(state)
+
+    collector_blockers = [
+        issue
+        for issue in result.issues
+        if issue.severity == "blocker" and issue.target_agent == "CollectorAgent"
+    ]
+    assert collector_blockers
+    assert all(not issue.retryable for issue in collector_blockers)
+
+
+def test_qa_dropped_irrelevant_url_with_digits_stays_retryable() -> None:
+    """A dropped-source URL containing '429'/'403' must not look like a quota wall."""
+    scope = _scope("抖音")
+    state = WorkflowState(
+        task_id=scope.id,
+        run_id=scope.id,
+        scope_contract=scope,
+        raw_collections={
+            "抖音": RawCollectionResult(
+                competitor_name="抖音",
+                sources=[],
+                errors=[
+                    "dropped_irrelevant: https://example.com/article-429",
+                    "dimension_gap(core.feature_tree): no relevant sources",
+                ],
+            )
+        },
+        structured_profiles={
+            "抖音": StructuredCompetitorProfile(
+                competitor_name="抖音",
+                feature_tree={"rows": []},
+                pricing={},
+                user_personas=[],
+                swot={},
+                source_ids=[],
+            )
+        },
+    )
+
+    result = QAAgent()._run_fallback(state)
+
+    collector_blockers = [
+        issue
+        for issue in result.issues
+        if issue.severity == "blocker" and issue.target_agent == "CollectorAgent"
+    ]
+    assert collector_blockers
+    assert all(issue.retryable for issue in collector_blockers)
+
+
+def test_qa_tavily_432_usage_limit_marks_non_retryable() -> None:
+    scope = _scope("抖音")
+    state = WorkflowState(
+        task_id=scope.id,
+        run_id=scope.id,
+        scope_contract=scope,
+        raw_collections={
+            "抖音": RawCollectionResult(
+                competitor_name="抖音",
+                sources=[],
+                errors=["search(抖音): Tavily usage limit reached (432): credits"],
+            )
+        },
+        structured_profiles={
+            "抖音": StructuredCompetitorProfile(
+                competitor_name="抖音",
+                feature_tree={"rows": []},
+                pricing={},
+                user_personas=[],
+                swot={},
+                source_ids=[],
+            )
+        },
+    )
+
+    result = QAAgent()._run_fallback(state)
+
+    collector_blockers = [
+        issue
+        for issue in result.issues
+        if issue.severity == "blocker" and issue.target_agent == "CollectorAgent"
+    ]
+    assert collector_blockers
+    assert all(not issue.retryable for issue in collector_blockers)
+
+
+def test_qa_empty_profile_with_real_sources_blames_analyst_not_collector() -> None:
+    """A competitor collected with real sources but an empty profile is an Analyst
+    extraction failure, not a collection gap: its blockers must target AnalystAgent and
+    be non-retryable, so the pipeline doesn't burn a re-collection round that returns
+    the same good sources and fails identically."""
+    name = "抖音"
+    scope = _scope(name)
+    sources = [_source(f"s{i}") for i in range(_MIN_SOURCES_PER_COMPETITOR)]
+    state = WorkflowState(
+        task_id=scope.id,
+        run_id=scope.id,
+        scope_contract=scope,
+        raw_collections={name: RawCollectionResult(competitor_name=name, sources=sources)},
+        structured_profiles={name: _empty_profile(name)},
+    )
+
+    result = QAAgent()._run_fallback(state)
+
+    collector_blockers = [
+        issue
+        for issue in result.issues
+        if issue.severity == "blocker" and issue.target_agent == "CollectorAgent"
+    ]
+    analyst_blockers = [
+        issue
+        for issue in result.issues
+        if issue.severity == "blocker" and issue.target_agent == "AnalystAgent"
+    ]
+    assert not collector_blockers
+    assert analyst_blockers
+    assert all(not issue.retryable for issue in analyst_blockers)
+
+
+def test_demo_pricing_blocker_stays_retryable_when_all_unrecoverable() -> None:
+    """The scripted demo blocker must keep driving its feedback-loop retry even when
+    every competitor's live collection is unrecoverable — the unrecoverable override
+    must not mute it."""
+    name = "抖音"
+    scope = _scope(name)
+    state = WorkflowState(
+        task_id=scope.id,
+        run_id=scope.id,
+        scope_contract=scope,
+        raw_collections={
+            name: RawCollectionResult(
+                competitor_name=name, sources=[], errors=["x"], unrecoverable=True
+            )
+        },
+        feedback_signals={"force_pricing_blocker": True},
+        retry_counts={},
+    )
+
+    result = QAAgent()._run_fallback(state)
+
+    demo = next(issue for issue in result.issues if issue.code == "pricing_demo_blocker")
+    assert demo.retryable is True
 
 
 def test_route_after_qa_skips_retry_when_all_blockers_unrecoverable() -> None:
