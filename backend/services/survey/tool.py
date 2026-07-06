@@ -347,15 +347,14 @@ class SurveyTool:
                 {
                     "role": "system",
                     "content": (
-                        "You are a user research analyst. Synthesize survey evidence into "
-                        "actionable insights for a Chinese report. Write every point and quote "
-                        "summary in Simplified Chinese, even if the source evidence is English. "
-                        "Return JSON: "
+                        "你是用户研究分析师。将调研证据综合为支撑中文报告的可行动洞察。"
+                        "所有 point 和引语摘要必须使用简体中文 (Simplified Chinese) 撰写，"
+                        "即使源证据是英文。返回 JSON："
                         "{insights: [{question_id, point, frequency, representative_quotes, "
-                        "evidence_ids, confidence}]}. "
-                        "frequency must be an integer count of supporting evidence items. "
-                        "confidence must be 'high'/'medium'/'low' based on evidence quality. "
-                        "Every insight must include evidence_ids from the provided evidence."
+                        "evidence_ids, confidence}]}。"
+                        "frequency 必须是支撑证据条数的整数。"
+                        "confidence 必须依据证据质量取 'high'/'medium'/'low'。"
+                        "每条 insight 都必须包含来自所提供证据的 evidence_ids。"
                     ),
                 },
                 {

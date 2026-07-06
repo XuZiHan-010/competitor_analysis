@@ -398,6 +398,8 @@ def _messages_with_json_guard(
 ) -> list[dict[str, str]]:
     if provider != "deepseek":
         return messages
+    # Intentionally English despite the Chinese-prompt convention (docs/code-style.md):
+    # this is a provider-level machine directive, not agent instruction text.
     guard = (
         'Return a valid JSON object only. Do not use Markdown fences. Example: {"ok": true}. '
         "If information is unavailable, return an empty array/object for that field rather "

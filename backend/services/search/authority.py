@@ -108,17 +108,14 @@ async def _grade_with_llm(
             {
                 "role": "system",
                 "content": (
-                    "Grade each source's authority for competitive analysis of the named "
-                    "product/company into tier A, B, or C. "
-                    "A = the product's own official site / docs / pricing / press release, or a "
-                    "government, industry-association, or well-known research institution / "
-                    "authoritative official outlet. "
-                    "B = credible secondary reporting with editorial oversight (mainstream or "
-                    "well-known industry media). "
-                    "C = user reviews, personal blogs, forums, UGC, or unknown / low-credibility "
-                    "outlets. When unsure, prefer the lower tier. "
-                    'Return JSON {"grades":[{"id":str,"tier":"A|B|C","reason":str}]} '
-                    "with one entry per source id."
+                    "针对指定产品/公司的竞品分析，为每条来源评定权威等级 A、B 或 C。"
+                    "A = 该产品自己的官网/文档/定价页/官方新闻稿，或政府、行业协会、"
+                    "知名研究机构/权威官方媒体。"
+                    "B = 有编辑把关的可信二手报道（主流或知名行业媒体）。"
+                    "C = 用户评论、个人博客、论坛、UGC，或未知/低可信度渠道。"
+                    "无法确定时，取较低等级。"
+                    '返回 JSON {"grades":[{"id":str,"tier":"A|B|C","reason":str}]}，'
+                    "每个 source id 对应一条。"
                 ),
             },
             {

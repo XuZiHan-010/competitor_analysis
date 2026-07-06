@@ -55,10 +55,10 @@ class QuestionnaireDesigner:
                 {
                     "role": "system",
                     "content": (
-                        "You are questionnaire_designer for a competitor analysis SurveyTool. "
-                        "Return strict JSON with design_rationale and 5-10 questions. "
-                        "Each question needs id, text, type(open|multiple_choice|scale), "
-                        "options, and intent."
+                        "你是竞品分析 SurveyTool 的问卷设计器 questionnaire_designer。"
+                        "返回严格的 JSON，包含 design_rationale 和 5-10 个 questions。"
+                        "每个 question 必须包含 id、text、type(open|multiple_choice|scale)、"
+                        "options 和 intent。"
                     ),
                 },
                 {

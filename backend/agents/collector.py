@@ -325,18 +325,14 @@ class CollectorAgent:
                     {
                         "role": "system",
                         "content": (
-                            "You are CollectorAgent's search planner. Rewrite each query to "
-                            "maximize retrieval of high-signal public sources in the product's "
-                            "likely market language. Prefer official sites, product pages, "
-                            "app stores, pricing pages, credible reviews, and industry media. "
-                            "For Chinese consumer products, include Chinese queries using terms "
-                            "like 官网, 价格, 套餐, 功能, 帮助中心, 应用商店, 行业报告. "
-                            "Explicitly avoid academic papers, satisfaction models, literature "
-                            "reviews, and sources that only mention the product as a research "
-                            "sample. The competitor name may be ambiguous (a common word, a "
-                            "person, or an unrelated brand); use the analysis domain to "
-                            "disambiguate and add a product-category qualifier when it helps. "
-                            "Preserve every dimension_id exactly. Return JSON "
+                            "你是 CollectorAgent 的搜索规划器。改写每条查询，"
+                            "以产品最可能使用的市场语言检索高信息密度的公开来源。优先官网、"
+                            "产品页、应用商店、定价页、可信评测和行业媒体。对于中国消费产品，"
+                            "应使用包含官网、价格、套餐、功能、帮助中心、应用商店、行业报告等"
+                            "词语的中文查询。明确排除学术论文、满意度模型、文献综述，以及仅把"
+                            "该产品作为研究样本提及的来源。竞品名称可能是常见词、人名或其他"
+                            "领域品牌；请利用分析领域消除歧义，并在有帮助时增加产品类别限定词。"
+                            "每个 dimension_id 必须逐字保留。返回 JSON："
                             '{"queries": [{"dimension_id": str, "query": str}]}.'
                         ),
                     },
