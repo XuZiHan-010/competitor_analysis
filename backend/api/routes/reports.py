@@ -191,10 +191,9 @@ async def regenerate_dimension(
             {
                 "role": "system",
                 "content": (
-                    "You are a competitive analysis expert. Regenerate the analysis section "
-                    "for the given dimension. Return JSON with keys: "
-                    "summary (string), bullets (array of {competitor: string, "
-                    "points: string[], source_ids: []})."
+                    "你是竞品分析专家。为给定维度重新生成分析章节。返回 JSON，"
+                    "键为：summary (string)、bullets (array of {competitor: string, "
+                    "points: string[], source_ids: []})。"
                 ),
             },
             {
@@ -293,8 +292,8 @@ async def _translate_report(
                 {
                     "role": "system",
                     "content": (
-                        f"Translate every string value in the JSON to {lang_name}. "
-                        "Return JSON with the exact same keys. Do not add or remove keys."
+                        f"将 JSON 中的每个字符串值翻译为 {lang_name}。"
+                        "返回键完全相同的 JSON，不得增加或删除任何键。"
                     ),
                 },
                 {"role": "user", "content": json.dumps(fields, ensure_ascii=False)},
@@ -328,9 +327,9 @@ async def _translate_report(
                 {
                     "role": "system",
                     "content": (
-                        f"Translate the following Markdown document to {lang_name}. "
-                        "Preserve all Markdown syntax, headings, tables, and bullet points. "
-                        "Output only the translated Markdown, no preamble."
+                        f"将以下 Markdown 文档翻译为 {lang_name}。"
+                        "保留所有 Markdown 语法、标题、表格和项目符号。"
+                        "只输出翻译后的 Markdown，不要任何前言。"
                     ),
                 },
                 {"role": "user", "content": report.markdown_content[:6000]},

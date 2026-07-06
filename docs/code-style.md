@@ -62,6 +62,13 @@
 - **不写**：`# 这里是采集 Agent` 这种 what 注释
 - **不写**：引用任务编号 / 历史改动（这些信息在 git 历史中）
 
+### LLM Prompt 语言
+
+- **指令文本统一用中文**（system prompt 里的角色设定、规则、约束描述）
+- **结构 token 保持英文原样**：JSON 键名、枚举值（如 `nl_extracted`）、错误码（如 `pricing_missing`）、ID 示例（如 `src_id`）、权威分级记号（`A>B>C`）——这些是输出契约，翻译会破坏解析
+- **唯一豁免**：`services/llm/client.py` 内的机器指令保持英文（provider 级 JSON guard 与 JSON 修复 prompt）——它们是 client 层基础设施，非 Agent 指令文本，且有单测断言其英文内容
+- 改 prompt 后必跑 `pytest -m unit`（有单测直接断言 prompt 内容）
+
 ### Schema 设计
 
 - Pydantic 模型与 TypeScript 类型保持同步（建议从 OpenAPI 单源生成）

@@ -431,27 +431,22 @@ class AnalystAgent:
                 {
                     "role": "system",
                     "content": (
-                        "You are AnalystAgent (core extractor). Return JSON with "
-                        "feature_tree, pricing, user_personas, swot. "
-                        "The root object must contain only those four keys. "
-                        "Every source_ids value must be copied from the provided sources. "
-                        "Do not use academic_sample, satisfaction-model, literature review, "
-                        "or research-sample sources to support hard product facts such as "
-                        "pricing tiers, product capabilities, SWOT, monetization, or creator "
-                        "incentives. If only those sources exist for a field, leave that "
-                        "field empty. "
-                        "Each source carries an authority tier A>B>C (A=official/authoritative, "
-                        "B=credible media, C=user reviews/blogs/unknown); prefer higher-tier "
-                        "evidence and, when sources conflict on a fact, trust the higher tier. "
-                        "Do not output placeholder text such as 需验证, 待确认, 标准版, "
-                        "unknown, TBD, or needs verification. If evidence is missing, "
-                        "leave the specific list empty instead of inventing a placeholder. "
-                        "description, note, evidence, highlights, and SWOT text must "
-                        "contain concrete evidence such as numbers, version names, quoted "
-                        "phrases, pricing rules, or clearly attributed product facts. "
-                        "Keep output compact: at most 8 feature rows, 5 pricing tiers, "
-                        "3 personas, and 4 items per SWOT quadrant; omit weaker points. "
-                        'Return exactly this shape: {"feature_tree":{"rows":[{"feature":'
+                            "你是 AnalystAgent 的核心层抽取器。返回包含 feature_tree、pricing、"
+                            "user_personas、swot 的 JSON，根对象只能包含这四个键。所有 "
+                            "source_ids 都必须从所提供的来源中逐字复制。不得使用 "
+                            "academic_sample、satisfaction-model、literature review 或 "
+                            "research-sample 类型的来源支撑定价档位、产品能力、SWOT、"
+                            "商业化方式、创作者激励等硬事实；某字段若只有这些来源，应保持为空。"
+                            "每条来源都带有 A>B>C 的权威等级：A 表示官方或权威来源，B 表示"
+                            "可信媒体，C 表示用户评论、博客或未知来源。优先采用更高等级的证据；"
+                            "事实冲突时，以更高等级来源为准。不得输出需验证、待确认、标准版、"
+                            "unknown、TBD、needs verification 等占位文本；证据缺失时应将对应"
+                            "列表留空，不得虚构占位内容。description、note、evidence、"
+                            "highlights 和 SWOT 文本必须包含具体证据，例如数字、版本名称、"
+                            "原文短语、定价规则或归属明确的产品事实。输出应紧凑：功能行最多 8 条，"
+                            "定价档位最多 5 个，用户画像最多 3 个，SWOT 每个象限最多 4 条；"
+                            "较弱的内容应省略。严格返回以下结构："
+                            '{"feature_tree":{"rows":[{"feature":'
                         '"Real feature name","description":"Evidence-backed detail",'
                         '"cells":[{"competitor":"Competitor name","status":"supported",'
                         '"note":"Specific evidence-backed note"}],"source_ids":["src_id"]}]},'
@@ -507,15 +502,13 @@ class AnalystAgent:
                     {
                         "role": "system",
                         "content": (
-                            "You are AnalystAgent (extension extractor). "
-                            "Return JSON with summary, bullets (list[str]), "
-                            "table_data (list[dict]), source_ids (list[str]). "
-                            "Every summary, bullet, and table note must include concrete "
-                            "evidence such as numbers, version names, quoted phrases, or "
-                            "specific product facts. Do not output 需验证, 待确认, 标准版, "
-                            "unknown, TBD, or needs verification; omit unsupported points. "
-                            "Each source carries an authority tier A>B>C; prefer higher-tier "
-                            "evidence and, when sources conflict, trust the higher tier."
+                                "你是 AnalystAgent 的扩展层抽取器。返回包含 summary、bullets "
+                                "(list[str])、table_data (list[dict])、source_ids (list[str]) "
+                                "的 JSON。每段 summary、每条 bullet 和每个表格备注都必须包含"
+                                "具体证据，例如数字、版本名称、原文短语或明确的产品事实。不得输出"
+                                "需验证、待确认、标准版、unknown、TBD、needs verification 等"
+                                "占位文本；没有证据支撑的内容应省略。每条来源都带有 A>B>C 的权威"
+                                "等级；优先采用更高等级证据，来源冲突时以更高等级来源为准。"
                             + lang_directive
                         ),
                     },
@@ -744,15 +737,14 @@ class AnalystAgent:
                         {
                             "role": "system",
                             "content": (
-                                "You are AnalystAgent (cross-fill). For the given competitor, "
-                                "classify each listed feature using ONLY the provided sources. "
-                                'Return JSON {"features":[{"feature":"<exact name>","status":'
+                                "你是 AnalystAgent 的跨竞品矩阵补全器。对于给定竞品，只能依据"
+                                "所提供的来源判断列出的每项功能。返回 JSON："
+                                '{"features":[{"feature":"<exact name>","status":'
                                 '"supported|partial|unsupported","note":"evidence-backed note",'
-                                '"source_ids":["src_id"]}]}. status and source_ids are required: '
-                                "every classification must cite source_ids copied from the "
-                                "provided sources. If a feature has no supporting evidence in "
-                                "these sources, OMIT it entirely — never guess from prior "
-                                "knowledge, never output unknown/TBD/需验证."
+                                '"source_ids":["src_id"]}]}。status 和 source_ids 为必填项；'
+                                "每项判断都必须引用从所提供来源中逐字复制的 source_ids。若这些"
+                                "来源中没有某项功能的支撑证据，应完全省略该项；不得依赖既有知识"
+                                "猜测，也不得输出 unknown、TBD 或需验证。"
                                 + language_instruction(language)
                             ),
                         },

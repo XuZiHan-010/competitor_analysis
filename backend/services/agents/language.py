@@ -7,10 +7,11 @@ def language_instruction(language: str) -> str:
     """
     label = "简体中文 (Simplified Chinese)" if language == "zh" else language
     return (
-        f" Write all human-readable text (narrative paragraphs, section intros, feature "
-        f"names, descriptions, notes, pricing tiers and highlights, persona labels/needs/"
-        f"pain points, SWOT text, summaries, headings, and bullets) in {label}. Do not "
-        f"echo source-language (e.g. English) sentences — translate them into {label}. "
-        f"Keep product and brand names, plan/tier names, and numbers with their units "
-        f"verbatim. source_ids must still be copied verbatim from the provided sources."
+        f" 所有面向读者的文本，包括叙事段落、章节导语、功能名称、描述、备注、"
+        f"定价档位及其亮点、用户画像标签、需求与痛点、SWOT 文本、摘要、标题和"
+        f"项目符号，都必须使用 {label}。字段映射为 feature names=功能名称、"
+        f"pricing tiers=定价档位。不得直接回显来源语言的句子，例如英文原句；"
+        f"必须翻译为 {label}（translation_mode=translate）。产品名、品牌名、套餐或"
+        f"档位名称、数字及其单位采用 verbatim 规则逐字保留；source_ids 也必须从所提供"
+        f"来源中逐字复制。"
     )

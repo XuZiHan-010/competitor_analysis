@@ -112,12 +112,11 @@ async def _filter_with_llm(
             {
                 "role": "system",
                 "content": (
-                    "Judge whether each source describes the named product, service, "
-                    "or company itself: features, pricing, users, reviews, market, or "
-                    "competition. Drop sources that only mention the name as a research "
-                    "sample, satisfaction-model subject, literature review, or unrelated "
-                    'concept. Return JSON {"decisions":[{"id":str,"keep":bool,'
-                    '"reason":str}]} with one decision per source id.'
+                    "判断每条来源是否在描述指定产品、服务或公司本身：功能、定价、"
+                    "用户、评价、市场或竞争。剔除仅把该名称作为研究样本、满意度模型"
+                    "对象、文献综述或无关概念提及的来源。"
+                    '返回 JSON {"decisions":[{"id":str,"keep":bool,'
+                    '"reason":str}]}，每个 source id 对应一条 decision。'
                 ),
             },
             {

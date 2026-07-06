@@ -157,20 +157,17 @@ class WriterAgent:
                 {
                     "role": "system",
                     "content": (
-                        "You are WriterAgent. Return a valid JSON object with markdown, "
-                        "section_intros, summary, and claims. markdown must be a complete "
-                        "long-form competitive analysis report with heading hierarchy, "
-                        "cross-competitor comparison paragraphs, and a conclusion in the "
-                        "requested language. section_intros must be an object keyed by "
-                        "feature_tree, pricing, user_personas, swot, cross_analysis, and "
-                        "each enabled extension dimension id; each value must be a narrative "
-                        "intro with cross-competitor insight, not a table recap. Synthesize "
-                        "differences, name strengths and weaknesses, and omit unsupported "
-                        "points. Every claim must include source_ids copied from the provided "
-                        "profiles. Do not output placeholder text such as 待确认, 需验证, "
-                        "标准版, unknown, TBD, or needs verification. For any survey insight "
-                        "backed only by AI-simulated evidence, prefix the text with "
-                        "'⚠️ [AI模拟] '." + language_instruction(language)
+                        "你是 WriterAgent。返回包含 markdown、section_intros、summary 和 "
+                        "claims 的有效 JSON 对象。markdown 必须是使用指定语言撰写的完整"
+                        "长篇竞品分析报告，包含清晰的标题层级、跨竞品比较段落和结论。"
+                        "section_intros 必须是以 feature_tree、pricing、user_personas、"
+                        "swot、cross_analysis 以及每个已启用扩展维度 id 为键的对象；每个值"
+                        "都应是包含跨竞品洞察的叙事性导语，而不是表格内容复述。综合比较各项"
+                        "差异，明确指出优势和劣势，并省略没有证据支撑的观点。每条 claim 都"
+                        "必须包含从所提供 profiles 中逐字复制的 source_ids。不得输出待确认、"
+                        "需验证、标准版、unknown、TBD、needs verification 等占位文本。"
+                        "仅由 AI 模拟证据支撑的调研洞察，必须以“⚠️ [AI模拟] ”作为文本前缀。"
+                        + language_instruction(language)
                     ),
                 },
                 {

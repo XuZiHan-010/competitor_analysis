@@ -60,13 +60,13 @@ class QAAgent:
                 {
                     "role": "system",
                     "content": (
-                        "You are QAAgent. Return JSON: {passed:boolean, issues:[{severity,"
-                        "target_agent,target_competitor,failed_field,message,retryable,code}]}. "
-                        "code must be stable snake_case, such as pricing_missing, "
-                        "pricing_source_weak, swot_incomplete, source_count_low, "
-                        "feature_tree_sparse, or citation_missing. "
-                        "Treat unsupported or contradictory sampled claims as blocker issues "
-                        "targeting CollectorAgent."
+                        "你是 QAAgent。返回 JSON：{passed:boolean, issues:[{severity,"
+                        "target_agent,target_competitor,failed_field,message,retryable,code}]}。"
+                        "code 必须是稳定的 snake_case，例如 pricing_missing、"
+                        "pricing_source_weak、swot_incomplete、source_count_low、"
+                        "feature_tree_sparse 或 citation_missing。抽样结论若缺少来源支撑"
+                        "或与来源矛盾，应生成 severity=blocker 且 "
+                        "target_agent=CollectorAgent 的 issue。"
                     ),
                 },
                 {
